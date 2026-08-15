@@ -36,6 +36,11 @@ export interface Track {
   scale: number[];
   // Тоника шкалы, Гц.
   freq: number;
+  // Падение тона: во сколько раз выше тоники нота стартует и слетает
+  // вниз за pitchTime. >1 превращает синус в бочку («вумп»).
+  pitchDrop: number;
+  // Длительность падения тона, с.
+  pitchTime: number;
   // Частота lowpass-фильтра трека, Гц.
   filterFreq: number;
   // Огибающая ноты, сек.
@@ -49,10 +54,13 @@ export interface Track {
 export interface Patch {
   version: number;
   bpm: number;
+  // Общая громкость 0..2. Выше 1 — tanh-лимитер мягко пережимает,
+  // звук плотнеет (мастер-сатурация) без клиппинга.
+  masterVolume: number;
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 4;
+export const PATCH_VERSION = 5;
 
 export function makeStep(on = false, note = 0, vel = 0.8, prob = 1): Step {
   return { notes: on ? [note] : [], vel, prob };
@@ -74,6 +82,8 @@ export function makeTrack(partial: Partial<Track> & { id: string; name: string }
     waveform: partial.waveform ?? 'sine',
     scale: partial.scale && partial.scale.length > 0 ? partial.scale : [1],
     freq: partial.freq ?? 220,
+    pitchDrop: partial.pitchDrop ?? 1,
+    pitchTime: partial.pitchTime ?? 0.08,
     filterFreq: partial.filterFreq ?? 8000,
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
@@ -166,6 +176,8 @@ export function normalizePatch(p: Patch): Patch {
         rate: clamp(t.rate, 0.25, 32, 1),
         phase: Math.round(clamp(t.phase ?? 0, -64, 64, 0)),
         freq: clamp(t.freq, 20, 9000, 220),
+        pitchDrop: clamp(t.pitchDrop ?? 1, 1, 16, 1),
+        pitchTime: clamp(t.pitchTime ?? 0.08, 0, 2, 0.08),
         filterFreq: clamp(t.filterFreq, 60, 12000, 8000),
         attack: clamp(t.attack, 0, 1, 0.002),
         decay: clamp(t.decay, 0.01, 4, 0.25),
@@ -176,6 +188,7 @@ export function normalizePatch(p: Patch): Patch {
   return {
     version: PATCH_VERSION,
     bpm: Math.round(clamp(p.bpm, 30, 300, 120)),
+    masterVolume: clamp((p as { masterVolume?: number }).masterVolume ?? 1, 0, 2, 1),
     tracks,
   };
 }

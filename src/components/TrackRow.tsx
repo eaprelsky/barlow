@@ -169,6 +169,20 @@ export const TrackRow = memo(function TrackRow({
             спад, с
             <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
           </label>
+          <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Работает только на тональных волнах, не на шуме">
+            падение тона, ×
+            <NumField
+              value={track.pitchDrop} min={1} max={16} step={0.5}
+              onChange={(pitchDrop) => change({ pitchDrop })}
+            />
+          </label>
+          <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
+            время падения, с
+            <NumField
+              value={track.pitchTime} min={0} max={2} step={0.01}
+              onChange={(pitchTime) => change({ pitchTime })}
+            />
+          </label>
           <label>
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />

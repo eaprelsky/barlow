@@ -1,6 +1,6 @@
 import { euclid } from './euclid';
 import { SCALE_PRESETS } from './scales';
-import { makeStep, makeTrack } from '../types';
+import { PATCH_VERSION, makeStep, makeTrack } from '../types';
 import type { Patch, Step, Track } from '../types';
 
 let nextId = 1;
@@ -37,9 +37,12 @@ export function defaultPatch(): Patch {
       rate: 4,
       waveform: 'sine',
       scale: scale('одна высота'),
-      freq: 55,
-      decay: 0.35,
-      filterFreq: 900,
+      freq: 48,
+      attack: 0.001,
+      decay: 0.32,
+      pitchDrop: 3.5,
+      pitchTime: 0.09,
+      filterFreq: 1400,
       volume: 0.9,
       steps: stepsFromMask(euclid(16, 4)),
     }),
@@ -82,5 +85,5 @@ export function defaultPatch(): Patch {
       steps: withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]),
     }),
   ];
-  return { version: 3, bpm: 118, tracks };
+  return { version: PATCH_VERSION, bpm: 118, masterVolume: 1, tracks };
 }

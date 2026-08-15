@@ -30,10 +30,12 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'пульс',
-    hint: 'низкий удар — опорная точка ритма',
+    hint: 'бочка: нота стартует высоко и падает вниз — «вумп», опора ритма',
     track: {
-      name: 'пульс', waveform: 'sine', freq: 55, scale: [1],
-      length: 16, rate: 4, decay: 0.35, filterFreq: 800, volume: 0.9,
+      name: 'пульс', waveform: 'sine', freq: 48, scale: [1],
+      length: 16, rate: 4, attack: 0.001, decay: 0.32,
+      pitchDrop: 3.5, pitchTime: 0.09,
+      filterFreq: 1400, volume: 0.9,
     },
   },
   {

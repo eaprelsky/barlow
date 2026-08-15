@@ -70,9 +70,9 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   return { filter, gain };
 }
 
-function connectMaster(ctx: BaseAudioContext): GainNode {
+function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
   const master = ctx.createGain();
-  master.gain.value = 0.75;
+  master.gain.value = 0.75 * masterVolume;
   // Мягкий лимитер на tanh: пики выше ~0.9 плавно пережимаются, а не
   // обрезаются нулём — иначе сумма громких треков трещит (цифровой клиппинг).
   // Компрессор тут не годится: он пропускает короткие транзиенты.
@@ -123,7 +123,14 @@ function triggerVoice(
     for (const f of freqs) {
       const osc = ctx.createOscillator();
       osc.type = track.waveform;
-      osc.frequency.setValueAtTime(f, time);
+      // Падение тона: нота стартует выше тоники и слетает вниз —
+      // так рождается бочка. При pitchDrop = 1 рампа вырождается.
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+        osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+      } else {
+        osc.frequency.setValueAtTime(f, time);
+      }
       osc.connect(amp);
       osc.start(time);
       osc.stop(stopAt);
@@ -157,15 +164,22 @@ export class AudioEngine {
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
       this.ctx = new AudioContext();
-      this.master = connectMaster(this.ctx);
+      this.master = connectMaster(this.ctx, 1);
       this.noiseBuffer = makeNoiseBuffer(this.ctx);
     }
     return this.ctx;
   }
 
+  private applyMasterVolume(v: number): void {
+    if (this.ctx && this.master) {
+      this.master.gain.setTargetAtTime(0.75 * v, this.ctx.currentTime, 0.05);
+    }
+  }
+
   /** Обновить данные патча без остановки: движок читает их на каждом шаге. */
   setPatch(patch: Patch): void {
     this.patch = patch;
+    this.applyMasterVolume(patch.masterVolume);
     if (!this.ctx || !this.master) return;
     // Актуализируем цепочки: параметры существующих, disconnect удалённых.
     const alive = new Set<string>();
@@ -241,7 +255,7 @@ export class AudioEngine {
     const duration = bars * 16 * tickDuration(patch.bpm) + 1.0;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
-    const master = connectMaster(ctx);
+    const master = connectMaster(ctx, patch.masterVolume);
     const noise = makeNoiseBuffer(ctx);
     for (const track of patch.tracks) {
       const chain = makeChain(ctx, track, master);

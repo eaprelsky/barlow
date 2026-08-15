@@ -9,7 +9,7 @@ import type { Patch, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
-const STORAGE_KEY = 'barlow.patch.v4';
+const STORAGE_KEY = 'barlow.patch.v5';
 const WAV_BARS = 8;
 
 function uniqueName(base: string, tracks: Track[]): string {
@@ -181,6 +181,19 @@ export default function App() {
             value={patch.bpm} min={30} max={300} disabled={playing}
             onChange={(bpm) => setPatch((p) => ({ ...p, bpm: Math.round(bpm) }))}
           />
+        </label>
+        <label
+          className="master-vol"
+          title="Общая громкость. Выше 100% — лимитер мягко пережимает пики: звук плотнее и жирнее, без треска"
+        >
+          общая громкость
+          <input
+            type="range" min={0} max={2} step={0.05} value={patch.masterVolume}
+            onChange={(e) =>
+              setPatch((p) => ({ ...p, masterVolume: Number(e.target.value) }))
+            }
+          />
+          {Math.round(patch.masterVolume * 100)}%
         </label>
         <span className="spacer" />
         <label title={INSTRUMENT_PRESETS[presetIdx]?.hint}>
