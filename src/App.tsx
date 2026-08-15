@@ -19,6 +19,7 @@ import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 import { PROVIDERS } from './ai/providers';
 import { putSample } from './audio/library';
+import { Library } from './components/Library';
 
 const STORAGE_KEY = 'barlow.patch.v12';
 const UI_KEY = 'barlow.ui.v1';
@@ -100,6 +101,8 @@ export default function App() {
   const [showChain, setShowChain] = useState(false);
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
   const [showAi, setShowAi] = useState(false);
+  const [showLib, setShowLib] = useState(false);
+  const [fileOpen, setFileOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioEngine | null>(null);
@@ -493,8 +496,12 @@ export default function App() {
       <div className="topbar">
       <header>
         <span className="logo">barlow</span>
-        <button className={playing ? 'stop' : ''} onClick={togglePlay}>
-          {playing ? 'стоп' : 'играть'}
+        <button
+          className={playing ? 'play-btn stop' : 'play-btn'}
+          onClick={togglePlay}
+          title={playing ? 'Стоп (пробел тоже работает — в будущих версиях)' : 'Играть'}
+        >
+          {playing ? '■' : '▶'}
         </button>
         <label title="Темп в ударах в минуту. Изменение на ходу пока запрещено — смените на стопе">
           темп
@@ -529,13 +536,33 @@ export default function App() {
         >
           добавить трек
         </button>
-        <button onClick={renderWav} disabled={rendering} title="Оффлайн-рендер: цепочка целиком или 8 тактов текущей сцены">
-          {rendering ? 'рендер…' : 'записать wav'}
+        <div className="menu">
+          <button onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">файл ▾</button>
+          {fileOpen && (
+            <div className="menu-list">
+              <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering}>
+                {rendering ? 'рендер…' : 'записать wav'}
+              </button>
+              <button onClick={() => { exportPatch(); setFileOpen(false); }}>экспорт патча</button>
+              <button onClick={() => { fileRef.current?.click(); setFileOpen(false); }}>импорт патча</button>
+              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс</button>
+            </div>
+          )}
+        </div>
+        <button
+          className={showLib ? 'on' : ''}
+          onClick={() => { setShowLib((v) => !v); if (showAi) setShowAi(false); }}
+          title="Библиотека сэмплов: прослушать, скачать, удалить"
+        >
+          сэмплы
         </button>
-        <button onClick={exportPatch}>экспорт</button>
-        <button onClick={() => fileRef.current?.click()}>импорт</button>
-        <button onClick={resetPatch} title="Сбросить к дефолтному полиритму">сброс</button>
-        <button className={showAi ? 'on' : ''} onClick={() => setShowAi((v) => !v)} title="Настройки ИИ-генерации сэмплов">ИИ</button>
+        <button
+          className={showAi ? 'on' : ''}
+          onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
+          title="Настройки: ключ ИИ-генерации"
+        >
+          настройки
+        </button>
         <input
           ref={fileRef} type="file" accept=".json,application/json" hidden
           onChange={(e) => {
@@ -546,8 +573,15 @@ export default function App() {
         />
       </header>
 
+      <Library
+        open={showLib}
+        usedIds={new Set(patch.tracks.map((t) => t.sampleId).filter((v): v is string => !!v))}
+        onClose={() => setShowLib(false)}
+      />
+
       {showAi && (
         <div className="ai-panel">
+          <span className="scenes-label">настройки · ИИ-генерация</span>
           <label title="Ключ хранится только в этом браузере (localStorage). Barlow — локальный инструмент; при публикации ключи должны уйти за прокси">
             ключ {PROVIDERS.find((p) => p.id === ai.providerId)?.title}
             <input

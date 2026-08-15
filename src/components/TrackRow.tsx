@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
+import { EnvGraph } from './EnvGraph';
 import { putSample } from '../audio/library';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
@@ -78,6 +79,7 @@ export const TrackRow = memo(function TrackRow({
   const [genSeconds, setGenSeconds] = useState(3);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
+  const [tab, setTab] = useState<'env' | 'timbre' | 'fx' | 'mods'>('env');
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
@@ -429,6 +431,63 @@ export const TrackRow = memo(function TrackRow({
 
       {more && (
         <div className="track-head more-row">
+          <div className="tabs">
+            {(
+              [
+                ['env', 'огибающая'],
+                ['timbre', 'тембр'],
+                ['fx', 'эффекты'],
+                ['mods', 'модуляции'],
+              ] as const
+            ).map(([id, title]) => (
+              <button
+                key={id}
+                className={tab === id ? 'tab on' : 'tab'}
+                onClick={() => setTab(id)}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+          {tab === 'env' && (
+          <div className="group env-tab">
+            <EnvGraph attack={track.attack} decay={track.decay} pitchDrop={track.pitchDrop} pitchTime={track.pitchTime} />
+            <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие"
+              >
+              атака, мс
+              <NumField
+                value={Math.round(Math.max(track.attack, 0.0005) * 1000)} min={0} max={500} step={1}
+                onChange={(ms) => change({ attack: Math.max(0.0005, ms / 1000) })}
+              />
+            </label>
+            <label
+              title={
+                track.waveform === 'sample'
+                  ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
+                  : 'Сколько секунд звучит нота после удара'
+              }
+            >
+              спад, с
+              <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
+            </label>
+            <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
+              падение тона, ×
+              <NumField
+                value={track.pitchDrop} min={1} max={16} step={0.5}
+                onChange={(pitchDrop) => change({ pitchDrop })}
+              />
+            </label>
+            <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
+              время падения, с
+              <NumField
+                value={track.pitchTime} min={0} max={2} step={0.01}
+                onChange={(pitchTime) => change({ pitchTime })}
+              />
+            </label>
+          </div>
+          )}
+          {tab === 'timbre' && (
+          <>
           <div className="group">
             <label
               className="mono-label"
@@ -454,30 +513,6 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(filterFreq) => change({ filterFreq })}
               />
             </label>
-            <label
-              title={
-                track.waveform === 'sample'
-                  ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
-                  : 'Сколько секунд звучит нота после удара'
-              }
-            >
-              спад, с
-              <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
-            </label>
-            <label title="Нота стартует во сколько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
-              падение тона, ×
-              <NumField
-                value={track.pitchDrop} min={1} max={16} step={0.5}
-                onChange={(pitchDrop) => change({ pitchDrop })}
-              />
-            </label>
-            <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-              время падения, с
-              <NumField
-                value={track.pitchTime} min={0} max={2} step={0.01}
-                onChange={(pitchTime) => change({ pitchTime })}
-              />
-            </label>
           </div>
           <div className="group">
             <label title="Эскиз = партия: свои ручки, пока он играет (в этой и других сценах, где он звучит)">
@@ -498,6 +533,9 @@ export const TrackRow = memo(function TrackRow({
               </span>
             </label>
           </div>
+          </>
+          )}
+          {tab === 'fx' && (
           <div className="group mods-group">
             <label title="Эффекты трека, включаются последовательно: фильтр → эффекты → панорама">
               эффекты
@@ -556,6 +594,8 @@ export const TrackRow = memo(function TrackRow({
             ))}
             <button onClick={addEffect} title="Добавить эффект">+ эффект</button>
           </div>
+          )}
+          {tab === 'mods' && (
           <div className="group mods-group">
             <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет. Цели эффектов действуют на первый эффект в списке">
               модуляции эскиза «{pattern.name}» (LFO)
@@ -614,6 +654,7 @@ export const TrackRow = memo(function TrackRow({
               </button>
             )}
           </div>
+          )}
         </div>
       )}
 
