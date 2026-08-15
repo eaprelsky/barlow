@@ -33,7 +33,11 @@ Launchpad MK3 / VST. Архитектурные решения — docs/DESIGN.m
 ## Undo/редактирование
 - Все правки патча идут через перехваченный setPatch в App (история:
   коалесценция 700 мс, 100 шагов). Прямой setPatchRaw — только undo/redo/import.
-- Удаление трека — через window.confirm; сцены/эскизы — без (undo прикрывает).
+- Удаление трека — через свою модалку `confirmDialog` (`components/dialogs.ts`,
+  хост `<DialogHost/>` в App); сцены/эскизы — без подтверждения (undo прикрывает).
+  Сторонние эффекты (confirm и т.п.) НЕ звать внутри setPatch-updater'а:
+  StrictMode в dev прогоняет апдейтеры дважды. window.alert/confirm не
+  использовать — только alertDialog/confirmDialog.
 
 ## Грабли
 - Темп меняется только на стопе (математика playhead привязана к старту).

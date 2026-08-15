@@ -18,6 +18,8 @@ import {
 import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
+import { DialogHost } from './components/Dialog';
+import { alertDialog, confirmDialog } from './components/dialogs';
 import { PROVIDERS } from './ai/providers';
 import { putSample } from './audio/library';
 import { Library } from './components/Library';
@@ -292,18 +294,28 @@ export default function App() {
   }, [engine]);
 
   const removeTrack = useCallback((id: string) => {
-    setPatch((p) => {
-      const victim = p.tracks.find((t) => t.id === id);
-      if (victim && !window.confirm(`Удалить трек «${victim.name}»? Ctrl+Z вернёт`)) return p;
-      const tracks = p.tracks.filter((x) => x.id !== id);
-      const scenes = p.scenes.map((s) => {
-        const slots = { ...s.slots };
-        delete slots[id];
-        return { ...s, slots };
+    const victim = patch.tracks.find((t) => t.id === id);
+    if (!victim) return;
+    // Вопрос до setPatch: подтверждение внутри updater'а вызывалось дважды
+    // (StrictMode прогоняет апдейтеры по два раза в dev).
+    void confirmDialog({
+      title: 'удалить трек?',
+      text: `«${victim.name}» — Ctrl+Z вернёт`,
+      okLabel: 'удалить',
+      danger: true,
+    }).then((ok) => {
+      if (!ok) return;
+      setPatch((p) => {
+        const tracks = p.tracks.filter((x) => x.id !== id);
+        const scenes = p.scenes.map((s) => {
+          const slots = { ...s.slots };
+          delete slots[id];
+          return { ...s, slots };
+        });
+        return { ...p, tracks, scenes };
       });
-      return { ...p, tracks, scenes };
     });
-  }, []);
+  }, [patch.tracks, setPatch]);
 
   const addTrack = useCallback((preset: (typeof INSTRUMENT_PRESETS)[number]) => {
     setPatch((p) => {
@@ -471,7 +483,7 @@ export default function App() {
     async (trackId: string, prompt: string, seconds: number) => {
       const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
       if (!ai.apiKey) {
-        alert('Сначала укажи API-ключ: кнопка «ИИ» в шапке');
+        void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-генерация');
         return;
       }
       setGenBusy((b) => ({ ...b, [trackId]: true }));
@@ -485,7 +497,10 @@ export default function App() {
           ),
         }));
       } catch (e) {
-        alert(`Генерация не удалась: ${e instanceof Error ? e.message : String(e)}`);
+        void alertDialog(
+          `Генерация не удалась: ${e instanceof Error ? e.message : String(e)}`,
+          'ИИ-генерация',
+        );
       } finally {
         setGenBusy((b) => ({ ...b, [trackId]: false }));
       }
@@ -520,9 +535,9 @@ export default function App() {
           const norm = normalizePatch(parsed);
           setPatch(norm);
           setSceneId(norm.scenes[0].id);
-        } else alert('Файл не похож на патч barlow');
+        } else void alertDialog('Файл не похож на патч barlow', 'импорт');
       } catch {
-        alert('Не удалось прочитать JSON');
+        void alertDialog('Не удалось прочитать JSON', 'импорт');
       }
     });
   };
@@ -804,6 +819,8 @@ export default function App() {
         </span>
         <span>независимые циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ')}</span>
       </footer>
+
+      <DialogHost />
     </div>
   );
 }

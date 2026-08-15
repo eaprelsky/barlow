@@ -12,6 +12,8 @@ import { SCALE_PRESETS, presetName } from '../music/scales';
 import { INSTRUMENT_PRESETS } from '../music/instrumentPresets';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
+import { alertDialog } from './dialogs';
+import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration } from '../audio/engine';
 
@@ -158,7 +160,10 @@ export const TrackRow = memo(function TrackRow({
   const applyCustomScale = () => {
     const ratios = parseCustomScale(customScale);
     if (!ratios) {
-      alert('Не понял шкалу: числа или дроби (3/2) через запятую, каждое от 0 до 16, до 48 значений');
+      void alertDialog(
+        'Не понял шкалу: числа или дроби (3/2) через запятую, каждое от 0 до 16, до 48 значений',
+        'своя шкала',
+      );
       return;
     }
     change({
@@ -171,6 +176,7 @@ export const TrackRow = memo(function TrackRow({
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
   const [showRoll, setShowRoll] = useState(true);
+  const [showPicker, setShowPicker] = useState(false);
   const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx' | 'mods'>('snd');
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
@@ -184,7 +190,7 @@ export const TrackRow = memo(function TrackRow({
   const loadSampleFile = (f: File) => {
     void putSample(f, f.name)
       .then((meta) => change({ sampleId: meta.id, sampleName: meta.name }))
-      .catch(() => alert('Не удалось сохранить сэмпл в библиотеку'));
+      .catch(() => void alertDialog('Не удалось сохранить сэмпл в библиотеку', 'сэмпл'));
   };
 
   const setLength = (length: number) => {
@@ -381,6 +387,15 @@ export const TrackRow = memo(function TrackRow({
       <button className="chip add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
         +
       </button>
+      {track.patterns.length > 1 && (
+        <button
+          className="chip del"
+          title={`Удалить эскиз «${pattern.name}»: сцены, где он играл, перейдут на первый оставшийся. Ctrl+Z вернёт`}
+          onClick={() => onRemovePattern(track.id, pattern.id)}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 
@@ -593,6 +608,12 @@ export const TrackRow = memo(function TrackRow({
                     <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
                       {track.sampleName ?? 'не выбран'}
                     </span>
+                    <button
+                      onClick={() => setShowPicker(true)}
+                      title="Выбрать из библиотеки: прослушать и положить в слот"
+                    >
+                      выбрать…
+                    </button>
                     <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
                     <input
                       ref={sampleFileRef} type="file" accept="audio/*" hidden
@@ -856,15 +877,6 @@ export const TrackRow = memo(function TrackRow({
               </div>
             ))}
             <button onClick={addMod} title="Добавить LFO">+ модуляция</button>
-            {track.patterns.length > 1 && (
-              <button
-                className="remove"
-                title="Удалить этот эскиз (сцены, где он играл, перейдут на первый оставшийся)"
-                onClick={() => onRemovePattern(track.id, pattern.id)}
-              >
-                удалить эскиз «{pattern.name}»
-              </button>
-            )}
           </div>
           )}
         </div>
@@ -1025,6 +1037,17 @@ export const TrackRow = memo(function TrackRow({
             <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
           )}
         </div>
+      )}
+
+      {showPicker && (
+        <SamplePicker
+          currentId={track.sampleId}
+          onPick={(meta) => {
+            change({ sampleId: meta.id, sampleName: meta.name });
+            setShowPicker(false);
+          }}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );

@@ -1011,3 +1011,107 @@ header button.on {
   border-color: #ffd166;
   background: rgba(255, 209, 102, 0.08);
 }
+
+/* Модалки: диалоги и выбор сэмпла */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 9, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  min-width: 300px;
+  max-width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+
+.modal p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.modal-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-btns .spacer {
+  flex: 1;
+}
+
+button.danger {
+  border-color: #e05555;
+  color: #e05555;
+}
+
+button.danger:hover {
+  border-color: #ff7676;
+  color: #ff7676;
+}
+
+.picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 60px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.picker-item:hover {
+  border-color: var(--accent);
+}
+
+.picker-item.current {
+  border-color: var(--accent-2);
+}
+
+.picker-item .sample-name {
+  flex: 1;
+}
+
+.picker-play {
+  width: 30px;
+  padding: 2px 0;
+}
+
+.chip.del {
+  border-style: dashed;
+}
+
+.chip.del:hover {
+  color: #e05555;
+  border-color: #e05555;
+}
