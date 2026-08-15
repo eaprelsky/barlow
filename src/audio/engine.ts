@@ -10,6 +10,7 @@
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
 import type { Patch, Step, Track } from '../types';
+import { stepFreq } from '../types';
 import { audioBufferToWav } from './wav';
 
 const LOOKAHEAD_MS = 25;
@@ -88,7 +89,7 @@ function triggerVoice(
   step: Step,
   time: number,
 ): void {
-  const freq = track.freq * (step.mul || 1);
+  const freq = stepFreq(track, step);
   const peak = Math.max(0.0001, step.vel * 0.9);
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(0, time);

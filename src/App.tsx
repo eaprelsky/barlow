@@ -6,9 +6,8 @@ import { mutateTrack } from './music/mutate';
 import { isPatch, makeTrack, normalizePatch } from './types';
 import type { Patch, Track } from './types';
 import { TrackRow } from './components/TrackRow';
-import { PlayheadContext } from './components/PlayheadContext';
 
-const STORAGE_KEY = 'barlow.patch.v2';
+const STORAGE_KEY = 'barlow.patch.v3';
 const WAV_BARS = 8;
 
 function loadPatch(): Patch {
@@ -51,14 +50,6 @@ export default function App() {
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
-  // Пересчёт каждый рендер (rAF) по часам AudioContext — та же формула, что в движке.
-  const playhead = playing
-    ? {
-        getStepIndex: (track: Track) =>
-          engine.playing ? stepIndexAt(track, engine.now, engine.startTime, patch.bpm) : -1,
-      }
-    : null;
-
   const togglePlay = useCallback(() => {
     if (engine.playing) {
       engine.stop();
@@ -69,20 +60,24 @@ export default function App() {
     }
   }, [engine, patch]);
 
-  const changeTrack = (id: string, t: Track) =>
+  // Стабильные колбэки: TrackRow мемоизирован, пересобирается только
+  // когда меняются его данные или активная колонка.
+  const changeTrack = useCallback((id: string, t: Track) => {
     setPatch((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
+  }, []);
 
-  const removeTrack = (id: string) =>
+  const removeTrack = useCallback((id: string) => {
     setPatch((p) => ({ ...p, tracks: p.tracks.filter((x) => x.id !== id) }));
+  }, []);
 
-  const addTrack = () =>
+  const addTrack = useCallback(() => {
     setPatch((p) => ({
       ...p,
       tracks: [
         ...p.tracks,
         makeTrack({
           id: `t${Date.now().toString(36)}`,
-          name: `trk ${p.tracks.length + 1}`,
+          name: `трек ${p.tracks.length + 1}`,
           length: 11,
           rate: 2,
           waveform: 'square',
@@ -90,8 +85,9 @@ export default function App() {
         }),
       ],
     }));
+  }, []);
 
-  const applyEuclid = (id: string, pulses: number) =>
+  const applyEuclid = useCallback((id: string, pulses: number) => {
     setPatch((p) => ({
       ...p,
       tracks: p.tracks.map((t) => {
@@ -100,12 +96,14 @@ export default function App() {
         return { ...t, steps: t.steps.map((s, i) => ({ ...s, on: mask[i] })) };
       }),
     }));
+  }, []);
 
-  const mutate = (id: string) =>
+  const mutate = useCallback((id: string) => {
     setPatch((p) => ({
       ...p,
       tracks: p.tracks.map((t) => (t.id === id ? mutateTrack(t) : t)),
     }));
+  }, []);
 
   const exportPatch = () => {
     const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
@@ -151,95 +149,65 @@ export default function App() {
     }
   };
 
+  // Та же формула, что в движке — playhead и звук не расходятся.
+  const activeOf = (t: Track) =>
+    playing && engine.playing ? stepIndexAt(t, engine.now, engine.startTime, patch.bpm) : -1;
+
   return (
-    <PlayheadContext.Provider value={playhead}>
-      <div className="app">
-        <header>
-          <span className="logo">barlow</span>
-          <button className={playing ? 'stop' : ''} onClick={togglePlay}>
-            {playing ? '■ stop' : '▶ play'}
-          </button>
-          <label>
-            bpm
-            <input
-              type="number" min={30} max={300} value={patch.bpm}
-              disabled={playing}
-              title="Изменение BPM на ходу пока запрещено — смените на стопе"
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) setPatch((p) => ({ ...p, bpm: Math.min(300, Math.max(30, n)) }));
-              }}
-            />
-          </label>
-          <span className="hint">
-            ЛКМ — вкл/выкл · ПКМ — высота · колесо — громкость · shift+колесо — вероятность
-          </span>
-          <span className="spacer" />
-          <button onClick={addTrack}>+ трек</button>
-          <button onClick={renderWav} disabled={rendering} title={`Оффлайн-рендер ${WAV_BARS} тактов`}>
-            {rendering ? 'рендер…' : '⭘ wav'}
-          </button>
-          <button onClick={exportPatch}>export</button>
-          <button onClick={() => fileRef.current?.click()}>import</button>
-          <button onClick={resetPatch} title="Сбросить к дефолтному полиритму">reset</button>
+    <div className="app">
+      <header>
+        <span className="logo">barlow</span>
+        <button className={playing ? 'stop' : ''} onClick={togglePlay}>
+          {playing ? 'стоп' : 'играть'}
+        </button>
+        <label title="Изменение темпа на ходу пока запрещено — смените на стопе">
+          темп
           <input
-            ref={fileRef} type="file" accept=".json,application/json" hidden
+            type="number" min={30} max={300} value={patch.bpm}
+            disabled={playing}
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) importPatch(f);
-              e.target.value = '';
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setPatch((p) => ({ ...p, bpm: Math.min(300, Math.max(30, n)) }));
             }}
           />
-        </header>
-
-        <main>
-          {patch.tracks.map((t) => (
-            <div className="track-wrap" key={t.id}>
-              <TrackRow track={t} onChange={(nt) => changeTrack(t.id, nt)} onRemove={() => removeTrack(t.id)} />
-              <OpsRow
-                length={t.length}
-                onApplyEuclid={(pulses) => applyEuclid(t.id, pulses)}
-                onMutate={() => mutate(t.id)}
-              />
-            </div>
-          ))}
-          {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
-        </main>
-
-        <footer>
-          полиритмия: независимые циклы — {patch.tracks.map((t) => t.length).join(' · ')}
-        </footer>
-      </div>
-    </PlayheadContext.Provider>
-  );
-}
-
-function OpsRow({
-  length,
-  onApplyEuclid,
-  onMutate,
-}: {
-  length: number;
-  onApplyEuclid: (pulses: number) => void;
-  onMutate: () => void;
-}) {
-  const [pulses, setPulses] = useState(3);
-  return (
-    <div className="euclid">
-      <label>
-        euclid p
+        </label>
+        <span className="spacer" />
+        <button onClick={addTrack}>добавить трек</button>
+        <button onClick={renderWav} disabled={rendering} title={`Оффлайн-рендер ${WAV_BARS} тактов в WAV`}>
+          {rendering ? 'рендер…' : 'записать wav'}
+        </button>
+        <button onClick={exportPatch}>экспорт</button>
+        <button onClick={() => fileRef.current?.click()}>импорт</button>
+        <button onClick={resetPatch} title="Сбросить к дефолтному полиритму">сброс</button>
         <input
-          type="number" min={0} max={length} value={pulses}
+          ref={fileRef} type="file" accept=".json,application/json" hidden
           onChange={(e) => {
-            const n = Number(e.target.value);
-            if (Number.isFinite(n)) setPulses(Math.max(0, Math.min(length, Math.round(n))));
+            const f = e.target.files?.[0];
+            if (f) importPatch(f);
+            e.target.value = '';
           }}
         />
-      </label>
-      <button onClick={() => onApplyEuclid(pulses)}>spread</button>
-      <button onClick={onMutate} title="Случайно подвинуть пару шагов: вкл/выкл, высота, вероятность, громкость">
-        mut
-      </button>
+      </header>
+
+      <main>
+        {patch.tracks.map((t) => (
+          <TrackRow
+            key={t.id}
+            track={t}
+            activeStep={activeOf(t)}
+            onChange={changeTrack}
+            onEuclid={applyEuclid}
+            onMutate={mutate}
+            onRemove={removeTrack}
+          />
+        ))}
+        {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
+      </main>
+
+      <footer>
+        <span>клик — нота · колесо — громкость · shift+колесо — вероятность · правый клик — стереть</span>
+        <span>независимые циклы: {patch.tracks.map((t) => t.length).join(' · ')}</span>
+      </footer>
     </div>
   );
 }
