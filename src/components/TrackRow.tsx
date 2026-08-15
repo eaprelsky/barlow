@@ -119,6 +119,14 @@ export const TrackRow = memo(function TrackRow({
       filterFreq: t.filterFreq ?? 8000,
       effects: t.effects ?? [],
       mono: t.mono,
+      fmRatio: t.fmRatio ?? 2,
+      fmIndex: t.fmIndex ?? 3,
+      ksLife: t.ksLife ?? 2.5,
+      sampleMode: t.sampleMode ?? 'plain',
+      grainSizeMs: t.grainSizeMs ?? 120,
+      grainCount: t.grainCount ?? 10,
+      grainPos: t.grainPos ?? 0.3,
+      grainScatter: t.grainScatter ?? 0.15,
       patterns: clampAllNotes(scale.length - 1),
     });
   };
@@ -559,6 +567,24 @@ export const TrackRow = memo(function TrackRow({
                 ))}
               </select>
             </label>
+            {track.waveform === 'fm' && (
+              <>
+                <label title="Отношение частоты модулятора к ноте. Целые (1, 2, 3) — гармоничные тембры; иррациональные (1.41 ≈ √2) — колокольный негармоничный звон">
+                  FM-отношение, ×
+                  <NumField value={track.fmRatio ?? 2} min={0.25} max={16} step={0.01} onChange={(fmRatio) => change({ fmRatio })} />
+                </label>
+                <label title="Глубина модуляции: 0 — чистый синус, 1–3 — мягкие электронные тембры, 5+ — ржа и металл. Индекс тает к хвосту ноты">
+                  FM-глубина
+                  <NumField value={track.fmIndex ?? 3} min={0} max={16} step={0.1} onChange={(fmIndex) => change({ fmIndex })} />
+                </label>
+              </>
+            )}
+            {track.waveform === 'karplus' && (
+              <label title="Сколько секунд струна звенит до полной тишины — собственное затухание струны, поверх обычной огибающей ноты">
+                затухание струны, с
+                <NumField value={track.ksLife ?? 2.5} min={0.2} max={8} step={0.1} onChange={(ksLife) => change({ ksLife })} />
+              </label>
+            )}
             {track.waveform === 'sample' ? (
               <>
                 <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
@@ -578,7 +604,37 @@ export const TrackRow = memo(function TrackRow({
                     />
                   </span>
                 </label>
-                
+                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью) или гранулярно (нота = облако коротких осколков)">
+                  режим
+                  <select
+                    value={track.sampleMode ?? 'plain'}
+                    onChange={(e) => change({ sampleMode: e.target.value as Track['sampleMode'] })}
+                  >
+                    <option value="plain">прямой</option>
+                    <option value="grain">гранулярный</option>
+                  </select>
+                </label>
+                {(track.sampleMode ?? 'plain') === 'grain' && (
+                  <>
+                    <label title="Длина осколка (зерна) в миллисекундах: 20–60 — почти крап, 100–300 — тёплое облако, 400+ — почти слышимый сэмпл">
+                      зерно, мс
+                      <NumField value={track.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => change({ grainSizeMs })} />
+                    </label>
+                    <label title="Сколько зёрен выпускает одна нота — плотность облака. 1–3 — редкие брызги, 15+ — сплошной поток">
+                      зёрен на ноту
+                      <NumField value={track.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => change({ grainCount: Math.round(grainCount) })} />
+                    </label>
+                    <label title="Откуда в сэмпле брать осколки: 0 — начало, 0.5 — середина, 1 — конец">
+                      позиция
+                      <NumField value={Math.round((track.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => change({ grainPos: v / 100 })} />
+                    </label>
+                    <label title="Разброс позиций зёрен вокруг заданной точки: 0 — все из одного места, 1 — по всему сэмплу">
+                      разброс
+                      <NumField value={Math.round((track.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => change({ grainScatter: v / 100 })} />
+                    </label>
+                  </>
+                )}
+
               </>
             ) : (
               <>
@@ -643,7 +699,7 @@ export const TrackRow = memo(function TrackRow({
                 спад, с
                 <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
               </label>
-              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме; на сэмпле рампит скорость воспроизведения">
+              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
                 падение тона, ×
                 <NumField
                   value={track.pitchDrop} min={1} max={16} step={0.5}

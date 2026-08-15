@@ -181,6 +181,40 @@ function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
   return buf;
 }
 
+const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// Karplus-Strong: струна = шумовое возбуждение в короткой задержке с
+// усреднением и затуханием в петле. Графовые циклы Web Audio требуют
+// задержку ≥ блока рендера (128 сэмплов ≈ 344 Гц потолок), поэтому струну
+// считаем в буфер синхронно — работает для любых частот и одинаково
+// в live и офлайн-рендере. Кэш: частоты нот конечны, hit почти всегда.
+const ksCache = new Map<string, AudioBuffer>();
+function karplusBuffer(
+  ctx: BaseAudioContext,
+  freq: number,
+  lifeSec: number,
+  lenSec: number,
+): AudioBuffer {
+  const key = `${ctx.sampleRate}:${freq.toFixed(1)}:${lifeSec.toFixed(2)}:${Math.ceil(lenSec * 20)}`;
+  let buf = ksCache.get(key);
+  if (buf) return buf;
+  if (ksCache.size > 256) ksCache.clear();
+  const sr = ctx.sampleRate;
+  const n = Math.max(2, Math.round(sr / freq));
+  const len = Math.max(2 * n, Math.floor(sr * lenSec));
+  buf = ctx.createBuffer(1, len, sr);
+  const out = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) out[i] = Math.random() * 2 - 1;
+  // Усиление петли под T60 = lifeSec: за период амплитуда падает в g раз,
+  // 6.9078 = ln(1000) — путь до −60 дБ.
+  const g = Math.exp((-6.9078 * n) / (sr * Math.max(0.05, lifeSec)));
+  for (let i = n; i < len; i++) {
+    out[i] = g * 0.5 * (out[i - n] + out[i - n + 1]);
+  }
+  ksCache.set(key, buf);
+  return buf;
+}
+
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -325,6 +359,74 @@ function duckVoice(v: Voice, t: number): void {
   }
 }
 
+/** Гранулярное облако: нота = равномерная россыпь Ханн-окошек из сэмпла.
+ *  Питч зерна — из строки стана (аккорд = зёрна разных нот вперемешку),
+ *  позиция — вокруг grainPos ± разброс. Возвращает конец последнего зерна. */
+function scheduleGrainCloud(
+  ctx: BaseAudioContext,
+  amp: GainNode,
+  sample: AudioBuffer,
+  track: Track,
+  rows: number[],
+  notes: Note[],
+  time: number,
+  peak: number,
+  sources: AudioScheduledSourceNode[],
+): number {
+  const dur = Math.max(0.05, track.attack + track.decay);
+  const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
+  const pos = clampNum(track.grainPos ?? 0.3, 0, 1);
+  const scatter = clampNum(track.grainScatter ?? 0.15, 0, 1);
+  const perNote = Math.round(clampNum(track.grainCount ?? 10, 1, 32));
+  const total = Math.min(64, perNote * notes.length);
+  const per = Math.max(1, Math.round(total / notes.length));
+  const stepT = dur / per;
+  // Ханн-окна наполовину перекрываются — суммарная громкость растёт как
+  // √числа зёрен, компенсируем корнем и держим запас под лимитер.
+  const grainAmp = (peak * 1.4) / Math.sqrt(total);
+  const max = rows.length - 1;
+  let lastEnd = time;
+  for (let g = 0; g < per; g++) {
+    const t0 = time + g * stepT;
+    // Небольшой джиттер стартов: чисто периодическая россыпь даёт слышимый
+    // паразитный тон на частоте 1/шага.
+    const at = Math.max(time, t0 + (Math.random() - 0.5) * stepT * 0.4);
+    for (const nt of notes) {
+      const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
+      const center = clampNum(pos + (Math.random() * 2 - 1) * scatter * 0.5, 0, 1);
+      // Окно должно поместиться в буфер с учётом скорости воспроизведения.
+      const room = Math.max(0, sample.duration - sizeSec * ratio - 0.001);
+      const offset = center * room;
+      const src = ctx.createBufferSource();
+      src.buffer = sample;
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        src.playbackRate.setValueAtTime(ratio * track.pitchDrop, at);
+        src.playbackRate.exponentialRampToValueAtTime(ratio, at + track.pitchTime);
+      } else {
+        src.playbackRate.value = ratio;
+      }
+      // Ханн-окно: линейные рампы вверх-вниз по половине зерна.
+      const gAmp = ctx.createGain();
+      gAmp.gain.setValueAtTime(0, at);
+      gAmp.gain.linearRampToValueAtTime(grainAmp * nt.vel, at + sizeSec / 2);
+      gAmp.gain.linearRampToValueAtTime(0, at + sizeSec);
+      src.connect(gAmp);
+      gAmp.connect(amp);
+      src.start(at, offset, sizeSec * ratio + 0.02);
+      src.stop(at + sizeSec + 0.02);
+      sources.push(src);
+      lastEnd = Math.max(lastEnd, at + sizeSec);
+    }
+  }
+  // Огибающая облака ровная: форму дают сами Ханн-окна, от amp нужны
+  // только мягкий старт и общий спад в конце.
+  amp.gain.setValueAtTime(0, time);
+  amp.gain.linearRampToValueAtTime(peak, time + Math.min(0.02, dur * 0.2));
+  amp.gain.setValueAtTime(peak, time + dur);
+  amp.gain.exponentialRampToValueAtTime(0.0001, lastEnd + 0.01);
+  return lastEnd + 0.05;
+}
+
 function triggerVoice(
   ctx: BaseAudioContext,
   chain: TrackChain,
@@ -346,19 +448,26 @@ function triggerVoice(
   const headroom = track.waveform === 'sample' ? 0.95 : 0.55;
   const topVel = Math.max(...notes.map((nt) => nt.vel));
   const peak = Math.max(0.0001, (topVel * headroom) / notes.length);
+  const amp = ctx.createGain();
+  amp.connect(chain.hp);
+  const sources: AudioScheduledSourceNode[] = [];
+
+  if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
+    if (!sample) return { amp, sources, stopAt: time };
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources);
+    return { amp, sources, stopAt: lastEnd };
+  }
+
   // Мгновенная атака = скачок = щелчок; минимальный пологий фронт обязателен.
   // На низких нотах фронт масштабируем периодом волны: четверть периода
   // самой низкой ноты убирает широкополосный «прищёлк» у баса, панч сохраняя.
   const lowestPeriod = 1 / Math.min(...freqs);
   const attack = Math.max(track.attack, Math.min(0.25 * lowestPeriod, 0.012));
-  const amp = ctx.createGain();
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
   amp.gain.exponentialRampToValueAtTime(0.0001, time + attack + track.decay);
-  amp.connect(chain.hp);
   const stopAt = time + attack + track.decay + 0.05;
 
-  const sources: AudioScheduledSourceNode[] = [];
   if (track.waveform === 'noise') {
     const src = ctx.createBufferSource();
     src.buffer = noise;
@@ -387,6 +496,51 @@ function triggerVoice(
       src.start(time);
       src.stop(stopAt);
       sources.push(src);
+    }
+  } else if (track.waveform === 'karplus') {
+    // Струна: каждая нота — свой буфер (кэш по частоте и затуханию).
+    for (const f of freqs) {
+      const len = Math.min(4, attack + track.decay + 0.05);
+      const src = ctx.createBufferSource();
+      src.buffer = karplusBuffer(ctx, f, track.ksLife ?? 2.5, len);
+      src.connect(amp);
+      src.start(time);
+      src.stop(stopAt);
+      sources.push(src);
+    }
+  } else if (track.waveform === 'fm') {
+    // Классический FM: синусная несущая, синусный модулятор в её частоту.
+    // Девиация = индекс × частота модулятора; индекс тает к хвосту ноты —
+    // яркая атака, спокойное послезвучие (как у FM-пиано).
+    const ratio = track.fmRatio ?? 2;
+    const index = track.fmIndex ?? 3;
+    for (const f of freqs) {
+      const carrier = ctx.createOscillator();
+      carrier.type = 'sine';
+      const mod = ctx.createOscillator();
+      mod.type = 'sine';
+      const modGain = ctx.createGain();
+      const dev = index * f * ratio;
+      modGain.gain.setValueAtTime(dev, time);
+      modGain.gain.setTargetAtTime(0, time + attack, Math.max(0.02, track.decay * 0.4));
+      mod.connect(modGain);
+      modGain.connect(carrier.frequency);
+      // Падение тона тянет обе частоты, сохраняя отношение.
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        carrier.frequency.setValueAtTime(f * track.pitchDrop, time);
+        carrier.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+        mod.frequency.setValueAtTime(f * track.pitchDrop * ratio, time);
+        mod.frequency.exponentialRampToValueAtTime(f * ratio, time + track.pitchTime);
+      } else {
+        carrier.frequency.setValueAtTime(f, time);
+        mod.frequency.setValueAtTime(f * ratio, time);
+      }
+      carrier.connect(amp);
+      mod.start(time);
+      carrier.start(time);
+      mod.stop(stopAt);
+      carrier.stop(stopAt);
+      sources.push(carrier, mod);
     }
   } else {
     // Аккорд: по осциллятору на ноту, огибающая общая.

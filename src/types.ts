@@ -5,7 +5,15 @@
 //   паттерн (эскиз дорожки) → сцена (какой паттерн играет каждый трек)
 //   → цепочка (порядок сцен с длинами = арранжмент).
 
-export type Waveform = 'sine' | 'square' | 'triangle' | 'sawtooth' | 'noise' | 'sample';
+export type Waveform =
+  | 'sine'
+  | 'square'
+  | 'triangle'
+  | 'sawtooth'
+  | 'noise'
+  | 'fm'
+  | 'karplus'
+  | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
   sine: 'синус',
@@ -13,8 +21,13 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
   square: 'прямоугольник',
   sawtooth: 'пила',
   noise: 'шум',
+  fm: 'FM',
+  karplus: 'струна',
   sample: 'сэмпл',
 };
+
+/** Как сэмплер играет буфер: напрямую или облаком гранул. */
+export type SampleMode = 'plain' | 'grain';
 
 export interface Note {
   // Индекс строки шкалы (см. scaleOf).
@@ -121,6 +134,23 @@ export interface Track {
   sampleId?: string;
   // Отображаемое имя сэмпла (кэш UI, истина — в библиотеке).
   sampleName?: string;
+  // FM: отношение частоты модулятора к ноте. Целые — гармоничные тембры,
+  // иррациональные (≈√2) — колокола и металл.
+  fmRatio?: number;
+  // FM: индекс модуляции (девиация = индекс × частота модулятора).
+  fmIndex?: number;
+  // Karplus-Strong: время собственного затухания струны, с (T60).
+  ksLife?: number;
+  // Режим сэмплера: прямой или гранулярный (нота = облако осколков).
+  sampleMode?: SampleMode;
+  // Гранулярный режим: длина зерна, мс.
+  grainSizeMs?: number;
+  // Гранулярный режим: сколько зёрен выпускает одна нота.
+  grainCount?: number;
+  // Гранулярный режим: центр позиции зерна в сэмпле, 0..1.
+  grainPos?: number;
+  // Гранулярный режим: разброс позиции зерна вокруг центра, 0..1.
+  grainScatter?: number;
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
@@ -155,7 +185,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 14;
+export const PATCH_VERSION = 15;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -200,6 +230,14 @@ export function makeTrack(
     mods: partial.mods ?? [],
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
+    fmRatio: partial.fmRatio,
+    fmIndex: partial.fmIndex,
+    ksLife: partial.ksLife,
+    sampleMode: partial.sampleMode,
+    grainSizeMs: partial.grainSizeMs,
+    grainCount: partial.grainCount,
+    grainPos: partial.grainPos,
+    grainScatter: partial.grainScatter,
     mono: partial.mono,
     effects: partial.effects,
     scaleOctUp: partial.scaleOctUp,
@@ -433,6 +471,14 @@ export function normalizePatch(p: Patch): Patch {
         mods: normalizeMods((t as { mods?: unknown }).mods),
         sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+        fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
+        fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
+        ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
+        sampleMode: t.sampleMode === 'grain' ? 'grain' : 'plain',
+        grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),
+        grainCount: Math.round(clamp(t.grainCount ?? 10, 1, 32, 10)),
+        grainPos: clamp(t.grainPos ?? 0.3, 0, 1, 0.3),
+        grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
         mono: !!t.mono,
         effects: normalizeEffects((t as { effects?: unknown }).effects),
         scaleOctUp: octUp,

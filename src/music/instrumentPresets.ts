@@ -67,6 +67,35 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     },
   },
   {
+    name: 'струна',
+    hint: 'Karplus-Strong: щипок струны, выросший из шума — живой и пластинчатый',
+    track: {
+      name: 'струна', waveform: 'karplus', freq: 110, scale: PENTATONIC_MINOR,
+      ksLife: 3,
+      length: 11, rate: 2, attack: 0.002, decay: 1.6, filterFreq: 5000, volume: 0.7,
+    },
+  },
+  {
+    name: 'fm-звон',
+    hint: 'частотная модуляция: колокола и металл — крути FM-отношение (√2 ≈ 1.41 — негармоничный звон)',
+    track: {
+      name: 'звон', waveform: 'fm', freq: 220, scale: PENTATONIC_MINOR,
+      fmRatio: 1.41, fmIndex: 4,
+      length: 9, rate: 2, attack: 0.002, decay: 0.6, filterFreq: 9000, volume: 0.6,
+      effects: [{ type: 'reverb', sizeSec: 2.5, mix: 0.3 }],
+    },
+  },
+  {
+    name: 'грануляр',
+    hint: 'нота — облако коротких осколков сэмпла; загрузи сэмпл и двигай позицию облака',
+    track: {
+      name: 'гранулы', waveform: 'sample', sampleMode: 'grain',
+      scale: [1, 4 / 3, 3 / 2, 2, 3],
+      grainSizeMs: 140, grainCount: 12, grainPos: 0.25, grainScatter: 0.2,
+      length: 8, rate: 2, attack: 0.01, decay: 1.4, filterFreq: 9000, volume: 0.75,
+    },
+  },
+  {
     name: 'пустой',
     hint: 'чистый лист, всё настроишь сам',
     track: { name: 'трек', waveform: 'square', freq: 220, scale: [1], length: 16, rate: 1 },
