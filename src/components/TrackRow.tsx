@@ -16,6 +16,19 @@ import { putSample } from '../audio/library';
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
 
+// Длительность шага в 1/16: осмысленные значения, «точёные» дают
+// полиметрический дрейф (1/8. = 1.5 шестнадцатых).
+const RATE_OPTIONS: { v: number; label: string }[] = [
+  { v: 1, label: '1/16' },
+  { v: 1.5, label: '1/8 точ.' },
+  { v: 2, label: '1/8' },
+  { v: 3, label: '1/4 точ.' },
+  { v: 4, label: '1/4' },
+  { v: 6, label: '1/2 точ.' },
+  { v: 8, label: '1/2' },
+  { v: 16, label: 'такт' },
+];
+
 function panLabel(pan: number): string {
   if (pan < 0.49) return `L${Math.round((0.5 - pan) * 200)}`;
   if (pan > 0.51) return `R${Math.round((pan - 0.5) * 200)}`;
@@ -79,7 +92,8 @@ export const TrackRow = memo(function TrackRow({
   const [genSeconds, setGenSeconds] = useState(3);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
-  const [tab, setTab] = useState<'env' | 'timbre' | 'fx' | 'mods'>('env');
+  const [showRoll, setShowRoll] = useState(true);
+  const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx' | 'mods'>('snd');
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
@@ -295,6 +309,11 @@ export const TrackRow = memo(function TrackRow({
   if (collapsed) {
     return (
       <div className="track collapsed">
+        <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
+          <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
+            <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </button>
         <div className="collapsed-row">
           <button className="fold" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
@@ -308,7 +327,6 @@ export const TrackRow = memo(function TrackRow({
             onChange={(e) => change({ volume: Number(e.target.value) })}
           />
           <span className="mini-info">{pattern.length} шагов</span>
-          <button className="remove" title="Удалить трек" onClick={() => onRemove(track.id)}>×</button>
         </div>
       </div>
     );
@@ -321,6 +339,11 @@ export const TrackRow = memo(function TrackRow({
 
   return (
     <div className="track">
+      <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
+        <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
+          <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      </button>
       <div className="track-head">
         <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
         <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
@@ -331,80 +354,30 @@ export const TrackRow = memo(function TrackRow({
           </label>
         </div>
         <div className="group">
-          <label>
-            волна
-            <select value={track.waveform} onChange={(e) => change({ waveform: e.target.value as Waveform })}>
-              {WAVEFORMS.map((w) => (
-                <option key={w} value={w}>{WAVEFORM_LABELS[w]}</option>
-              ))}
-            </select>
-          </label>
-          {track.waveform === 'sample' ? (
-            <>
-              <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
-                сэмпл
-                <span className="inline">
-                  <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
-                    {track.sampleName ?? 'не выбран'}
-                  </span>
-                  <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
-                  <input
-                    ref={sampleFileRef} type="file" accept="audio/*" hidden
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) loadSampleFile(f);
-                      e.target.value = '';
-                    }}
-                  />
-                </span>
-              </label>
-              <label title="Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана">
-                шкала питча
-                <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-                  {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                    .filter((n, i, arr) => arr.indexOf(n) === i)
-                    .map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                </select>
-              </label>
-            </>
-          ) : (
-            <>
-              <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
-                тоника, Гц
-                <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
-              </label>
-              <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны. Октавы добавляются кнопками у стана">
-                шкала
-                <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-                  {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                    .filter((n, i, arr) => arr.indexOf(n) === i)
-                    .map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                </select>
-              </label>
-            </>
-          )}
-        </div>
-        <div className="group">
           <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
             длина, шагов
             <NumField value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
           </label>
-          <label title="Сколько шестнадцатых длится один шаг: 4 — как четверть, 2 — как восьмая, 1 — как 1/16. Дробное значение (например 1.5) — шаги плывут относительно других треков">
-            длина шага, ×1/16
-            <NumField value={track.rate} min={0.25} max={32} step={0.25} onChange={(rate) => change({ rate })} />
+          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия">
+            шаг
+            <select
+              value={RATE_OPTIONS.some((o) => o.v === track.rate) ? String(track.rate) : 'custom'}
+              onChange={(e) => {
+                if (e.target.value !== 'custom') change({ rate: Number(e.target.value) });
+              }}
+            >
+              {RATE_OPTIONS.map((o) => (
+                <option key={o.v} value={String(o.v)}>{o.label}</option>
+              ))}
+              {!RATE_OPTIONS.some((o) => o.v === track.rate) && (
+                <option value="custom">своя ×{track.rate}</option>
+              )}
+            </select>
           </label>
-        </div>
-        <div className="group">
-          <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать в «ещё…»">
+          <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
           </label>
-        </div>
-        <div className="group ops">
           <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо">
             раскидать нот
             <span className="inline">
@@ -422,7 +395,15 @@ export const TrackRow = memo(function TrackRow({
           >
             мутировать
           </button>
-          <button className="remove" onClick={() => onRemove(track.id)}>удалить</button>
+        </div>
+        <div className="group ops">
+          <button
+            className={showRoll ? 'on' : ''}
+            onClick={() => setShowRoll((v) => !v)}
+            title={showRoll ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
+          >
+            {showRoll ? 'ноты ▴' : 'ноты ▾'}
+          </button>
           <button className="more-btn" onClick={() => setMore((m) => !m)}>
             {more ? 'меньше ▴' : 'ещё ▾'}
           </button>
@@ -434,6 +415,7 @@ export const TrackRow = memo(function TrackRow({
           <div className="tabs">
             {(
               [
+                ['snd', 'звук'],
                 ['env', 'огибающая'],
                 ['timbre', 'тембр'],
                 ['fx', 'эффекты'],
@@ -449,6 +431,66 @@ export const TrackRow = memo(function TrackRow({
               </button>
             ))}
           </div>
+          {tab === 'snd' && (
+          <div className="group">
+            <label title="Форма волны осциллятора — основа тембра">
+              волна
+              <select value={track.waveform} onChange={(e) => change({ waveform: e.target.value as Waveform })}>
+                {WAVEFORMS.map((w) => (
+                  <option key={w} value={w}>{WAVEFORM_LABELS[w]}</option>
+                ))}
+              </select>
+            </label>
+            {track.waveform === 'sample' ? (
+              <>
+                <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
+                  сэмпл
+                  <span className="inline">
+                    <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
+                      {track.sampleName ?? 'не выбран'}
+                    </span>
+                    <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
+                    <input
+                      ref={sampleFileRef} type="file" accept="audio/*" hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) loadSampleFile(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </span>
+                </label>
+                <label title="Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана">
+                  шкала питча
+                  <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
+                    {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
+                      .filter((n, i, arr) => arr.indexOf(n) === i)
+                      .map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
+                  тоника, Гц
+                  <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
+                </label>
+                <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны. Октавы добавляются кнопками у стана">
+                  шкала
+                  <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
+                    {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
+                      .filter((n, i, arr) => arr.indexOf(n) === i)
+                      .map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
+          )}
           {tab === 'env' && (
           <div className="group env-tab">
             <EnvGraph attack={track.attack} decay={track.decay} pitchDrop={track.pitchDrop} pitchTime={track.pitchTime} />
@@ -541,7 +583,7 @@ export const TrackRow = memo(function TrackRow({
               эффекты
             </label>
             {effects.length === 0 && (
-              <span className="none">нет — добавь задержку (эхо) или реверб (пространство)</span>
+              <span className="none">пусто — «+ эффект»</span>
             )}
             {effects.map((fx, i) => (
               <div className="mod-row" key={i}>
@@ -598,10 +640,10 @@ export const TrackRow = memo(function TrackRow({
           {tab === 'mods' && (
           <div className="group mods-group">
             <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет. Цели эффектов действуют на первый эффект в списке">
-              модуляции эскиза «{pattern.name}» (LFO)
+              модуляции «{pattern.name}»
             </label>
             {(pattern.mods ?? track.mods).length === 0 && (
-              <span className="none">нет — добавь, например, LFO на панораму (пинг-понг)</span>
+              <span className="none">пусто — «+ модуляция»</span>
             )}
             {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i}>
@@ -695,6 +737,7 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
+      {showRoll && (
       <div className="roll" ref={rollRef}>
         <div className="roll-side">
           <div className="col-num-spacer oct-row">
@@ -771,6 +814,7 @@ export const TrackRow = memo(function TrackRow({
           ))}
         </div>
       </div>
+      )}
 
       {selectedStep && selectedCol !== null && (
         <div className="step-panel">

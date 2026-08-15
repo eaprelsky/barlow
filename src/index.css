@@ -871,3 +871,38 @@ header button.on {
   padding: 2px 8px;
   font-size: 11px;
 }
+
+/* Корзина трека — правый верхний угол */
+
+.track {
+  position: relative;
+}
+
+.track-del {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 5;
+  padding: 5px 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.track-del:hover {
+  color: #e05555;
+  border: none;
+}
+
+/* Ровный строй кнопок внутри трека */
+
+.track-head .group button,
+.collapsed-row button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.group.ops button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
