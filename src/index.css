@@ -1115,3 +1115,9 @@ button.danger:hover {
   color: #e05555;
   border-color: #e05555;
 }
+
+/* M/S вровень с названием трека: голова трека тянет детей по высоте
+   (stretch — для групп ручек), кнопким нужен центр, как track-name и fold */
+.track-head .ms-btns {
+  align-self: center;
+}
