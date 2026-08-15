@@ -118,6 +118,73 @@ header .master-vol input[type='range'] {
   accent-color: var(--accent);
 }
 
+.fold {
+  align-self: center;
+  padding: 2px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Свёрнутый трек — одна строка: весь ансамбль на экране. */
+
+.collapsed-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.collapsed-row .track-name {
+  width: 96px;
+}
+
+.live-dot {
+  font-size: 8px;
+  color: var(--border);
+  transition: color 0.1s;
+}
+
+.live-dot.on {
+  color: var(--accent);
+  text-shadow: 0 0 8px var(--accent);
+}
+
+.mini-wave {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.mini-vol {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+.mini-info {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.collapsed-row .remove {
+  padding: 2px 8px;
+}
+
+.more-btn {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.more-row {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+
+.more-row .group:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
 .spacer {
   flex: 1;
 }

@@ -9,6 +9,8 @@ const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 interface Props {
   track: Track;
   activeStep: number;
+  collapsed: boolean;
+  onToggleCollapse: (id: string) => void;
   onChange: (id: string, t: Track) => void;
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
@@ -22,6 +24,8 @@ function fmtRatio(r: number): string {
 export const TrackRow = memo(function TrackRow({
   track,
   activeStep,
+  collapsed,
+  onToggleCollapse,
   onChange,
   onEuclid,
   onMutate,
@@ -29,6 +33,7 @@ export const TrackRow = memo(function TrackRow({
 }: Props) {
   const [pulses, setPulses] = useState(3);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
+  const [more, setMore] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
@@ -104,13 +109,34 @@ export const TrackRow = memo(function TrackRow({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const selectedStep = selectedCol !== null ? (track.steps[selectedCol] ?? null) : null;
+  if (collapsed) {
+    return (
+      <div className="track collapsed">
+        <div className="collapsed-row">
+          <button className="fold" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
+          <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
+          <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+          <span className="mini-wave">{WAVEFORM_LABELS[track.waveform]}</span>
+          <input
+            className="mini-vol"
+            type="range" min={0} max={1} step={0.05} value={track.volume}
+            title={`громкость ${Math.round(track.volume * 100)}%`}
+            onChange={(e) => change({ volume: Number(e.target.value) })}
+          />
+          <span className="mini-info">{track.steps.length} шагов</span>
+          <button className="remove" title="Удалить трек" onClick={() => onRemove(track.id)}>×</button>
+        </div>
+      </div>
+    );
+  }
 
+  const selectedStep = selectedCol !== null ? (track.steps[selectedCol] ?? null) : null;
   const rows = track.scale.map((ratio, i) => ({ ratio, i })).reverse();
 
   return (
     <div className="track">
       <div className="track-head">
+        <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
         <input
           className="track-name"
           value={track.name}
@@ -149,47 +175,15 @@ export const TrackRow = memo(function TrackRow({
             длина шага, ×1/16
             <NumField value={track.rate} min={0.25} max={32} step={0.25} onChange={(rate) => change({ rate })} />
           </label>
-          <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
-            фаза, шагов
-            <NumField
-              value={track.phase} min={-64} max={64}
-              onChange={(phase) => change({ phase: Math.round(phase) })}
-            />
-          </label>
         </div>
         <div className="group">
-          <label title="Фильтр нижних частот: приглушает всё выше этой частоты. Меньше — глуше и мягче, больше — ярче и звонче. У баса держи низко (200–500), у хэтов высоко (6000+)">
-            фильтр, Гц
-            <NumField
-              value={track.filterFreq} min={60} max={12000} step={10}
-              onChange={(filterFreq) => change({ filterFreq })}
-            />
-          </label>
-          <label title="Сколько секунд звучит нота после удара">
-            спад, с
-            <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
-          </label>
-          <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Работает только на тональных волнах, не на шуме">
-            падение тона, ×
-            <NumField
-              value={track.pitchDrop} min={1} max={16} step={0.5}
-              onChange={(pitchDrop) => change({ pitchDrop })}
-            />
-          </label>
-          <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-            время падения, с
-            <NumField
-              value={track.pitchTime} min={0} max={2} step={0.01}
-              onChange={(pitchTime) => change({ pitchTime })}
-            />
-          </label>
           <label>
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
           </label>
         </div>
         <div className="group ops">
-          <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагам — знаменитый тресильо (буквально как в десперадо)">
+          <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо">
             раскидать нот
             <span className="inline">
               <NumField
@@ -207,8 +201,52 @@ export const TrackRow = memo(function TrackRow({
             мутировать
           </button>
           <button className="remove" onClick={() => onRemove(track.id)}>удалить</button>
+          <button className="more-btn" onClick={() => setMore((m) => !m)}>
+            {more ? 'меньше ▴' : 'ещё ▾'}
+          </button>
         </div>
       </div>
+
+      {more && (
+        <div className="track-head more-row">
+          <div className="group">
+            <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
+              фаза, шагов
+              <NumField
+                value={track.phase} min={-64} max={64}
+                onChange={(phase) => change({ phase: Math.round(phase) })}
+              />
+            </label>
+            <label title="Фильтр нижних частот: приглушает всё выше этой частоты. Меньше — глуше и мягче, больше — ярче и звонче. У баса держи низко (200–500), у хэтов высоко (6000+)">
+              фильтр, Гц
+              <NumField
+                value={track.filterFreq} min={60} max={12000} step={10}
+                onChange={(filterFreq) => change({ filterFreq })}
+              />
+            </label>
+            <label title="Сколько секунд звучит нота после удара">
+              спад, с
+              <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
+            </label>
+          </div>
+          <div className="group">
+            <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
+              падение тона, ×
+              <NumField
+                value={track.pitchDrop} min={1} max={16} step={0.5}
+                onChange={(pitchDrop) => change({ pitchDrop })}
+              />
+            </label>
+            <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
+              время падения, с
+              <NumField
+                value={track.pitchTime} min={0} max={2} step={0.01}
+                onChange={(pitchTime) => change({ pitchTime })}
+              />
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="roll" ref={rollRef}>
         <div className="roll-side">

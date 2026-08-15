@@ -10,7 +10,21 @@ import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
 const STORAGE_KEY = 'barlow.patch.v5';
+const UI_KEY = 'barlow.ui.v1';
 const WAV_BARS = 8;
+
+function loadUiState(): { collapsed: Record<string, boolean> } {
+  try {
+    const raw = localStorage.getItem(UI_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { collapsed?: Record<string, boolean> };
+      if (parsed && typeof parsed.collapsed === 'object') return { collapsed: parsed.collapsed };
+    }
+  } catch {
+    /* UI-состояние необязательно */
+  }
+  return { collapsed: {} };
+}
 
 function uniqueName(base: string, tracks: Track[]): string {
   const used = new Set(tracks.map((t) => t.name));
@@ -39,6 +53,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [presetIdx, setPresetIdx] = useState(0);
+  const [ui, setUi] = useState(loadUiState);
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioEngine | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -118,6 +133,14 @@ export default function App() {
       ...p,
       tracks: p.tracks.map((t) => (t.id === id ? mutateTrack(t) : t)),
     }));
+  }, []);
+
+  const toggleCollapse = useCallback((id: string) => {
+    setUi((u) => {
+      const next = { collapsed: { ...u.collapsed, [id]: !u.collapsed[id] } };
+      localStorage.setItem(UI_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const exportPatch = () => {
@@ -232,6 +255,8 @@ export default function App() {
             key={t.id}
             track={t}
             activeStep={activeOf(t)}
+            collapsed={!!ui.collapsed[t.id]}
+            onToggleCollapse={toggleCollapse}
             onChange={changeTrack}
             onEuclid={applyEuclid}
             onMutate={mutate}
