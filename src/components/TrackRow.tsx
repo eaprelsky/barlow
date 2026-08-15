@@ -390,7 +390,7 @@ export const TrackRow = memo(function TrackRow({
       {track.patterns.length > 1 && (
         <button
           className="chip del"
-          title={`Удалить эскиз «${pattern.name}»: сцены, где он играл, перейдут на первый оставшийся. Ctrl+Z вернёт`}
+          title={`Удалить эскиз «${pattern.name}» — сцены, где он играл, перейдут на первый оставшийся`}
           onClick={() => onRemovePattern(track.id, pattern.id)}
         >
           ×

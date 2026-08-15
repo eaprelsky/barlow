@@ -299,8 +299,7 @@ export default function App() {
     // Вопрос до setPatch: подтверждение внутри updater'а вызывалось дважды
     // (StrictMode прогоняет апдейтеры по два раза в dev).
     void confirmDialog({
-      title: 'удалить трек?',
-      text: `«${victim.name}» — Ctrl+Z вернёт`,
+      title: `удалить трек «${victim.name}»?`,
       okLabel: 'удалить',
       danger: true,
     }).then((ok) => {
@@ -645,7 +644,7 @@ export default function App() {
               <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс к демо</button>
               <button
                 onClick={() => { clearAll(); setFileOpen(false); }}
-                title="Пустой проект: без треков, одна сцена. Undo вернёт всё обратно"
+                title="Пустой проект: без треков, одна сцена"
               >
                 очистить всё
               </button>
