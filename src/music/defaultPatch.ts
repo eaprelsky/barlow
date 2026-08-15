@@ -75,6 +75,7 @@ export function defaultPatch(): Patch {
       waveform: 'sine',
       scale: [1, 3 / 2],
       freq: 41.2,
+      mono: true,
       decay: 0.8,
       filterFreq: 500,
       volume: 0.85,

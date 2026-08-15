@@ -18,6 +18,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     track: {
       name: 'бас', waveform: 'sine', freq: 41.2, scale: [1, 6 / 5, 3 / 2, 2],
       length: 8, rate: 4, decay: 0.7, attack: 0.004, filterFreq: 320, volume: 0.85,
+      mono: true,
     },
   },
   {

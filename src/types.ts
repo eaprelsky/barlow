@@ -95,6 +95,9 @@ export interface Track {
   sampleId?: string;
   // Отображаемое имя сэмпла (кэш UI, истина — в библиотеке).
   sampleName?: string;
+  // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
+  // убирает фазовую интерференцию наложений (басам включать).
+  mono?: boolean;
   // Эскизы дорожки. Какой играет — решает сцена.
   patterns: Pattern[];
 }
@@ -124,7 +127,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 9;
+export const PATCH_VERSION = 10;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -164,6 +167,7 @@ export function makeTrack(
     mods: partial.mods ?? [],
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
+    mono: partial.mono,
     patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
     id: partial.id,
     name: partial.name,
@@ -340,6 +344,7 @@ export function normalizePatch(p: Patch): Patch {
         mods: normalizeMods((t as { mods?: unknown }).mods),
         sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+        mono: !!t.mono,
       };
     });
 

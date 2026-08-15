@@ -168,6 +168,24 @@ function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
   return master;
 }
 
+interface Voice {
+  amp: GainNode;
+  sources: AudioScheduledSourceNode[];
+  stopAt: number;
+}
+
+/** Мягко заглушить голос (моно-retrigger): плавный релиз без обрыва. */
+function duckVoice(v: Voice, t: number): void {
+  v.amp.gain.setTargetAtTime(0.00001, t, 0.004);
+  for (const s of v.sources) {
+    try {
+      s.stop(t + 0.06);
+    } catch {
+      /* уже остановлен */
+    }
+  }
+}
+
 function triggerVoice(
   ctx: BaseAudioContext,
   chain: TrackChain,
@@ -176,9 +194,9 @@ function triggerVoice(
   track: Track,
   step: Step,
   time: number,
-): void {
+): Voice {
   const freqs = stepFreqs(track, step);
-  if (freqs.length === 0) return;
+  if (freqs.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
   // Аккорд делим поровну между нотами — вертикаль не громче одиночной ноты
   // (главный источник клиппинга), и держим запас под мастер-лимитер.
   const peak = Math.max(0.0001, (step.vel * 0.55) / freqs.length);
@@ -194,16 +212,18 @@ function triggerVoice(
   amp.connect(chain.filter);
   const stopAt = time + attack + track.decay + 0.05;
 
+  const sources: AudioScheduledSourceNode[] = [];
   if (track.waveform === 'noise') {
     const src = ctx.createBufferSource();
     src.buffer = noise;
-    src.start(time, Math.random() * 1.5, stopAt - time);
     src.connect(amp);
+    src.start(time, Math.random() * 1.5, stopAt - time);
     src.stop(stopAt);
+    sources.push(src);
   } else if (track.waveform === 'sample') {
     // Сэмпл-плеер: шкала задаёт скорость воспроизведения (питч),
     // длина ноты — как всегда, атакой и спадом.
-    if (!sample) return;
+    if (!sample) return { amp, sources, stopAt };
     const max = track.scale.length - 1;
     for (const n of step.notes) {
       const ratio = track.scale[Math.min(Math.max(Math.round(n), 0), max)] ?? 1;
@@ -213,6 +233,7 @@ function triggerVoice(
       src.connect(amp);
       src.start(time);
       src.stop(stopAt);
+      sources.push(src);
     }
   } else {
     // Аккорд: по осциллятору на ноту, огибающая общая.
@@ -230,8 +251,10 @@ function triggerVoice(
       osc.connect(amp);
       osc.start(time);
       osc.stop(stopAt);
+      sources.push(osc);
     }
   }
+  return { amp, sources, stopAt };
 }
 
 function validSceneId(patch: Patch | null, want: string): string {
@@ -250,6 +273,8 @@ export class AudioEngine {
   private startAt = 0;
   // Декодированные сэмплы библиотеки, id → AudioBuffer.
   private sampleCache = new Map<string, AudioBuffer>();
+  // Последний голос моно-трека — глушится при новой ноте.
+  private lastVoices = new Map<string, Voice>();
   private sceneId = '';
   private pendingSceneId = '';
   private chainPos = 0;
@@ -328,8 +353,15 @@ export class AudioEngine {
         disposeChain(chain);
         this.chains.delete(id);
         this.clocks.delete(id);
+        this.lastVoices.delete(id);
       }
     }
+  }
+
+  private duckLastVoice(trackId: string, t: number): void {
+    const prev = this.lastVoices.get(trackId);
+    if (prev && prev.stopAt > t) duckVoice(prev, t);
+    this.lastVoices.delete(trackId);
   }
 
   /** Применить эффективные параметры эскиза к цепочке трека.
@@ -449,6 +481,7 @@ export class AudioEngine {
       this.timer = null;
     }
     this.clocks.clear();
+    this.lastVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
   }
@@ -521,7 +554,10 @@ export class AudioEngine {
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         if (step && fires(step)) {
-          triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, step, clock.nextStepTime);
+          const at = clock.nextStepTime;
+          if (track.mono) this.duckLastVoice(track.id, at);
+          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, step, at);
+          if (track.mono) this.lastVoices.set(track.id, voice);
         }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
@@ -548,6 +584,7 @@ export class AudioEngine {
     for (const track of patch.tracks) {
       const stepDur = stepDuration(track, patch.bpm);
       let t = 0.05;
+      let prevVoice: Voice | null = null;
       for (const item of fixedItems) {
         const scene = patch.scenes.find((s) => s.id === item.sceneId);
         const pattern = patternInScene(track, scene);
@@ -562,7 +599,9 @@ export class AudioEngine {
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
           if (step && fires(step)) {
-            triggerVoice(ctx, chain, noise, sample, track, step, tt);
+            if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
+            const voice = triggerVoice(ctx, chain, noise, sample, track, step, tt);
+            if (track.mono) prevVoice = voice;
           }
           idx = (idx + 1) % pattern.length;
         }

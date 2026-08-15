@@ -327,6 +327,16 @@ export const TrackRow = memo(function TrackRow({
       {more && (
         <div className="track-head more-row">
           <div className="group">
+            <label
+              className="mono-label"
+              title="Одна нота за раз: новая мягко глушит хвост предыдущей. Убирает фазовую интерференцию наложений — басам включать"
+            >
+              моно
+              <input
+                type="checkbox" checked={!!track.mono}
+                onChange={(e) => change({ mono: e.target.checked })}
+              />
+            </label>
             <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
               фаза, шагов
               <NumField
