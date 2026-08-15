@@ -375,7 +375,14 @@ function triggerVoice(
       const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
       const src = ctx.createBufferSource();
       src.buffer = sample;
-      src.playbackRate.value = ratio;
+      // Падение тона на сэмпле — рампой скорости воспроизведения:
+      // «бочка из сэмпла» собирается прямо в слоте.
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        src.playbackRate.setValueAtTime(ratio * track.pitchDrop, time);
+        src.playbackRate.exponentialRampToValueAtTime(ratio, time + track.pitchTime);
+      } else {
+        src.playbackRate.value = ratio;
+      }
       src.connect(amp);
       src.start(time);
       src.stop(stopAt);
