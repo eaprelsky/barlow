@@ -128,8 +128,10 @@ export const TrackRow = memo(function TrackRow({
 
   // Эффекты — на треке, последовательность важна (фильтр → эффекты → панорама).
   const effects = track.effects ?? [];
-  const updateEffect = (i: number, upd: Partial<Effect>) =>
-    change({ effects: effects.map((e, j) => (j === i ? { ...e, ...upd } : e)) });
+  const updateDelay = (i: number, upd: Partial<Extract<Effect, { type: 'delay' }>>) =>
+    change({ effects: effects.map((e, j) => (j === i && e.type === 'delay' ? { ...e, ...upd } : e)) });
+  const updateReverb = (i: number, upd: Partial<Extract<Effect, { type: 'reverb' }>>) =>
+    change({ effects: effects.map((e, j) => (j === i && e.type === 'reverb' ? { ...e, ...upd } : e)) });
   const setEffectType = (i: number, type: Effect['type']) =>
     change({
       effects: effects.map((e, j) => {
@@ -429,14 +431,14 @@ export const TrackRow = memo(function TrackRow({
                       повтор, мс
                       <NumField
                         value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10}
-                        onChange={(ms) => updateEffect(i, { timeSec: ms / 1000 })}
+                        onChange={(ms) => updateDelay(i, { timeSec: ms / 1000 })}
                       />
                     </label>
                     <label title="Насколько затухает каждый следующий повтор: 0% — один повтор, 80% — длинное эхо">
                       затухание
                       <input
                         type="range" min={0} max={0.9} step={0.05} value={fx.feedback}
-                        onChange={(e) => updateEffect(i, { feedback: Number(e.target.value) })}
+                        onChange={(e) => updateDelay(i, { feedback: Number(e.target.value) })}
                       />
                       {Math.round(fx.feedback * 100)}%
                     </label>
@@ -446,7 +448,7 @@ export const TrackRow = memo(function TrackRow({
                     размер, с
                     <NumField
                       value={fx.sizeSec} min={0.2} max={8} step={0.1}
-                      onChange={(sizeSec) => updateEffect(i, { sizeSec })}
+                      onChange={(sizeSec) => updateReverb(i, { sizeSec })}
                     />
                   </label>
                 )}
@@ -454,7 +456,11 @@ export const TrackRow = memo(function TrackRow({
                   уровень
                   <input
                     type="range" min={0} max={1} step={0.05} value={fx.mix}
-                    onChange={(e) => updateEffect(i, { mix: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const mix = Number(e.target.value);
+                      if (fx.type === 'delay') updateDelay(i, { mix });
+                      else updateReverb(i, { mix });
+                    }}
                   />
                   {Math.round(fx.mix * 100)}%
                 </label>
