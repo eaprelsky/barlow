@@ -377,6 +377,22 @@ export const TrackRow = memo(function TrackRow({
               )}
             </select>
           </label>
+          <label
+            title={
+              track.waveform === 'sample'
+                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
+                : 'Набор высот нотного стана: пентатоники, чистые интервалы, четвертитоны. Октавы — кнопками у стана'
+            }
+          >
+            шкала
+            <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
+              {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
+                .filter((n, i, arr) => arr.indexOf(n) === i)
+                .map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+            </select>
+          </label>
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
@@ -463,16 +479,7 @@ export const TrackRow = memo(function TrackRow({
                     />
                   </span>
                 </label>
-                <label title="Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана">
-                  шкала питча
-                  <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-                    {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                      .filter((n, i, arr) => arr.indexOf(n) === i)
-                      .map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                  </select>
-                </label>
+                
               </>
             ) : (
               <>
@@ -480,16 +487,7 @@ export const TrackRow = memo(function TrackRow({
                   тоника, Гц
                   <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
                 </label>
-                <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны. Октавы добавляются кнопками у стана">
-                  шкала
-                  <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-                    {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                      .filter((n, i, arr) => arr.indexOf(n) === i)
-                      .map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                  </select>
-                </label>
+                
               </>
             )}
           </div>
