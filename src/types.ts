@@ -5,7 +5,7 @@
 //   паттерн (эскиз дорожки) → сцена (какой паттерн играет каждый трек)
 //   → цепочка (порядок сцен с длинами = арранжмент).
 
-export type Waveform = 'sine' | 'square' | 'triangle' | 'sawtooth' | 'noise';
+export type Waveform = 'sine' | 'square' | 'triangle' | 'sawtooth' | 'noise' | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
   sine: 'синус',
@@ -13,6 +13,7 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
   square: 'прямоугольник',
   sawtooth: 'пила',
   noise: 'шум',
+  sample: 'сэмпл',
 };
 
 export interface Step {
@@ -86,6 +87,10 @@ export interface Track {
   pan: number;
   // Модуляции: LFO, подключённые к параметрам трека (см. docs/DESIGN.md).
   mods: Mod[];
+  // Ссылка на сэмпл из библиотеки (SHA-256) — для волны «сэмпл».
+  sampleId?: string;
+  // Отображаемое имя сэмпла (кэш UI, истина — в библиотеке).
+  sampleName?: string;
   // Эскизы дорожки. Какой играет — решает сцена.
   patterns: Pattern[];
 }
@@ -115,7 +120,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 7;
+export const PATCH_VERSION = 8;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -153,6 +158,8 @@ export function makeTrack(
     volume: partial.volume ?? 0.8,
     pan: partial.pan ?? 0.5,
     mods: partial.mods ?? [],
+    sampleId: partial.sampleId,
+    sampleName: partial.sampleName,
     patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
     id: partial.id,
     name: partial.name,
@@ -314,6 +321,8 @@ export function normalizePatch(p: Patch): Patch {
         volume: clamp(t.volume, 0, 1, 0.8),
         pan: clamp((t as { pan?: number }).pan ?? 0.5, 0, 1, 0.5),
         mods: normalizeMods((t as { mods?: unknown }).mods),
+        sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
+        sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
       };
     });
 

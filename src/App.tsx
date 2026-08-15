@@ -16,7 +16,7 @@ import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
-const STORAGE_KEY = 'barlow.patch.v7';
+const STORAGE_KEY = 'barlow.patch.v8';
 const UI_KEY = 'barlow.ui.v1';
 const WAV_BARS = 8;
 
@@ -102,10 +102,17 @@ export default function App() {
       engine.stop();
       setPlaying(false);
     } else {
-      engine.play(patch, sceneId);
-      setPlaying(true);
+      void engine.ensureSamples(patch).then(() => {
+        engine.play(patch, sceneId);
+        setPlaying(true);
+      });
     }
   }, [engine, patch, sceneId]);
+
+  // Пока играем — прогреваем кэш сэмплов (загрузил новый — заиграл без рестарта).
+  useEffect(() => {
+    if (playing) void engine.ensureSamples(patch);
+  }, [playing, patch, engine]);
 
   // ---- Сцены ----
 

@@ -14,6 +14,7 @@
 import type { Mod, ModTarget, Patch, Pattern, Scene, Step, Track } from '../types';
 import { patternInScene, stepFreqs } from '../types';
 import { audioBufferToWav } from './wav';
+import { getSampleBlob } from './library';
 
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
@@ -159,6 +160,7 @@ function triggerVoice(
   ctx: BaseAudioContext,
   chain: TrackChain,
   noise: AudioBuffer,
+  sample: AudioBuffer | null,
   track: Track,
   step: Step,
   time: number,
@@ -183,6 +185,20 @@ function triggerVoice(
     src.start(time, Math.random() * 1.5, stopAt - time);
     src.connect(amp);
     src.stop(stopAt);
+  } else if (track.waveform === 'sample') {
+    // Сэмпл-плеер: шкала задаёт скорость воспроизведения (питч),
+    // длина ноты — как всегда, атакой и спадом.
+    if (!sample) return;
+    const max = track.scale.length - 1;
+    for (const n of step.notes) {
+      const ratio = track.scale[Math.min(Math.max(Math.round(n), 0), max)] ?? 1;
+      const src = ctx.createBufferSource();
+      src.buffer = sample;
+      src.playbackRate.value = ratio;
+      src.connect(amp);
+      src.start(time);
+      src.stop(stopAt);
+    }
   } else {
     // Аккорд: по осциллятору на ноту, огибающая общая.
     for (const f of freqs) {
@@ -217,6 +233,8 @@ export class AudioEngine {
   private timer: number | null = null;
   private patch: Patch | null = null;
   private startAt = 0;
+  // Декодированные сэмплы библиотеки, id → AudioBuffer.
+  private sampleCache = new Map<string, AudioBuffer>();
   private sceneId = '';
   private pendingSceneId = '';
   private chainPos = 0;
@@ -263,6 +281,23 @@ export class AudioEngine {
   private applyMasterVolume(v: number): void {
     if (this.ctx && this.master) {
       this.master.gain.setTargetAtTime(0.75 * v, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
+  async ensureSamples(patch: Patch): Promise<void> {
+    const ctx = this.ensureCtx();
+    for (const track of patch.tracks) {
+      if (track.waveform !== 'sample' || !track.sampleId) continue;
+      if (this.sampleCache.has(track.sampleId)) continue;
+      const blob = await getSampleBlob(track.sampleId);
+      if (!blob) continue;
+      try {
+        const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+        this.sampleCache.set(track.sampleId, buf);
+      } catch {
+        // Битый формат — молча пропускаем, трек будет просто молчать.
+      }
     }
   }
 
@@ -459,7 +494,7 @@ export class AudioEngine {
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         if (step && fires(step)) {
-          triggerVoice(ctx, chain, this.noiseBuffer, track, step, clock.nextStepTime);
+          triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, step, clock.nextStepTime);
         }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
@@ -469,6 +504,7 @@ export class AudioEngine {
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8): Promise<Blob> {
+    await this.ensureSamples(patch);
     const fixedItems = (
       patch.followChain && patch.chain.length > 0
         ? patch.chain
@@ -492,10 +528,11 @@ export class AudioEngine {
         if (!pattern) continue;
         const itemDur = item.bars * BAR_TICKS * tickDur;
         let idx = startStepIndex(track, pattern);
+        const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
           if (step && fires(step)) {
-            triggerVoice(ctx, chain, noise, track, step, tt);
+            triggerVoice(ctx, chain, noise, sample, track, step, tt);
           }
           idx = (idx + 1) % pattern.length;
         }

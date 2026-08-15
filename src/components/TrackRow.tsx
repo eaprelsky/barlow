@@ -3,6 +3,7 @@ import type { Mod, ModTarget, Pattern, Step, Track, Waveform } from '../types';
 import { MOD_TARGET_LABELS, WAVEFORM_LABELS, makeStep } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
+import { putSample } from '../audio/library';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -52,6 +53,13 @@ export const TrackRow = memo(function TrackRow({
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
+  const sampleFileRef = useRef<HTMLInputElement>(null);
+
+  const loadSampleFile = (f: File) => {
+    void putSample(f, f.name)
+      .then((meta) => change({ sampleId: meta.id, sampleName: meta.name }))
+      .catch(() => alert('Не удалось сохранить сэмпл в библиотеку'));
+  };
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
   const changeSteps = (steps: Step[]) => onPatternChange(track.id, pattern.id, { steps });
@@ -214,20 +222,42 @@ export const TrackRow = memo(function TrackRow({
               ))}
             </select>
           </label>
-          <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
-            тоника, Гц
-            <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
-          </label>
-          <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны">
-            шкала
-            <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-              {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                .filter((n, i, arr) => arr.indexOf(n) === i)
-                .map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-            </select>
-          </label>
+          {track.waveform === 'sample' ? (
+            <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
+              сэмпл
+              <span className="inline">
+                <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
+                  {track.sampleName ?? 'не выбран'}
+                </span>
+                <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
+                <input
+                  ref={sampleFileRef} type="file" accept="audio/*" hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) loadSampleFile(f);
+                    e.target.value = '';
+                  }}
+                />
+              </span>
+            </label>
+          ) : (
+            <>
+              <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
+                тоника, Гц
+                <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
+              </label>
+              <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны">
+                шкала
+                <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
+                  {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
+                    .filter((n, i, arr) => arr.indexOf(n) === i)
+                    .map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
         </div>
         <div className="group">
           <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
