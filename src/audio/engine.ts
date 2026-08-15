@@ -72,12 +72,21 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
 
 function connectMaster(ctx: BaseAudioContext): GainNode {
   const master = ctx.createGain();
-  master.gain.value = 0.9;
-  const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -6;
-  limiter.ratio.value = 12;
-  master.connect(limiter);
-  limiter.connect(ctx.destination);
+  master.gain.value = 0.75;
+  // Мягкий лимитер на tanh: пики выше ~0.9 плавно пережимаются, а не
+  // обрезаются нулём — иначе сумма громких треков трещит (цифровой клиппинг).
+  // Компрессор тут не годится: он пропускает короткие транзиенты.
+  const shaper = ctx.createWaveShaper();
+  shaper.oversample = '4x';
+  const n = 2048;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 4 - 2; // диапазон входа [-2, 2]
+    curve[i] = Math.tanh(1.5 * x) / Math.tanh(3);
+  }
+  shaper.curve = curve;
+  master.connect(shaper);
+  shaper.connect(ctx.destination);
   return master;
 }
 
@@ -91,13 +100,17 @@ function triggerVoice(
 ): void {
   const freqs = stepFreqs(track, step);
   if (freqs.length === 0) return;
-  const peak = Math.max(0.0001, step.vel * 0.9);
+  // Аккорд делим поровну между нотами — вертикаль не громче одиночной ноты
+  // (главный источник клиппинга), и держим запас под мастер-лимитер.
+  const peak = Math.max(0.0001, (step.vel * 0.55) / freqs.length);
+  // Мгновенная атака = скачок = щелчок; минимальный пологий фронт обязателен.
+  const attack = Math.max(track.attack, 0.0005);
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(0, time);
-  amp.gain.linearRampToValueAtTime(peak, time + track.attack);
-  amp.gain.exponentialRampToValueAtTime(0.0001, time + track.attack + track.decay);
+  amp.gain.linearRampToValueAtTime(peak, time + attack);
+  amp.gain.exponentialRampToValueAtTime(0.0001, time + attack + track.decay);
   amp.connect(chain.filter);
-  const stopAt = time + track.attack + track.decay + 0.05;
+  const stopAt = time + attack + track.decay + 0.05;
 
   if (track.waveform === 'noise') {
     const src = ctx.createBufferSource();
