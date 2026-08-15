@@ -17,10 +17,33 @@ import {
 import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
+import { PROVIDERS } from './ai/providers';
+import { putSample } from './audio/library';
 
 const STORAGE_KEY = 'barlow.patch.v12';
 const UI_KEY = 'barlow.ui.v1';
+const AI_KEY_STORE = 'barlow.ai.v1';
 const WAV_BARS = 8;
+
+interface AiSettings {
+  providerId: string;
+  apiKey: string;
+}
+
+function loadAiSettings(): AiSettings {
+  try {
+    const raw = localStorage.getItem(AI_KEY_STORE);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AiSettings>;
+      if (parsed && typeof parsed.apiKey === 'string') {
+        return { providerId: PROVIDERS[0].id, apiKey: parsed.apiKey };
+      }
+    }
+  } catch {
+    /* настройки необязательны */
+  }
+  return { providerId: PROVIDERS[0].id, apiKey: '' };
+}
 
 function loadUiState(): { collapsed: Record<string, boolean> } {
   try {
@@ -75,6 +98,9 @@ export default function App() {
   const [ui, setUi] = useState(loadUiState);
   const [sceneId, setSceneId] = useState(() => patch.scenes[0]?.id ?? '');
   const [showChain, setShowChain] = useState(false);
+  const [ai, setAi] = useState<AiSettings>(loadAiSettings);
+  const [showAi, setShowAi] = useState(false);
+  const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioEngine | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -359,6 +385,41 @@ export default function App() {
     [sceneId],
   );
 
+  const saveAi = useCallback((next: Partial<AiSettings>) => {
+    setAi((prev) => {
+      const merged = { ...prev, ...next };
+      localStorage.setItem(AI_KEY_STORE, JSON.stringify(merged));
+      return merged;
+    });
+  }, []);
+
+  /** Сгенерировать сэмпл по описанию и положить в слот трека. */
+  const generateSample = useCallback(
+    async (trackId: string, prompt: string, seconds: number) => {
+      const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
+      if (!ai.apiKey) {
+        alert('Сначала укажи API-ключ: кнопка «ИИ» в шапке');
+        return;
+      }
+      setGenBusy((b) => ({ ...b, [trackId]: true }));
+      try {
+        const blob = await provider.generate({ apiKey: ai.apiKey, prompt, seconds });
+        const meta = await putSample(blob, prompt.slice(0, 40));
+        setPatch((p) => ({
+          ...p,
+          tracks: p.tracks.map((t) =>
+            t.id === trackId ? { ...t, sampleId: meta.id, sampleName: meta.name } : t,
+          ),
+        }));
+      } catch (e) {
+        alert(`Генерация не удалась: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setGenBusy((b) => ({ ...b, [trackId]: false }));
+      }
+    },
+    [ai],
+  );
+
   const toggleCollapse = useCallback((id: string) => {
     setUi((u) => {
       const next = { collapsed: { ...u.collapsed, [id]: !u.collapsed[id] } };
@@ -474,6 +535,7 @@ export default function App() {
         <button onClick={exportPatch}>экспорт</button>
         <button onClick={() => fileRef.current?.click()}>импорт</button>
         <button onClick={resetPatch} title="Сбросить к дефолтному полиритму">сброс</button>
+        <button className={showAi ? 'on' : ''} onClick={() => setShowAi((v) => !v)} title="Настройки ИИ-генерации сэмплов">ИИ</button>
         <input
           ref={fileRef} type="file" accept=".json,application/json" hidden
           onChange={(e) => {
@@ -484,6 +546,21 @@ export default function App() {
         />
       </header>
 
+      {showAi && (
+        <div className="ai-panel">
+          <label title="Ключ хранится только в этом браузере (localStorage). Barlow — локальный инструмент; при публикации ключи должны уйти за прокси">
+            ключ {PROVIDERS.find((p) => p.id === ai.providerId)?.title}
+            <input
+              type="password" className="ai-key-input"
+              placeholder="вставь API-ключ (elevenlabs.io → Profile → API Keys)"
+              value={ai.apiKey}
+              onChange={(e) => saveAi({ apiKey: e.target.value })}
+            />
+          </label>
+          {ai.apiKey && <span className="ai-ok">ключ сохранён</span>}
+          <span className="hint">сэмпл-трек → «сгенерировать по описанию»</span>
+        </div>
+      )}
       <div className="scenes">
         <span className="scenes-label">сцены</span>
         {patch.scenes.map((s) => (
@@ -589,6 +666,8 @@ export default function App() {
             onEuclid={applyEuclid}
             onMutate={mutate}
             onRemove={removeTrack}
+            onGenerateSample={generateSample}
+            genBusy={!!genBusy[t.id]}
           />
         ))}
         {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}

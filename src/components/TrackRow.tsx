@@ -51,6 +51,8 @@ interface Props {
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
+  onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
+  genBusy: boolean;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -68,8 +70,12 @@ export const TrackRow = memo(function TrackRow({
   onEuclid,
   onMutate,
   onRemove,
+  onGenerateSample,
+  genBusy,
 }: Props) {
   const [pulses, setPulses] = useState(3);
+  const [prompt, setPrompt] = useState('');
+  const [genSeconds, setGenSeconds] = useState(3);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
@@ -359,6 +365,31 @@ export const TrackRow = memo(function TrackRow({
                       <option key={n} value={n}>{n}</option>
                     ))}
                 </select>
+              </label>
+              <label title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»">
+                сгенерировать по описанию
+                <span className="inline gen-row">
+                  <input
+                    className="gen-prompt"
+                    placeholder="например: глубокий басовый удар с глиной"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && prompt.trim()) onGenerateSample(track.id, prompt.trim(), genSeconds);
+                    }}
+                  />
+                  <NumField
+                    value={genSeconds} min={0.5} max={20} step={0.5}
+                    onChange={(v) => setGenSeconds(v)}
+                  />
+                  <button
+                    disabled={genBusy || !prompt.trim()}
+                    title="Сгенерировать и положить в слот (Enter в поле тоже работает)"
+                    onClick={() => onGenerateSample(track.id, prompt.trim(), genSeconds)}
+                  >
+                    {genBusy ? 'генерирую…' : 'сгенерировать'}
+                  </button>
+                </span>
               </label>
             </>
           ) : (

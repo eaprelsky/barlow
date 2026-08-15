@@ -32,7 +32,8 @@
 - [x] Сэмплер: библиотека IndexedDB (SHA-256 ссылки), загрузка с диска
 - [x] Оффлайн-рендер в WAV: по цепочке или 8 тактов сцены
 - [x] Патч в localStorage + export/import JSON + normalizePatch старых версий
-- [ ] ИИ-генерация сэмплов (нужен выбор провайдера и API-ключ)
+- [x] ИИ-генерация сэмплов: провайдер ElevenLabs (`/v1/sound-generation`),
+  промпт → сэмпл в слот трека; ключ в localStorage (кнопка «ИИ»)
 - [ ] ИИ-агент поверх графа (MCP)
 - [ ] Tauri + нативный движок, ASIO
 - [ ] Launchpad MK3 (Web MIDI), VST
