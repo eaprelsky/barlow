@@ -93,6 +93,45 @@ export const TrackRow = memo(function TrackRow({
   const [pulses, setPulses] = useState(3);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
+  const [customScale, setCustomScale] = useState('');
+
+  /** Парсер своей шкалы: числа и дроби через запятую/пробел.
+   *  «1, 9/8, 5/4, 3/2, 7/4, 2» — готовая just intonation. */
+  const parseCustomScale = (text: string): number[] | null => {
+    const tokens = text.split(/[,\s]+/).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const out: number[] = [];
+    for (const t of tokens) {
+      let v: number;
+      if (t.includes('/')) {
+        const [a, b] = t.split('/');
+        const num = Number(a);
+        const den = Number(b);
+        v = den > 0 && Number.isFinite(num) ? num / den : NaN;
+      } else {
+        v = Number(t);
+      }
+      if (!Number.isFinite(v) || v <= 0 || v > 16) return null;
+      out.push(v);
+    }
+    out.push(1); // тоника — всегда
+    const uniq = [...new Set(out.map((v) => +v.toFixed(6)))].sort((a, b) => a - b);
+    return uniq.length > 48 ? null : uniq;
+  };
+
+  const applyCustomScale = () => {
+    const ratios = parseCustomScale(customScale);
+    if (!ratios) {
+      alert('Не понял шкалу: числа или дроби (3/2) через запятую, каждое от 0 до 16, до 48 значений');
+      return;
+    }
+    change({
+      scale: ratios,
+      scaleOctUp: 0,
+      scaleOctDown: 0,
+      patterns: clampAllNotes(ratios.length - 1),
+    });
+  };
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
   const [showRoll, setShowRoll] = useState(true);
@@ -486,6 +525,24 @@ export const TrackRow = memo(function TrackRow({
                 <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
                   тоника, Гц
                   <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
+                </label>
+                <label
+                  className="custom-scale-label"
+                  title="Своя шкала: любые отношения частот — множители и дроби через запятую. Дроби дают чистые интервалы: 3/2 — квинта, 5/4 — большая терция"
+                >
+                  своя шкала
+                  <span className="inline">
+                    <input
+                      className="custom-scale-input"
+                      placeholder="напр. 1, 9/8, 5/4, 3/2, 7/4, 2"
+                      value={customScale}
+                      onChange={(e) => setCustomScale(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyCustomScale();
+                      }}
+                    />
+                    <button onClick={applyCustomScale} title="Применить (Enter тоже)">применить</button>
+                  </span>
                 </label>
                 
               </>
