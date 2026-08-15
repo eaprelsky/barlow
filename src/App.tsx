@@ -3,12 +3,23 @@ import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
 import { mutateTrack } from './music/mutate';
+import { INSTRUMENT_PRESETS } from './music/instrumentPresets';
 import { isPatch, makeTrack, normalizePatch } from './types';
 import type { Patch, Track } from './types';
 import { TrackRow } from './components/TrackRow';
+import { NumField } from './components/NumField';
 
 const STORAGE_KEY = 'barlow.patch.v4';
 const WAV_BARS = 8;
+
+function uniqueName(base: string, tracks: Track[]): string {
+  const used = new Set(tracks.map((t) => t.name));
+  if (!used.has(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base} ${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
 
 function loadPatch(): Patch {
   try {
@@ -27,6 +38,7 @@ export default function App() {
   const [patch, setPatch] = useState<Patch>(loadPatch);
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [presetIdx, setPresetIdx] = useState(0);
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioEngine | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -70,18 +82,15 @@ export default function App() {
     setPatch((p) => ({ ...p, tracks: p.tracks.filter((x) => x.id !== id) }));
   }, []);
 
-  const addTrack = useCallback(() => {
+  const addTrack = useCallback((preset: (typeof INSTRUMENT_PRESETS)[number]) => {
     setPatch((p) => ({
       ...p,
       tracks: [
         ...p.tracks,
         makeTrack({
           id: `t${Date.now().toString(36)}`,
-          name: `трек ${p.tracks.length + 1}`,
-          length: 11,
-          rate: 2,
-          waveform: 'square',
-          freq: 220,
+          ...preset.track,
+          name: uniqueName(preset.track.name ?? 'трек', p.tracks),
         }),
       ],
     }));
@@ -166,19 +175,28 @@ export default function App() {
         <button className={playing ? 'stop' : ''} onClick={togglePlay}>
           {playing ? 'стоп' : 'играть'}
         </button>
-        <label title="Изменение темпа на ходу пока запрещено — смените на стопе">
+        <label title="Темп в ударах в минуту. Изменение на ходу пока запрещено — смените на стопе">
           темп
-          <input
-            type="number" min={30} max={300} value={patch.bpm}
-            disabled={playing}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n)) setPatch((p) => ({ ...p, bpm: Math.min(300, Math.max(30, n)) }));
-            }}
+          <NumField
+            value={patch.bpm} min={30} max={300} disabled={playing}
+            onChange={(bpm) => setPatch((p) => ({ ...p, bpm: Math.round(bpm) }))}
           />
         </label>
         <span className="spacer" />
-        <button onClick={addTrack}>добавить трек</button>
+        <label title={INSTRUMENT_PRESETS[presetIdx]?.hint}>
+          инструмент
+          <select value={presetIdx} onChange={(e) => setPresetIdx(Number(e.target.value))}>
+            {INSTRUMENT_PRESETS.map((p, i) => (
+              <option key={p.name} value={i}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          onClick={() => addTrack(INSTRUMENT_PRESETS[presetIdx])}
+          title={INSTRUMENT_PRESETS[presetIdx]?.hint}
+        >
+          добавить трек
+        </button>
         <button onClick={renderWav} disabled={rendering} title={`Оффлайн-рендер ${WAV_BARS} тактов в WAV`}>
           {rendering ? 'рендер…' : 'записать wav'}
         </button>
@@ -211,7 +229,11 @@ export default function App() {
       </main>
 
       <footer>
-        <span>клик — нота · колесо — громкость · shift+колесо — вероятность · правый клик — стереть</span>
+        <span>
+          клик по клетке — нота · столбик нот — аккорд · номер шага — громкость
+          и вероятность · белая полоска на ноте — вероятность · правый клик —
+          стереть шаг
+        </span>
         <span>независимые циклы: {patch.tracks.map((t) => t.length).join(' · ')}</span>
       </footer>
     </div>

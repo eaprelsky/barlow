@@ -188,7 +188,8 @@ select:focus {
   color: var(--accent-2);
 }
 
-/* Мини-нотный стан: колонки — шаги цикла, строки — высоты шкалы. */
+/* Мини-нотный стан: колонки — шаги цикла, строки — высоты шкалы.
+   Над каждой колонкой — её номер, клик открывает панель шага. */
 
 .roll {
   display: flex;
@@ -197,10 +198,14 @@ select:focus {
   padding-bottom: 6px;
 }
 
-.roll-scale {
+.roll-side {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.col-num-spacer {
+  height: 15px;
 }
 
 .scale-cell {
@@ -214,9 +219,38 @@ select:focus {
   white-space: nowrap;
 }
 
-.roll-grid {
+.roll-cols {
   display: flex;
   gap: 3px;
+}
+
+.col-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.col-num {
+  width: 24px;
+  height: 15px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.col-num:hover {
+  color: var(--accent-2);
+}
+
+.col-num.sel {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+  background: rgba(126, 200, 255, 0.08);
 }
 
 .roll-col {
@@ -269,6 +303,39 @@ select:focus {
   max-width: calc(100% - 4px);
   background: rgba(255, 255, 255, 0.85);
   border-radius: 2px;
+}
+
+/* Панель шага: открывается кликом по номеру колонки. */
+
+.step-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.step-panel .sp-label {
+  color: var(--accent-2);
+  font-size: 12px;
+}
+
+.step-panel label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+input[type='range'] {
+  width: 130px;
+  accent-color: var(--accent);
 }
 
 .empty {

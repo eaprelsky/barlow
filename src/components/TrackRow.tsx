@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { Step, Track, Waveform } from '../types';
 import { WAVEFORM_LABELS, makeStep } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
+import { NumField } from './NumField';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 
@@ -27,6 +28,7 @@ export const TrackRow = memo(function TrackRow({
   onRemove,
 }: Props) {
   const [pulses, setPulses] = useState(3);
+  const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const rollRef = useRef<HTMLDivElement>(null);
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
@@ -36,6 +38,7 @@ export const TrackRow = memo(function TrackRow({
     const clamped = Math.max(1, Math.min(64, Math.round(length) || 1));
     const steps = track.steps.slice(0, clamped);
     while (steps.length < clamped) steps.push(makeStep());
+    setSelectedCol((c) => (c !== null && c >= clamped ? null : c));
     change({ length: clamped, steps });
   };
 
@@ -66,7 +69,11 @@ export const TrackRow = memo(function TrackRow({
     changeSteps(track.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
 
-  // Колесо над нотой: громкость, shift+колесо — вероятность.
+  const setStepField = (col: number, field: 'vel' | 'prob', v: number) => {
+    changeSteps(track.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
+  };
+
+  // Колесо над нотой — шорткат для ползунков панели шага.
   // Нативный слушатель с passive:false — React-овый onWheel пассивный,
   // preventDefault в нём не работает и страница скроллится.
   const stateRef = useRef({ track, onChange });
@@ -82,14 +89,14 @@ export const TrackRow = memo(function TrackRow({
       const s = t.steps[col];
       if (!s || s.notes.length === 0) return;
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      const delta = e.deltaY < 0 ? 0.05 : -0.05;
       changeOne(t.id, {
         ...t,
         steps: t.steps.map((st, j) => {
           if (j !== col) return st;
           return e.shiftKey
-            ? { ...st, prob: Math.min(1, Math.max(0.1, st.prob + delta)) }
-            : { ...st, vel: Math.min(1, Math.max(0.1, st.vel + delta)) };
+            ? { ...st, prob: Math.min(1, Math.max(0, st.prob + delta)) }
+            : { ...st, vel: Math.min(1, Math.max(0.05, st.vel + delta)) };
         }),
       });
     };
@@ -97,12 +104,9 @@ export const TrackRow = memo(function TrackRow({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const num = (v: string, fallback: number) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  };
+  const selectedStep = selectedCol !== null ? (track.steps[selectedCol] ?? null) : null;
 
-  const cellSize = track.scale.length > 12 ? 13 : 18;
+  const rows = track.scale.map((ratio, i) => ({ ratio, i })).reverse();
 
   return (
     <div className="track">
@@ -121,14 +125,11 @@ export const TrackRow = memo(function TrackRow({
               ))}
             </select>
           </label>
-          <label>
+          <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
             тоника, Гц
-            <input
-              type="number" min={20} max={9000} step={0.1} value={track.freq}
-              onChange={(e) => change({ freq: Math.min(9000, Math.max(20, num(e.target.value, track.freq))) })}
-            />
+            <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
           </label>
-          <label>
+          <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны">
             шкала
             <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
               {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
@@ -140,72 +141,53 @@ export const TrackRow = memo(function TrackRow({
           </label>
         </div>
         <div className="group">
-          <label>
+          <label title="Сколько шагов в цикле трека. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
             длина, шагов
-            <input
-              type="number" min={1} max={64} value={track.length}
-              onChange={(e) => setLength(num(e.target.value, track.length))}
-            />
+            <NumField value={track.length} min={1} max={64} onChange={(length) => setLength(length)} />
           </label>
-          <label title="Шаг длится столько шестнадцатых. Дробные значения (например 1.5) дают дрейф относительно других треков">
-            скорость, ×1/16
-            <input
-              type="number" min={0.25} max={32} step={0.25} value={track.rate}
-              onChange={(e) => change({ rate: Math.max(0.25, num(e.target.value, track.rate)) })}
-            />
+          <label title="Сколько шестнадцатых длится один шаг: 4 — как четверть, 2 — как восьмая, 1 — как 1/16. Дробное значение (например 1.5) — шаги плывут относительно других треков">
+            длина шага, ×1/16
+            <NumField value={track.rate} min={0.25} max={32} step={0.25} onChange={(rate) => change({ rate })} />
           </label>
-          <label title="Сдвиг цикла в шагах — тот же ритм, но стартует позже">
+          <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
             фаза, шагов
-            <input
-              type="number" min={-64} max={64} value={track.phase}
-              onChange={(e) =>
-                change({ phase: Math.round(Math.max(-64, Math.min(64, num(e.target.value, track.phase)))) })
-              }
+            <NumField
+              value={track.phase} min={-64} max={64}
+              onChange={(phase) => change({ phase: Math.round(phase) })}
             />
           </label>
         </div>
         <div className="group">
-          <label title="Нижняя граница фильтра низких частот">
+          <label title="Фильтр нижних частот: приглушает всё выше этой частоты. Меньше — глуше и мягче, больше — ярче и звонче. У баса держи низко (200–500), у хэтов высоко (6000+)">
             фильтр, Гц
-            <input
-              type="number" min={60} max={12000} step={10} value={track.filterFreq}
-              onChange={(e) =>
-                change({ filterFreq: Math.min(12000, Math.max(60, num(e.target.value, track.filterFreq))) })
-              }
+            <NumField
+              value={track.filterFreq} min={60} max={12000} step={10}
+              onChange={(filterFreq) => change({ filterFreq })}
             />
           </label>
-          <label title="Время затухания ноты">
+          <label title="Сколько секунд звучит нота после удара">
             спад, с
-            <input
-              type="number" min={0.01} max={4} step={0.01} value={track.decay}
-              onChange={(e) => change({ decay: Math.max(0.01, num(e.target.value, track.decay)) })}
-            />
+            <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
           </label>
           <label>
             громкость
-            <input
-              type="number" min={0} max={1} step={0.05} value={track.volume}
-              onChange={(e) => change({ volume: Math.min(1, Math.max(0, num(e.target.value, track.volume))) })}
-            />
+            <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
           </label>
         </div>
         <div className="group ops">
-          <label title="Расставить ноты равномерно по циклу (евклидов ритм)">
-            евклид, пульсов
+          <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагам — знаменитый тресильо (буквально как в десперадо)">
+            раскидать нот
             <span className="inline">
-              <input
-                type="number" min={0} max={track.length} value={pulses}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) setPulses(Math.max(0, Math.min(track.length, Math.round(n))));
-                }}
+              <NumField
+                value={pulses} min={0} max={track.length}
+                onChange={(n) => setPulses(Math.round(n))}
               />
-              <button onClick={() => onEuclid(track.id, pulses)}>распределить</button>
+              <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по циклу">равномерно</button>
             </span>
           </label>
           <button
             className="mut"
-            title="Случайно подвинуть пару нот: вкл/выкл, высота, вероятность, громкость"
+            title="Случайно подвинуть пару нот: вкл/выкл, высоты, вероятность, громкость. Слушай-мутируй-слушай"
             onClick={() => onMutate(track.id)}
           >
             мутировать
@@ -214,24 +196,27 @@ export const TrackRow = memo(function TrackRow({
         </div>
       </div>
 
-      <div className="roll" ref={rollRef} style={{ '--cell': `${cellSize}px` } as React.CSSProperties}>
-        <div className="roll-scale" style={{ '--cell': `${cellSize}px` } as React.CSSProperties}>
-          {track.scale
-            .map((ratio, i) => ({ ratio, i }))
-            .reverse()
-            .map(({ ratio, i }) => (
-              <div key={i} className="scale-cell" title={`${(track.freq * ratio).toFixed(1)} Гц`}>
-                ×{fmtRatio(ratio)}
-              </div>
-            ))}
+      <div className="roll" ref={rollRef}>
+        <div className="roll-side">
+          <div className="col-num-spacer" />
+          {rows.map(({ ratio }) => (
+            <div key={ratio} className="scale-cell" title={`отношение ${fmtRatio(ratio)} к тонике`}>
+              ×{fmtRatio(ratio)}
+            </div>
+          ))}
         </div>
-        <div className="roll-grid">
+        <div className="roll-cols">
           {track.steps.map((s, col) => (
-            <div key={col} className="roll-col">
-              {track.scale
-                .map((ratio, i) => ({ ratio, i }))
-                .reverse()
-                .map(({ ratio, i }) => {
+            <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
+              <button
+                className={'col-num' + (col === selectedCol ? ' sel' : '')}
+                title="Настройки шага: громкость и вероятность"
+                onClick={() => setSelectedCol(col === selectedCol ? null : col)}
+              >
+                {col + 1}
+              </button>
+              <div className="roll-col">
+                {rows.map(({ ratio, i }) => {
                   const on = s.notes.includes(i);
                   const chord = on && s.notes.length > 1;
                   return (
@@ -247,8 +232,8 @@ export const TrackRow = memo(function TrackRow({
                       style={on ? { opacity: String(0.55 + 0.45 * s.vel) } : undefined}
                       title={
                         on
-                          ? `${(track.freq * ratio).toFixed(1)} Гц (×${fmtRatio(ratio)})${chord ? ` · аккорд, ${s.notes.length} ноты` : ''} · громкость ${Math.round(s.vel * 100)}% · вероятность ${Math.round(s.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · колесо — громкость · shift+колесо — вероятность · правый клик — стереть шаг`
-                          : `${(track.freq * ratio).toFixed(1)} Гц (×${fmtRatio(ratio)}) — поставить ноту`
+                          ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''}\nклик по другой строке — добавить ноту (аккорд) · правый клик — стереть шаг`
+                          : `${(track.freq * ratio).toFixed(1)} Гц — поставить ноту`
                       }
                       onClick={() => clickCell(col, i)}
                       onContextMenu={(e) => {
@@ -262,10 +247,37 @@ export const TrackRow = memo(function TrackRow({
                     </button>
                   );
                 })}
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {selectedStep && selectedCol !== null && (
+        <div className="step-panel">
+          <span className="sp-label">шаг {selectedCol + 1}</span>
+          <label className="sp-field">
+            громкость
+            <input
+              type="range" min={0.05} max={1} step={0.05} value={selectedStep.vel}
+              onChange={(e) => setStepField(selectedCol, 'vel', Number(e.target.value))}
+            />
+            {Math.round(selectedStep.vel * 100)}%
+          </label>
+          <label
+            className="sp-field"
+            title="Шанс, что нота прозвучит при каждом проходе цикла. Меньше 100% — ритм живой, никогда не повторяется точно"
+          >
+            вероятность
+            <input
+              type="range" min={0} max={1} step={0.05} value={selectedStep.prob}
+              onChange={(e) => setStepField(selectedCol, 'prob', Number(e.target.value))}
+            />
+            {Math.round(selectedStep.prob * 100)}%
+          </label>
+          <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
+        </div>
+      )}
     </div>
   );
 });
