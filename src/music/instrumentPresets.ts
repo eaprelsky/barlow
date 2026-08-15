@@ -6,7 +6,7 @@ import type { Track } from '../types';
 export interface InstrumentPreset {
   name: string;
   hint: string;
-  track: Partial<Track>;
+  track: Partial<Track> & { length?: number };
 }
 
 const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];

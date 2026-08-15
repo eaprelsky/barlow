@@ -1,10 +1,7 @@
 import { euclid } from './euclid';
 import { SCALE_PRESETS } from './scales';
-import { PATCH_VERSION, makeStep, makeTrack } from '../types';
+import { PATCH_VERSION, makePattern, makeScene, makeStep, makeTrack, uid } from '../types';
 import type { Patch, Step, Track } from '../types';
-
-let nextId = 1;
-const id = () => `t${nextId++}`;
 
 const scale = (name: string): number[] =>
   SCALE_PRESETS.find((p) => p.name === name)?.ratios ?? [1];
@@ -23,17 +20,14 @@ function withMelody(steps: Step[], notes: number[][]): Step[] {
 }
 
 // Дефолтный патч — сразу слышная полиритмия: циклы 16, 9, 7 и 5 шагов
-// с разными скоростями. Фазы треков постоянно пересекаются по-новому.
-// 16 (pulse, rate 4) = 64 тика — «такт 4/4», точка сборки.
-// 9 (grain, rate 2), 7 (lead, rate 2), 5 (bass, rate 8) — плывут вокруг.
+// с разными скоростями. Одна сцена «осннова», у лида — второй эскиз «B»,
+// чтобы фича паттернов была видна сразу.
 
 export function defaultPatch(): Patch {
-  nextId = 1;
   const tracks: Track[] = [
     makeTrack({
-      id: id(),
+      id: uid('t'),
       name: 'pulse',
-      length: 16,
       rate: 4,
       waveform: 'sine',
       scale: scale('одна высота'),
@@ -44,24 +38,25 @@ export function defaultPatch(): Patch {
       pitchTime: 0.09,
       filterFreq: 1400,
       volume: 0.9,
-      steps: stepsFromMask(euclid(16, 4)),
+      patterns: [makePattern('A', 16, stepsFromMask(euclid(16, 4)))],
     }),
     makeTrack({
-      id: id(),
+      id: uid('t'),
       name: 'grain',
-      length: 9,
       rate: 2,
       waveform: 'noise',
       scale: scale('одна высота'),
       decay: 0.06,
       filterFreq: 6500,
       volume: 0.5,
-      steps: stepsFromMask(euclid(9, 4)),
+      patterns: [
+        makePattern('A', 9, stepsFromMask(euclid(9, 4))),
+        makePattern('B', 9, stepsFromMask(euclid(9, 5))),
+      ],
     }),
     makeTrack({
-      id: id(),
+      id: uid('t'),
       name: 'lead',
-      length: 7,
       rate: 2,
       waveform: 'triangle',
       scale: scale('пентатоника, минор'),
@@ -69,12 +64,13 @@ export function defaultPatch(): Patch {
       decay: 0.18,
       filterFreq: 4200,
       volume: 0.55,
-      steps: withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]]),
+      patterns: [
+        makePattern('A', 7, withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]])),
+      ],
     }),
     makeTrack({
-      id: id(),
+      id: uid('t'),
       name: 'bass',
-      length: 5,
       rate: 8,
       waveform: 'sine',
       scale: [1, 3 / 2],
@@ -82,8 +78,17 @@ export function defaultPatch(): Patch {
       decay: 0.8,
       filterFreq: 500,
       volume: 0.85,
-      steps: withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]),
+      patterns: [makePattern('A', 5, withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]))],
     }),
   ];
-  return { version: PATCH_VERSION, bpm: 118, masterVolume: 1, tracks };
+  const scene = makeScene('основа', tracks, (t) => t.patterns[0].id);
+  return {
+    version: PATCH_VERSION,
+    bpm: 118,
+    masterVolume: 1,
+    followChain: false,
+    scenes: [scene],
+    chain: [{ sceneId: scene.id, bars: 8 }],
+    tracks,
+  };
 }

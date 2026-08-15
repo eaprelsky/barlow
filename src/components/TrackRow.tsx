@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { Step, Track, Waveform } from '../types';
+import type { Pattern, Step, Track, Waveform } from '../types';
 import { WAVEFORM_LABELS, makeStep } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
@@ -8,10 +8,15 @@ const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 
 interface Props {
   track: Track;
+  pattern: Pattern;
   activeStep: number;
   collapsed: boolean;
   onToggleCollapse: (id: string) => void;
   onChange: (id: string, t: Track) => void;
+  onPatternChange: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
+  onSelectPattern: (trackId: string, patternId: string) => void;
+  onAddPattern: (trackId: string) => void;
+  onForkPattern: (trackId: string, patternId: string) => void;
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
@@ -23,10 +28,15 @@ function fmtRatio(r: number): string {
 
 export const TrackRow = memo(function TrackRow({
   track,
+  pattern,
   activeStep,
   collapsed,
   onToggleCollapse,
   onChange,
+  onPatternChange,
+  onSelectPattern,
+  onAddPattern,
+  onForkPattern,
   onEuclid,
   onMutate,
   onRemove,
@@ -37,14 +47,14 @@ export const TrackRow = memo(function TrackRow({
   const rollRef = useRef<HTMLDivElement>(null);
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
-  const changeSteps = (steps: Step[]) => change({ steps });
+  const changeSteps = (steps: Step[]) => onPatternChange(track.id, pattern.id, { steps });
 
   const setLength = (length: number) => {
     const clamped = Math.max(1, Math.min(64, Math.round(length) || 1));
-    const steps = track.steps.slice(0, clamped);
+    const steps = pattern.steps.slice(0, clamped);
     while (steps.length < clamped) steps.push(makeStep());
     setSelectedCol((c) => (c !== null && c >= clamped ? null : c));
-    change({ length: clamped, steps });
+    onPatternChange(track.id, pattern.id, { length: clamped, steps });
   };
 
   const setScaleByName = (name: string) => {
@@ -53,7 +63,10 @@ export const TrackRow = memo(function TrackRow({
     const max = preset.ratios.length - 1;
     change({
       scale: preset.ratios,
-      steps: track.steps.map((s) => ({ ...s, notes: s.notes.map((n) => Math.min(n, max)) })),
+      patterns: track.patterns.map((pt) => ({
+        ...pt,
+        steps: pt.steps.map((s) => ({ ...s, notes: s.notes.map((n) => Math.min(n, max)) })),
+      })),
     });
   };
 
@@ -61,7 +74,7 @@ export const TrackRow = memo(function TrackRow({
   // по разным строкам колонки — аккорд; когда высот не остаётся — пауза.
   const clickCell = (col: number, row: number) => {
     changeSteps(
-      track.steps.map((s, j) => {
+      pattern.steps.map((s, j) => {
         if (j !== col) return s;
         const has = s.notes.includes(row);
         const notes = has ? s.notes.filter((n) => n !== row) : [...s.notes, row].sort((a, b) => a - b);
@@ -71,18 +84,18 @@ export const TrackRow = memo(function TrackRow({
   };
 
   const clearCell = (col: number) => {
-    changeSteps(track.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
+    changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
 
   const setStepField = (col: number, field: 'vel' | 'prob', v: number) => {
-    changeSteps(track.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
+    changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
   };
 
   // Колесо над нотой — шорткат для ползунков панели шага.
   // Нативный слушатель с passive:false — React-овый onWheel пассивный,
   // preventDefault в нём не работает и страница скроллится.
-  const stateRef = useRef({ track, onChange });
-  stateRef.current = { track, onChange };
+  const stateRef = useRef({ track, pattern, onPatternChange });
+  stateRef.current = { track, pattern, onPatternChange };
   useEffect(() => {
     const el = rollRef.current;
     if (!el) return;
@@ -90,24 +103,52 @@ export const TrackRow = memo(function TrackRow({
       const cell = (e.target as HTMLElement).closest<HTMLElement>('.cell');
       if (!cell) return;
       const col = Number(cell.dataset.col);
-      const { track: t, onChange: changeOne } = stateRef.current;
-      const s = t.steps[col];
+      const { pattern: pt, onPatternChange: changeOne } = stateRef.current;
+      const s = pt.steps[col];
       if (!s || s.notes.length === 0) return;
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.05 : -0.05;
-      changeOne(t.id, {
-        ...t,
-        steps: t.steps.map((st, j) => {
-          if (j !== col) return st;
-          return e.shiftKey
-            ? { ...st, prob: Math.min(1, Math.max(0, st.prob + delta)) }
-            : { ...st, vel: Math.min(1, Math.max(0.05, st.vel + delta)) };
-        }),
+      const steps = pt.steps.map((st, j) => {
+        if (j !== col) return st;
+        return e.shiftKey
+          ? { ...st, prob: Math.min(1, Math.max(0, st.prob + delta)) }
+          : { ...st, vel: Math.min(1, Math.max(0.05, st.vel + delta)) };
       });
+      changeOne(stateRef.current.track.id, pt.id, { steps });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
+
+  const patternChips = (
+    <div className="pattern-chips">
+      {track.patterns.map((pt) => (
+        <button
+          key={pt.id}
+          className={pt.id === pattern.id ? 'chip on' : 'chip'}
+          title={
+            pt.forkedFrom
+              ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
+              : 'эскиз дорожки. Клик — играть в этой сцене, правый клик — сделать вариацию (форк)'
+          }
+          onClick={() => onSelectPattern(track.id, pt.id)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onForkPattern(track.id, pt.id);
+          }}
+        >
+          {pt.name}
+        </button>
+      ))}
+      <button
+        className="chip add"
+        title="Новый пустой эскиз"
+        onClick={() => onAddPattern(track.id)}
+      >
+        +
+      </button>
+    </div>
+  );
 
   if (collapsed) {
     return (
@@ -117,20 +158,21 @@ export const TrackRow = memo(function TrackRow({
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
           <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
           <span className="mini-wave">{WAVEFORM_LABELS[track.waveform]}</span>
+          {patternChips}
           <input
             className="mini-vol"
             type="range" min={0} max={1} step={0.05} value={track.volume}
             title={`громкость ${Math.round(track.volume * 100)}%`}
             onChange={(e) => change({ volume: Number(e.target.value) })}
           />
-          <span className="mini-info">{track.steps.length} шагов</span>
+          <span className="mini-info">{pattern.length} шагов</span>
           <button className="remove" title="Удалить трек" onClick={() => onRemove(track.id)}>×</button>
         </div>
       </div>
     );
   }
 
-  const selectedStep = selectedCol !== null ? (track.steps[selectedCol] ?? null) : null;
+  const selectedStep = selectedCol !== null ? (pattern.steps[selectedCol] ?? null) : null;
   const rows = track.scale.map((ratio, i) => ({ ratio, i })).reverse();
 
   return (
@@ -142,6 +184,12 @@ export const TrackRow = memo(function TrackRow({
           value={track.name}
           onChange={(e) => change({ name: e.target.value })}
         />
+        <div className="group">
+          <label title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
+            эскизы
+            {patternChips}
+          </label>
+        </div>
         <div className="group">
           <label>
             волна
@@ -167,9 +215,9 @@ export const TrackRow = memo(function TrackRow({
           </label>
         </div>
         <div className="group">
-          <label title="Сколько шагов в цикле трека. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
+          <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
             длина, шагов
-            <NumField value={track.length} min={1} max={64} onChange={(length) => setLength(length)} />
+            <NumField value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
           </label>
           <label title="Сколько шестнадцатых длится один шаг: 4 — как четверть, 2 — как восьмая, 1 — как 1/16. Дробное значение (например 1.5) — шаги плывут относительно других треков">
             длина шага, ×1/16
@@ -187,7 +235,7 @@ export const TrackRow = memo(function TrackRow({
             раскидать нот
             <span className="inline">
               <NumField
-                value={pulses} min={0} max={track.length}
+                value={pulses} min={0} max={pattern.length}
                 onChange={(n) => setPulses(Math.round(n))}
               />
               <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по циклу">равномерно</button>
@@ -195,7 +243,7 @@ export const TrackRow = memo(function TrackRow({
           </label>
           <button
             className="mut"
-            title="Случайно подвинуть пару нот: вкл/выкл, высоты, вероятность, громкость. Слушай-мутируй-слушай"
+            title="Случайно подвинуть пару нот активного эскиза: вкл/выкл, высоты, вероятность, громкость"
             onClick={() => onMutate(track.id)}
           >
             мутировать
@@ -258,7 +306,7 @@ export const TrackRow = memo(function TrackRow({
           ))}
         </div>
         <div className="roll-cols">
-          {track.steps.map((s, col) => (
+          {pattern.steps.map((s, col) => (
             <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
               <button
                 className={'col-num' + (col === selectedCol ? ' sel' : '')}

@@ -2,19 +2,22 @@
 // UI-поток каждые 25 мс планирует ноты на 120 мс вперёд по часам
 // AudioContext — стабильный тайминг без джиттера setInterval.
 //
-// У каждого трека свои часы: шаг длится rate * (60/bpm/4) секунд,
-// позиция считается по единой формуле stepIndexAt, поэтому движок
-// и UI никогда не расходятся.
+// Сцены (см. docs/DESIGN.md): сцена = какой паттерн играет каждый трек.
+// Переходы квантованы к границе такта (16 тиков); в момент перехода часы
+// каждого трека сбрасываются — паттерн новой сцены стартует с начала.
+// Режимы: followChain — сцены идут по цепочке (арранжмент, циклично);
+// ручной — текущая сцена держится до клика по другой.
 //
 // Голос (triggerVoice) отвязан от конкретного контекста: им же пользуется
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
-import type { Patch, Step, Track } from '../types';
-import { stepFreqs } from '../types';
+import type { Patch, Pattern, Scene, Step, Track } from '../types';
+import { patternInScene, stepFreqs } from '../types';
 import { audioBufferToWav } from './wav';
 
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
+const BAR_TICKS = 16;
 
 export function tickDuration(bpm: number): number {
   // Базовый тик = 1/16 при rate = 1.
@@ -25,20 +28,28 @@ export function stepDuration(track: Track, bpm: number): number {
   return track.rate * tickDuration(bpm);
 }
 
-export function startStepIndex(track: Track): number {
-  return ((track.phase % track.length) + track.length) % track.length;
+export function startStepIndex(track: Track, pattern: Pattern): number {
+  return ((track.phase % pattern.length) + pattern.length) % pattern.length;
 }
 
-// Позиция трека в момент ctxTime (для playhead в UI). -1 — ещё не стартовали.
-export function stepIndexAt(track: Track, ctxTime: number, startAt: number, bpm: number): number {
-  const elapsed = ctxTime - startAt;
+// Позиция трека по часам от последнего сброса (смена сцены).
+// Используется и движком, и playhead в UI — они не расходятся.
+export function stepIndexAt(
+  track: Track,
+  pattern: Pattern,
+  ctxTime: number,
+  resetTime: number,
+  bpm: number,
+): number {
+  const elapsed = ctxTime - resetTime;
   if (elapsed < 0) return -1;
-  return (Math.floor(elapsed / stepDuration(track, bpm)) + track.phase) % track.length;
+  return (Math.floor(elapsed / stepDuration(track, bpm)) + track.phase) % pattern.length;
 }
 
 interface TrackClock {
   nextStepIndex: number;
   nextStepTime: number;
+  resetTime: number;
 }
 
 interface TrackChain {
@@ -138,6 +149,11 @@ function triggerVoice(
   }
 }
 
+function validSceneId(patch: Patch | null, want: string): string {
+  const scenes = patch?.scenes ?? [];
+  return scenes.some((s) => s.id === want) ? want : (scenes[0]?.id ?? '');
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -147,9 +163,24 @@ export class AudioEngine {
   private timer: number | null = null;
   private patch: Patch | null = null;
   private startAt = 0;
+  private sceneId = '';
+  private pendingSceneId = '';
+  private chainPos = 0;
+  private manualMode = true;
+  private sceneAdvanceTime: number | null = null;
 
   get playing(): boolean {
     return this.timer !== null;
+  }
+
+  /** Сцена, которая звучит прямо сейчас (UI подсвечивает её). */
+  get currentSceneId(): string {
+    return this.sceneId;
+  }
+
+  /** Позиция в цепочке (для подсветки арранжмента). */
+  get currentChainPos(): number {
+    return this.chainPos;
   }
 
   /** Актуальное время аудио-часов — для расчёта playhead в UI. */
@@ -159,6 +190,11 @@ export class AudioEngine {
 
   get startTime(): number {
     return this.startAt;
+  }
+
+  /** Часы трека (resetTime нужен playhead'у). */
+  clockOf(trackId: string): TrackClock | undefined {
+    return this.clocks.get(trackId);
   }
 
   private ensureCtx(): AudioContext {
@@ -203,18 +239,81 @@ export class AudioEngine {
     }
   }
 
-  play(patch: Patch): void {
+  private validScene(want: string): string {
+    return validSceneId(this.patch, want);
+  }
+
+  private scene(): Scene | undefined {
+    return this.patch?.scenes.find((s) => s.id === this.sceneId);
+  }
+
+  private nextBarTime(from: number): number {
+    const tickDur = tickDuration(this.patch!.bpm);
+    const ticksNow = Math.max(0, (from - this.startAt) / tickDur);
+    const nextBar = (Math.floor(ticksNow / BAR_TICKS) + 1) * BAR_TICKS;
+    return this.startAt + nextBar * tickDur;
+  }
+
+  private scheduleSceneAdvance(t: number): void {
+    const patch = this.patch!;
+    if (patch.followChain && !this.manualMode) {
+      const bars = patch.chain[this.chainPos]?.bars ?? 8;
+      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(patch.bpm);
+    } else if (this.pendingSceneId) {
+      this.sceneAdvanceTime = t + BAR_TICKS * tickDuration(patch.bpm);
+    } else {
+      this.sceneAdvanceTime = null;
+    }
+  }
+
+  private applyNextScene(t: number): void {
+    const patch = this.patch!;
+    if (this.pendingSceneId) {
+      this.sceneId = this.validScene(this.pendingSceneId);
+      this.pendingSceneId = '';
+    } else if (patch.followChain && !this.manualMode) {
+      this.chainPos = (this.chainPos + 1) % Math.max(1, patch.chain.length);
+      this.sceneId = this.validScene(patch.chain[this.chainPos]?.sceneId ?? '');
+    }
+    // Часы треков стартуют заново с паттерном новой сцены.
+    const scene = this.scene();
+    for (const track of patch.tracks) {
+      const clock = this.clocks.get(track.id);
+      if (!clock) continue;
+      const pattern = patternInScene(track, scene);
+      clock.nextStepTime = t;
+      clock.resetTime = t;
+      clock.nextStepIndex = pattern ? startStepIndex(track, pattern) : 0;
+    }
+    this.scheduleSceneAdvance(t);
+  }
+
+  play(patch: Patch, sceneId: string): void {
     this.stop();
     const ctx = this.ensureCtx();
     if (ctx.state === 'suspended') void ctx.resume();
     this.patch = patch;
     this.setPatch(patch);
+    this.sceneId = this.validScene(sceneId);
+    this.pendingSceneId = '';
+    this.manualMode = !patch.followChain;
+    const pos = patch.chain.findIndex((it) => it.sceneId === this.sceneId);
+    this.chainPos = pos >= 0 ? pos : 0;
     this.startAt = ctx.currentTime + 0.1;
+    const scene = this.scene();
     for (const track of patch.tracks) {
+      const pattern = patternInScene(track, scene);
       this.clocks.set(track.id, {
-        nextStepIndex: startStepIndex(track),
+        nextStepIndex: pattern ? startStepIndex(track, pattern) : 0,
         nextStepTime: this.startAt,
+        resetTime: this.startAt,
       });
+    }
+    if (patch.followChain && !this.manualMode) {
+      const bars = patch.chain[this.chainPos]?.bars ?? 8;
+      this.sceneAdvanceTime = this.startAt + bars * BAR_TICKS * tickDuration(patch.bpm);
+    } else {
+      this.sceneAdvanceTime = null;
     }
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
     this.scheduler();
@@ -226,6 +325,46 @@ export class AudioEngine {
       this.timer = null;
     }
     this.clocks.clear();
+    this.pendingSceneId = '';
+    this.sceneAdvanceTime = null;
+  }
+
+  /** Ручное переключение сцены: применяется на ближайшей границе такта. */
+  setScene(id: string): void {
+    if (!this.playing || !this.ctx || !this.patch) return;
+    if (!this.patch.scenes.some((s) => s.id === id)) return;
+    if (id === this.sceneId && !this.pendingSceneId) {
+      // Повторный клик по звучащей сцене ничего не меняет.
+      if (this.sceneAdvanceTime === null) return;
+    }
+    this.pendingSceneId = id;
+    this.manualMode = true; // ручное вмешательство выходит из цепочки
+    this.sceneAdvanceTime = Math.max(
+      this.ctx.currentTime + 0.03,
+      this.nextBarTime(this.ctx.currentTime),
+    );
+  }
+
+  /** Вход в режим цепочки / выход из него на ходу. */
+  setFollowChain(on: boolean): void {
+    if (!this.playing || !this.patch || !this.ctx) return;
+    this.manualMode = !on;
+    if (on) {
+      this.pendingSceneId = '';
+      const pos = this.patch.chain.findIndex((it) => it.sceneId === this.sceneId);
+      this.chainPos = pos >= 0 ? pos : 0;
+      // Текущая сцена доигрывает до границы такта, дальше ведёт цепочка.
+      this.sceneAdvanceTime = Math.max(
+        this.ctx.currentTime + 0.03,
+        this.nextBarTime(this.ctx.currentTime),
+      );
+      const bars = this.patch.chain[this.chainPos]?.bars ?? 8;
+      // Расчёт времени следующего перехода от границы такта.
+      const t = this.sceneAdvanceTime;
+      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(this.patch.bpm);
+    } else {
+      this.sceneAdvanceTime = this.pendingSceneId ? this.sceneAdvanceTime : null;
+    }
   }
 
   private scheduler(): void {
@@ -233,40 +372,66 @@ export class AudioEngine {
     const patch = this.patch;
     if (!ctx || !patch || !this.noiseBuffer) return;
     const horizon = ctx.currentTime + SCHEDULE_AHEAD;
+
+    // Смены сцен внутри горизонта планирования.
+    let guard = 0;
+    while (this.sceneAdvanceTime !== null && this.sceneAdvanceTime < horizon && guard++ < 64) {
+      this.applyNextScene(this.sceneAdvanceTime);
+    }
+
+    const scene = this.scene();
     for (const track of patch.tracks) {
       const clock = this.clocks.get(track.id);
-      if (!clock) continue;
+      const pattern = patternInScene(track, scene);
+      if (!clock || !pattern) continue;
+      const chain = this.chains.get(track.id);
+      if (!chain) continue;
       const stepDur = stepDuration(track, patch.bpm);
-      let guard = 0;
-      while (clock.nextStepTime < horizon && guard++ < 512) {
-        const step = track.steps[clock.nextStepIndex % track.steps.length];
+      let g = 0;
+      while (clock.nextStepTime < horizon && g++ < 1024) {
+        const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         if (step && fires(step)) {
-          const chain = this.chains.get(track.id);
-          if (chain) triggerVoice(ctx, chain, this.noiseBuffer, track, step, clock.nextStepTime);
+          triggerVoice(ctx, chain, this.noiseBuffer, track, step, clock.nextStepTime);
         }
         clock.nextStepTime += stepDur;
-        clock.nextStepIndex = (clock.nextStepIndex + 1) % track.length;
+        clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
       }
     }
   }
 
-  /** Оффлайн-рендер патча в WAV: bars «тактов» по 16 базовых тиков. */
-  async renderToWav(patch: Patch, bars: number): Promise<Blob> {
-    const duration = bars * 16 * tickDuration(patch.bpm) + 1.0;
+  /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
+  async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8): Promise<Blob> {
+    const fixedItems = (
+      patch.followChain && patch.chain.length > 0
+        ? patch.chain
+        : [{ sceneId: fallbackSceneId, bars: fallbackBars }]
+    ).map((it) => ({ ...it, sceneId: validSceneId(patch, it.sceneId) }));
+
+    const tickDur = tickDuration(patch.bpm);
+    const duration = fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDur, 0) + 1.0;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
     const master = connectMaster(ctx, patch.masterVolume);
     const noise = makeNoiseBuffer(ctx);
+
     for (const track of patch.tracks) {
       const chain = makeChain(ctx, track, master);
       const stepDur = stepDuration(track, patch.bpm);
-      let idx = startStepIndex(track);
-      for (let t = 0.05; t < duration - 0.1; t += stepDur) {
-        const step = track.steps[idx % track.steps.length];
-        if (step && fires(step)) {
-          triggerVoice(ctx, chain, noise, track, step, t);
+      let t = 0.05;
+      for (const item of fixedItems) {
+        const scene = patch.scenes.find((s) => s.id === item.sceneId);
+        const pattern = patternInScene(track, scene);
+        if (!pattern) continue;
+        const itemDur = item.bars * BAR_TICKS * tickDur;
+        let idx = startStepIndex(track, pattern);
+        for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
+          const step = pattern.steps[idx % pattern.steps.length];
+          if (step && fires(step)) {
+            triggerVoice(ctx, chain, noise, track, step, tt);
+          }
+          idx = (idx + 1) % pattern.length;
         }
-        idx++;
+        t += itemDur;
       }
     }
     const rendered = await ctx.startRendering();
