@@ -7,7 +7,7 @@ import { isPatch, makeTrack, normalizePatch } from './types';
 import type { Patch, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 
-const STORAGE_KEY = 'barlow.patch.v3';
+const STORAGE_KEY = 'barlow.patch.v4';
 const WAV_BARS = 8;
 
 function loadPatch(): Patch {
@@ -93,7 +93,13 @@ export default function App() {
       tracks: p.tracks.map((t) => {
         if (t.id !== id) return t;
         const mask = euclid(t.length, pulses);
-        return { ...t, steps: t.steps.map((s, i) => ({ ...s, on: mask[i] })) };
+        return {
+          ...t,
+          steps: t.steps.map((s, i) => ({
+            ...s,
+            notes: mask[i] ? (s.notes.length > 0 ? s.notes : [0]) : [],
+          })),
+        };
       }),
     }));
   }, []);

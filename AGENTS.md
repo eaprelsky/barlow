@@ -27,9 +27,9 @@ Launchpad MK3 (Web MIDI) / VST.
 
 ## Грабли
 - Темп меняется только на стопе (математика playhead привязана к старту).
-- localStorage ключ `barlow.patch.v3` — при смене схемы патча поднимай версию
-  и обновляй `normalizePatch` (v2 c mul переводится в v3 автоматически).
-- Высота шага — индекс в track.scale (note), не множитель. Частота — `stepFreq`.
+- localStorage ключ `barlow.patch.v4` — при смене схемы патча поднимай версию
+  и обновляй `normalizePatch` (v2 mul и v3 note переводятся в v4 автоматически).
+- Высоты шага — индексы в track.scale (notes[]), несколько = аккорд. Частоты — `stepFreqs`.
 - Колесо над нотным станом — нативный слушатель `passive: false` в TrackRow:
   React `onWheel` пассивный, `preventDefault` в нём не работает.
 - TrackRow мемоизирован: колбэки из App должны быть стабильными (useCallback),

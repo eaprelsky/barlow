@@ -45,21 +45,25 @@ export const TrackRow = memo(function TrackRow({
     const max = preset.ratios.length - 1;
     change({
       scale: preset.ratios,
-      steps: track.steps.map((s) => ({ ...s, note: Math.min(s.note, max) })),
+      steps: track.steps.map((s) => ({ ...s, notes: s.notes.map((n) => Math.min(n, max)) })),
     });
   };
 
-  // Клик по ячейке: нота на этой высоте; повторный клик в ту же — снять.
+  // Клик по ячейке: добавить/убрать высоту в этом шаге. Несколько кликов
+  // по разным строкам колонки — аккорд; когда высот не остаётся — пауза.
   const clickCell = (col: number, row: number) => {
     changeSteps(
-      track.steps.map((s, j) =>
-        j === col ? (s.on && s.note === row ? { ...s, on: false } : { ...s, on: true, note: row }) : s,
-      ),
+      track.steps.map((s, j) => {
+        if (j !== col) return s;
+        const has = s.notes.includes(row);
+        const notes = has ? s.notes.filter((n) => n !== row) : [...s.notes, row].sort((a, b) => a - b);
+        return { ...s, notes };
+      }),
     );
   };
 
   const clearCell = (col: number) => {
-    changeSteps(track.steps.map((s, j) => (j === col ? { ...s, on: false } : s)));
+    changeSteps(track.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
 
   // Колесо над нотой: громкость, shift+колесо — вероятность.
@@ -76,7 +80,7 @@ export const TrackRow = memo(function TrackRow({
       const col = Number(cell.dataset.col);
       const { track: t, onChange: changeOne } = stateRef.current;
       const s = t.steps[col];
-      if (!s || !s.on) return;
+      if (!s || s.notes.length === 0) return;
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.1 : -0.1;
       changeOne(t.id, {
@@ -228,7 +232,8 @@ export const TrackRow = memo(function TrackRow({
                 .map((ratio, i) => ({ ratio, i }))
                 .reverse()
                 .map(({ ratio, i }) => {
-                  const on = s.on && s.note === i;
+                  const on = s.notes.includes(i);
+                  const chord = on && s.notes.length > 1;
                   return (
                     <button
                       key={i}
@@ -242,7 +247,7 @@ export const TrackRow = memo(function TrackRow({
                       style={on ? { opacity: String(0.55 + 0.45 * s.vel) } : undefined}
                       title={
                         on
-                          ? `${(track.freq * ratio).toFixed(1)} Гц (×${fmtRatio(ratio)}) · громкость ${Math.round(s.vel * 100)}% · вероятность ${Math.round(s.prob * 100)}%\nколесо — громкость · shift+колесо — вероятность · правый клик — стереть`
+                          ? `${(track.freq * ratio).toFixed(1)} Гц (×${fmtRatio(ratio)})${chord ? ` · аккорд, ${s.notes.length} ноты` : ''} · громкость ${Math.round(s.vel * 100)}% · вероятность ${Math.round(s.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · колесо — громкость · shift+колесо — вероятность · правый клик — стереть шаг`
                           : `${(track.freq * ratio).toFixed(1)} Гц (×${fmtRatio(ratio)}) — поставить ноту`
                       }
                       onClick={() => clickCell(col, i)}

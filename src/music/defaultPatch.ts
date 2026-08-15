@@ -13,10 +13,13 @@ function stepsFromMask(mask: boolean[]): Step[] {
   return mask.map((on) => makeStep(on));
 }
 
-// Проставить высоты on-шагам по порядку из списка индексов шкалы.
-function withMelody(steps: Step[], notes: number[]): Step[] {
+// Проставить высоты on-шагам по порядку; элемент списка — аккорд (индексы шкалы).
+function withMelody(steps: Step[], notes: number[][]): Step[] {
   let k = 0;
-  return steps.map((s) => (s.on ? { ...s, note: notes[k++] ?? 0 } : s));
+  return steps.map((s) => {
+    if (s.notes.length === 0) return s;
+    return { ...s, notes: notes[k++] ?? [0] };
+  });
 }
 
 // Дефолтный патч — сразу слышная полиритмия: циклы 16, 9, 7 и 5 шагов
@@ -63,7 +66,7 @@ export function defaultPatch(): Patch {
       decay: 0.18,
       filterFreq: 4200,
       volume: 0.55,
-      steps: withMelody(stepsFromMask(euclid(7, 3)), [2, 4, 0, 5]),
+      steps: withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]]),
     }),
     makeTrack({
       id: id(),
@@ -76,7 +79,7 @@ export function defaultPatch(): Patch {
       decay: 0.8,
       filterFreq: 500,
       volume: 0.85,
-      steps: withMelody(stepsFromMask(euclid(5, 2)), [0, 1, 0]),
+      steps: withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]),
     }),
   ];
   return { version: 3, bpm: 118, tracks };

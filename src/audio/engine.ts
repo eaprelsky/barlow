@@ -10,7 +10,7 @@
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
 import type { Patch, Step, Track } from '../types';
-import { stepFreq } from '../types';
+import { stepFreqs } from '../types';
 import { audioBufferToWav } from './wav';
 
 const LOOKAHEAD_MS = 25;
@@ -47,7 +47,7 @@ interface TrackChain {
 }
 
 function fires(step: Step): boolean {
-  return step.on && Math.random() < step.prob;
+  return step.notes.length > 0 && Math.random() < step.prob;
 }
 
 function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
@@ -89,7 +89,8 @@ function triggerVoice(
   step: Step,
   time: number,
 ): void {
-  const freq = stepFreq(track, step);
+  const freqs = stepFreqs(track, step);
+  if (freqs.length === 0) return;
   const peak = Math.max(0.0001, step.vel * 0.9);
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(0, time);
@@ -105,12 +106,15 @@ function triggerVoice(
     src.connect(amp);
     src.stop(stopAt);
   } else {
-    const osc = ctx.createOscillator();
-    osc.type = track.waveform;
-    osc.frequency.setValueAtTime(freq, time);
-    osc.connect(amp);
-    osc.start(time);
-    osc.stop(stopAt);
+    // Аккорд: по осциллятору на ноту, огибающая общая.
+    for (const f of freqs) {
+      const osc = ctx.createOscillator();
+      osc.type = track.waveform;
+      osc.frequency.setValueAtTime(f, time);
+      osc.connect(amp);
+      osc.start(time);
+      osc.stop(stopAt);
+    }
   }
 }
 

@@ -12,10 +12,9 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
 };
 
 export interface Step {
-  on: boolean;
-  // Индекс в шкале трека (track.scale). 0 — тоника.
-  note: number;
-  // Громкость шага 0..1.
+  // Индексы шкалы, звучащие на этом шаге. Пусто — пауза, несколько — аккорд.
+  notes: number[];
+  // Громкость шага 0..1 (весь аккорд целиком).
   vel: number;
   // Вероятность срабатывания шага 0..1 — живой, дышащий ритм.
   prob: number;
@@ -53,10 +52,15 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 3;
+export const PATCH_VERSION = 4;
 
 export function makeStep(on = false, note = 0, vel = 0.8, prob = 1): Step {
-  return { on, note, vel, prob };
+  return { notes: on ? [note] : [], vel, prob };
+}
+
+/** Шаг звучит, если на нём есть хотя бы одна нота. */
+export function stepOn(step: Step): boolean {
+  return step.notes.length > 0;
 }
 
 export function makeTrack(partial: Partial<Track> & { id: string; name: string }): Track {
@@ -80,11 +84,13 @@ export function makeTrack(partial: Partial<Track> & { id: string; name: string }
   };
 }
 
-/** Частота конкретного шага, Гц. */
-export function stepFreq(track: Track, step: Step): number {
-  const i = Math.round(step.note);
-  const ratio = track.scale[Math.min(Math.max(i, 0), track.scale.length - 1)] ?? 1;
-  return track.freq * ratio;
+/** Частоты всех нот шага (аккорда), Гц. Пусто — пауза. */
+export function stepFreqs(track: Track, step: Step): number[] {
+  const max = track.scale.length - 1;
+  return step.notes.map((i) => {
+    const idx = Math.min(Math.max(Math.round(i), 0), max);
+    return track.freq * (track.scale[idx] ?? 1);
+  });
 }
 
 // Поверхностная валидация при импорте JSON (zod подключим, когда схема разрастётся).
@@ -99,8 +105,8 @@ export function isPatch(value: unknown): value is Patch {
 }
 
 // Доводит патч любой версии до валидного состояния текущей схемы.
-// Патчи v2 (с множителями mul) переводятся в v3 автоматически: шкала
-// строится из встречающихся множителей, так что старое звучание сохраняется.
+// v2 (множители mul) и v3 (одиночные note) переводятся в v4 автоматически,
+// звучание сохраняется.
 export function normalizePatch(p: Patch): Patch {
   const clamp = (v: number, lo: number, hi: number, fallback: number) =>
     typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
@@ -126,17 +132,27 @@ export function normalizePatch(p: Patch): Patch {
         scale = [...set].sort((a, b) => a - b);
       }
       if (scale.length === 0) scale = [1];
+      const maxNote = scale.length - 1;
 
       const steps = Array.from({ length }, (_, i) => {
-        const s = rawSteps[i] as Partial<Step> & { mul?: number } | undefined;
-        let note = typeof s?.note === 'number' ? Math.round(s.note) : 0;
-        if (typeof s?.mul === 'number' && s.mul > 0) {
-          note = scale.indexOf(s.mul);
-          if (note < 0) note = 0;
+        const s = rawSteps[i] as Partial<Step> & { mul?: number; note?: number; on?: boolean } | undefined;
+        const clampNote = (n: number) => Math.min(Math.max(Math.round(n), 0), maxNote);
+
+        let notes: number[];
+        if (Array.isArray(s?.notes)) {
+          notes = [...new Set(s.notes.filter((n): n is number => typeof n === 'number').map(clampNote))];
+        } else {
+          // v3/v2: одиночная нота.
+          let note = typeof s?.note === 'number' ? clampNote(s.note) : 0;
+          if (typeof s?.mul === 'number' && s.mul > 0) {
+            const idx = scale.indexOf(s.mul);
+            if (idx >= 0) note = idx;
+          }
+          notes = s?.on ? [note] : [];
         }
+
         return {
-          on: !!s?.on,
-          note: Math.min(Math.max(note, 0), scale.length - 1),
+          notes,
           vel: clamp(s?.vel ?? 0.8, 0, 1, 0.8),
           prob: clamp(s?.prob ?? 1, 0, 1, 1),
         };
