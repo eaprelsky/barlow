@@ -5,8 +5,12 @@
 // У каждого трека свои часы: шаг длится rate * (60/bpm/4) секунд,
 // позиция считается по единой формуле stepIndexAt, поэтому движок
 // и UI никогда не расходятся.
+//
+// Голос (triggerVoice) отвязан от конкретного контекста: им же пользуется
+// оффлайн-рендер в WAV через OfflineAudioContext.
 
-import type { Patch, Track } from '../types';
+import type { Patch, Step, Track } from '../types';
+import { audioBufferToWav } from './wav';
 
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
@@ -20,11 +24,15 @@ export function stepDuration(track: Track, bpm: number): number {
   return track.rate * tickDuration(bpm);
 }
 
+export function startStepIndex(track: Track): number {
+  return ((track.phase % track.length) + track.length) % track.length;
+}
+
 // Позиция трека в момент ctxTime (для playhead в UI). -1 — ещё не стартовали.
 export function stepIndexAt(track: Track, ctxTime: number, startAt: number, bpm: number): number {
   const elapsed = ctxTime - startAt;
   if (elapsed < 0) return -1;
-  return Math.floor(elapsed / stepDuration(track, bpm)) % track.length;
+  return (Math.floor(elapsed / stepDuration(track, bpm)) + track.phase) % track.length;
 }
 
 interface TrackClock {
@@ -37,10 +45,77 @@ interface TrackChain {
   gain: GainNode;
 }
 
+function fires(step: Step): boolean {
+  return step.on && Math.random() < step.prob;
+}
+
+function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const len = Math.floor(ctx.sampleRate * 2);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = track.filterFreq;
+  filter.Q.value = 0.8;
+  const gain = ctx.createGain();
+  gain.gain.value = track.volume;
+  filter.connect(gain);
+  gain.connect(dest);
+  return { filter, gain };
+}
+
+function connectMaster(ctx: BaseAudioContext): GainNode {
+  const master = ctx.createGain();
+  master.gain.value = 0.9;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.ratio.value = 12;
+  master.connect(limiter);
+  limiter.connect(ctx.destination);
+  return master;
+}
+
+function triggerVoice(
+  ctx: BaseAudioContext,
+  chain: TrackChain,
+  noise: AudioBuffer,
+  track: Track,
+  step: Step,
+  time: number,
+): void {
+  const freq = track.freq * (step.mul || 1);
+  const peak = Math.max(0.0001, step.vel * 0.9);
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(0, time);
+  amp.gain.linearRampToValueAtTime(peak, time + track.attack);
+  amp.gain.exponentialRampToValueAtTime(0.0001, time + track.attack + track.decay);
+  amp.connect(chain.filter);
+  const stopAt = time + track.attack + track.decay + 0.05;
+
+  if (track.waveform === 'noise') {
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    src.start(time, Math.random() * 1.5, stopAt - time);
+    src.connect(amp);
+    src.stop(stopAt);
+  } else {
+    const osc = ctx.createOscillator();
+    osc.type = track.waveform;
+    osc.frequency.setValueAtTime(freq, time);
+    osc.connect(amp);
+    osc.start(time);
+    osc.stop(stopAt);
+  }
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private limiter: DynamicsCompressorNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
   private clocks = new Map<string, TrackClock>();
@@ -64,17 +139,8 @@ export class AudioEngine {
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
       this.ctx = new AudioContext();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = 0.9;
-      this.limiter = this.ctx.createDynamicsCompressor();
-      this.limiter.threshold.value = -6;
-      this.limiter.ratio.value = 12;
-      this.master.connect(this.limiter);
-      this.limiter.connect(this.ctx.destination);
-      const len = this.ctx.sampleRate * 2;
-      this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const data = this.noiseBuffer.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      this.master = connectMaster(this.ctx);
+      this.noiseBuffer = makeNoiseBuffer(this.ctx);
     }
     return this.ctx;
   }
@@ -82,15 +148,17 @@ export class AudioEngine {
   /** Обновить данные патча без остановки: движок читает их на каждом шаге. */
   setPatch(patch: Patch): void {
     this.patch = patch;
-    if (!this.ctx) return;
+    if (!this.ctx || !this.master) return;
     // Актуализируем цепочки: параметры существующих, disconnect удалённых.
     const alive = new Set<string>();
     for (const track of patch.tracks) {
       alive.add(track.id);
-      const chain = this.chains.get(track.id) ?? this.createChain(track.id);
-      chain.filter.frequency.setTargetAtTime(
-        track.filterFreq, this.ctx.currentTime, 0.03,
-      );
+      let chain = this.chains.get(track.id);
+      if (!chain) {
+        chain = makeChain(this.ctx, track, this.master);
+        this.chains.set(track.id, chain);
+      }
+      chain.filter.frequency.setTargetAtTime(track.filterFreq, this.ctx.currentTime, 0.03);
       chain.gain.gain.setTargetAtTime(track.volume, this.ctx.currentTime, 0.03);
     }
     for (const [id, chain] of this.chains) {
@@ -103,19 +171,6 @@ export class AudioEngine {
     }
   }
 
-  private createChain(id: string): TrackChain {
-    const ctx = this.ensureCtx();
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.Q.value = 0.8;
-    const gain = ctx.createGain();
-    filter.connect(gain);
-    gain.connect(this.master!);
-    const chain = { filter, gain };
-    this.chains.set(id, chain);
-    return chain;
-  }
-
   play(patch: Patch): void {
     this.stop();
     const ctx = this.ensureCtx();
@@ -124,7 +179,10 @@ export class AudioEngine {
     this.setPatch(patch);
     this.startAt = ctx.currentTime + 0.1;
     for (const track of patch.tracks) {
-      this.clocks.set(track.id, { nextStepIndex: 0, nextStepTime: this.startAt });
+      this.clocks.set(track.id, {
+        nextStepIndex: startStepIndex(track),
+        nextStepTime: this.startAt,
+      });
     }
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
     this.scheduler();
@@ -141,7 +199,7 @@ export class AudioEngine {
   private scheduler(): void {
     const ctx = this.ctx;
     const patch = this.patch;
-    if (!ctx || !patch) return;
+    if (!ctx || !patch || !this.noiseBuffer) return;
     const horizon = ctx.currentTime + SCHEDULE_AHEAD;
     for (const track of patch.tracks) {
       const clock = this.clocks.get(track.id);
@@ -149,10 +207,10 @@ export class AudioEngine {
       const stepDur = stepDuration(track, patch.bpm);
       let guard = 0;
       while (clock.nextStepTime < horizon && guard++ < 512) {
-        const idx = clock.nextStepIndex % track.steps.length;
-        const step = track.steps[idx];
-        if (step && step.on) {
-          this.trigger(track, step, clock.nextStepTime);
+        const step = track.steps[clock.nextStepIndex % track.steps.length];
+        if (step && fires(step)) {
+          const chain = this.chains.get(track.id);
+          if (chain) triggerVoice(ctx, chain, this.noiseBuffer, track, step, clock.nextStepTime);
         }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % track.length;
@@ -160,31 +218,26 @@ export class AudioEngine {
     }
   }
 
-  private trigger(track: Track, step: { mul: number; vel: number }, time: number): void {
-    const ctx = this.ctx!;
-    const chain = this.chains.get(track.id) ?? this.createChain(track.id);
-    const freq = track.freq * (step.mul || 1);
-    const peak = Math.max(0.0001, step.vel * 0.9);
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(0, time);
-    amp.gain.linearRampToValueAtTime(peak, time + track.attack);
-    amp.gain.exponentialRampToValueAtTime(0.0001, time + track.attack + track.decay);
-    amp.connect(chain.filter);
-    const stopAt = time + track.attack + track.decay + 0.05;
-
-    if (track.waveform === 'noise') {
-      const src = ctx.createBufferSource();
-      src.buffer = this.noiseBuffer!;
-      src.start(time, Math.random() * 1.5, stopAt - time);
-      src.connect(amp);
-      src.stop(stopAt);
-    } else {
-      const osc = ctx.createOscillator();
-      osc.type = track.waveform;
-      osc.frequency.setValueAtTime(freq, time);
-      osc.connect(amp);
-      osc.start(time);
-      osc.stop(stopAt);
+  /** Оффлайн-рендер патча в WAV: bars «тактов» по 16 базовых тиков. */
+  async renderToWav(patch: Patch, bars: number): Promise<Blob> {
+    const duration = bars * 16 * tickDuration(patch.bpm) + 1.0;
+    const sampleRate = 44100;
+    const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+    const master = connectMaster(ctx);
+    const noise = makeNoiseBuffer(ctx);
+    for (const track of patch.tracks) {
+      const chain = makeChain(ctx, track, master);
+      const stepDur = stepDuration(track, patch.bpm);
+      let idx = startStepIndex(track);
+      for (let t = 0.05; t < duration - 0.1; t += stepDur) {
+        const step = track.steps[idx % track.steps.length];
+        if (step && fires(step)) {
+          triggerVoice(ctx, chain, noise, track, step, t);
+        }
+        idx++;
+      }
     }
+    const rendered = await ctx.startRendering();
+    return audioBufferToWav(rendered);
   }
 }

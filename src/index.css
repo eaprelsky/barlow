@@ -155,6 +155,17 @@ select:focus {
   background: var(--step);
   border: 1px solid var(--border);
   position: relative;
+  overflow: hidden;
+}
+
+.pbar {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  height: 3px;
+  max-width: calc(100% - 4px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
 }
 
 .step.on {

@@ -1,9 +1,9 @@
-import { useContext } from 'react';
+import { useContext, useEffect, useRef } from 'react';
 import type { Step, Track, Waveform } from '../types';
 import { makeStep } from '../types';
+import { MUL_CYCLE } from '../music/mutate';
 import { PlayheadContext } from './PlayheadContext';
 
-const MUL_CYCLE = [1, 2, 1.5, 0.5, 3, 0.75];
 const WAVEFORMS: Waveform[] = ['sine', 'triangle', 'square', 'sawtooth', 'noise'];
 
 interface Props {
@@ -25,18 +25,50 @@ export function TrackRow({ track, onChange, onRemove }: Props) {
   };
 
   const toggleStep = (i: number) => {
-    const steps = track.steps.map((s, j) => (j === i ? { ...s, on: !s.on } : s));
-    setSteps(steps);
+    setSteps(track.steps.map((s, j) => (j === i ? { ...s, on: !s.on } : s)));
   };
 
   const cycleMul = (i: number) => {
-    const steps = track.steps.map((s, j) => {
-      if (j !== i) return s;
-      const next = MUL_CYCLE[(MUL_CYCLE.indexOf(s.mul) + 1) % MUL_CYCLE.length];
-      return { ...s, mul: next };
-    });
-    setSteps(steps);
+    setSteps(
+      track.steps.map((s, j) => {
+        if (j !== i) return s;
+        const next = MUL_CYCLE[(MUL_CYCLE.indexOf(s.mul) + 1) % MUL_CYCLE.length];
+        return { ...s, mul: next };
+      }),
+    );
   };
+
+  // Колесо над шагом: громкость, shift+колесо — вероятность.
+  // Нативный слушатель с passive:false — React-овый onWheel пассивный,
+  // preventDefault в нём не работает и страница скроллится.
+  const stepsRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef({ track, onChange });
+  stateRef.current = { track, onChange };
+  useEffect(() => {
+    const el = stepsRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.step');
+      if (!btn) return;
+      const i = Number(btn.dataset.i);
+      const { track: t, onChange: change } = stateRef.current;
+      const s = t.steps[i];
+      if (!s || !s.on) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      change({
+        ...t,
+        steps: t.steps.map((st, j) => {
+          if (j !== i) return st;
+          return e.shiftKey
+            ? { ...st, prob: Math.min(1, Math.max(0.1, st.prob + delta)) }
+            : { ...st, vel: Math.min(1, Math.max(0.1, st.vel + delta)) };
+        }),
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const num = (v: string, fallback: number) => {
     const n = Number(v);
@@ -64,6 +96,19 @@ export function TrackRow({ track, onChange, onRemove }: Props) {
             type="number" min={0.25} max={32} step={0.25} value={track.rate}
             onChange={(e) =>
               onChange({ ...track, rate: Math.max(0.25, num(e.target.value, track.rate)) })
+            }
+          />
+        </label>
+        <label>
+          ph
+          <input
+            type="number" min={-64} max={64} value={track.phase}
+            title="Сдвиг цикла в шагах — на стопе или рестарте"
+            onChange={(e) =>
+              onChange({
+                ...track,
+                phase: Math.round(Math.max(-64, Math.min(64, num(e.target.value, track.phase)))),
+              })
             }
           />
         </label>
@@ -116,10 +161,11 @@ export function TrackRow({ track, onChange, onRemove }: Props) {
         </label>
         <button className="remove" onClick={onRemove} title="Удалить трек">×</button>
       </div>
-      <div className="steps">
+      <div className="steps" ref={stepsRef}>
         {track.steps.map((s, i) => (
           <button
             key={i}
+            data-i={i}
             className={[
               'step',
               s.on ? 'on' : '',
@@ -129,7 +175,7 @@ export function TrackRow({ track, onChange, onRemove }: Props) {
             style={s.on ? { opacity: String(0.55 + 0.45 * s.vel) } : undefined}
             title={
               s.on
-                ? `mul ${s.mul} × ${track.freq.toFixed(1)} Hz = ${(track.freq * s.mul).toFixed(1)} Hz\nПКМ — сменить высоту, колёсико — громкость`
+                ? `mul ${s.mul} × ${track.freq.toFixed(1)} Hz = ${(track.freq * s.mul).toFixed(1)} Hz\nПКМ — высота, колесо — громкость, shift+колесо — вероятность (${Math.round(s.prob * 100)}%)`
                 : 'включить'
             }
             onClick={() => toggleStep(i)}
@@ -137,16 +183,11 @@ export function TrackRow({ track, onChange, onRemove }: Props) {
               e.preventDefault();
               cycleMul(i);
             }}
-            onWheel={(e) => {
-              if (!s.on) return;
-              e.preventDefault();
-              const delta = e.deltaY < 0 ? 0.1 : -0.1;
-              const steps = track.steps.map((st, j) =>
-                j === i ? { ...st, vel: Math.min(1, Math.max(0.1, st.vel + delta)) } : st,
-              );
-              setSteps(steps);
-            }}
-          />
+          >
+            {s.on && s.prob < 1 && (
+              <span className="pbar" style={{ width: `${Math.round(s.prob * 100)}%` }} />
+            )}
+          </button>
         ))}
       </div>
     </div>

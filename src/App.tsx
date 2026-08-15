@@ -2,19 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
-import { isPatch, makeTrack } from './types';
+import { mutateTrack } from './music/mutate';
+import { isPatch, makeTrack, normalizePatch } from './types';
 import type { Patch, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { PlayheadContext } from './components/PlayheadContext';
 
-const STORAGE_KEY = 'barlow.patch.v1';
+const STORAGE_KEY = 'barlow.patch.v2';
+const WAV_BARS = 8;
 
 function loadPatch(): Patch {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
-      if (isPatch(parsed)) return parsed;
+      if (isPatch(parsed)) return normalizePatch(parsed);
     }
   } catch {
     /* повреждённый автосейв — начинаем с дефолта */
@@ -25,6 +27,7 @@ function loadPatch(): Patch {
 export default function App() {
   const [patch, setPatch] = useState<Patch>(loadPatch);
   const [playing, setPlaying] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioEngine | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -98,6 +101,12 @@ export default function App() {
       }),
     }));
 
+  const mutate = (id: string) =>
+    setPatch((p) => ({
+      ...p,
+      tracks: p.tracks.map((t) => (t.id === id ? mutateTrack(t) : t)),
+    }));
+
   const exportPatch = () => {
     const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -111,7 +120,7 @@ export default function App() {
     void file.text().then((text) => {
       try {
         const parsed: unknown = JSON.parse(text);
-        if (isPatch(parsed)) setPatch(parsed);
+        if (isPatch(parsed)) setPatch(normalizePatch(parsed));
         else alert('Файл не похож на патч barlow');
       } catch {
         alert('Не удалось прочитать JSON');
@@ -125,6 +134,21 @@ export default function App() {
       setPlaying(false);
     }
     setPatch(defaultPatch());
+  };
+
+  const renderWav = async () => {
+    if (rendering) return;
+    setRendering(true);
+    try {
+      const blob = await engine.renderToWav(patch, WAV_BARS);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `barlow-${WAV_BARS}bars.wav`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setRendering(false);
+    }
   };
 
   return (
@@ -147,9 +171,14 @@ export default function App() {
               }}
             />
           </label>
-          <span className="hint">ЛКМ — вкл/выкл · ПКМ — высота · колесо — громкость шага</span>
+          <span className="hint">
+            ЛКМ — вкл/выкл · ПКМ — высота · колесо — громкость · shift+колесо — вероятность
+          </span>
           <span className="spacer" />
           <button onClick={addTrack}>+ трек</button>
+          <button onClick={renderWav} disabled={rendering} title={`Оффлайн-рендер ${WAV_BARS} тактов`}>
+            {rendering ? 'рендер…' : '⭘ wav'}
+          </button>
           <button onClick={exportPatch}>export</button>
           <button onClick={() => fileRef.current?.click()}>import</button>
           <button onClick={resetPatch} title="Сбросить к дефолтному полиритму">reset</button>
@@ -167,7 +196,11 @@ export default function App() {
           {patch.tracks.map((t) => (
             <div className="track-wrap" key={t.id}>
               <TrackRow track={t} onChange={(nt) => changeTrack(t.id, nt)} onRemove={() => removeTrack(t.id)} />
-              <EuclidRow length={t.length} onApply={(pulses) => applyEuclid(t.id, pulses)} />
+              <OpsRow
+                length={t.length}
+                onApplyEuclid={(pulses) => applyEuclid(t.id, pulses)}
+                onMutate={() => mutate(t.id)}
+              />
             </div>
           ))}
           {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
@@ -181,7 +214,15 @@ export default function App() {
   );
 }
 
-function EuclidRow({ length, onApply }: { length: number; onApply: (pulses: number) => void }) {
+function OpsRow({
+  length,
+  onApplyEuclid,
+  onMutate,
+}: {
+  length: number;
+  onApplyEuclid: (pulses: number) => void;
+  onMutate: () => void;
+}) {
   const [pulses, setPulses] = useState(3);
   return (
     <div className="euclid">
@@ -195,7 +236,10 @@ function EuclidRow({ length, onApply }: { length: number; onApply: (pulses: numb
           }}
         />
       </label>
-      <button onClick={() => onApply(pulses)}>spread</button>
+      <button onClick={() => onApplyEuclid(pulses)}>spread</button>
+      <button onClick={onMutate} title="Случайно подвинуть пару шагов: вкл/выкл, высота, вероятность, громкость">
+        mut
+      </button>
     </div>
   );
 }
