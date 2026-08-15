@@ -58,6 +58,9 @@ export interface Pattern {
   // Длина цикла в шагах. Не обязана делить такт — отсюда полиритмия.
   length: number;
   steps: Step[];
+  // Скорость шага этой партии (в базовых 1/16 тиках) — переопределяет
+  // шаг трека. Undefined — наследуется с трека.
+  rate?: number;
   // Паттерн-родитель для форков (навигация «вариация от…»).
   forkedFrom?: string;
   // Партия = ноты + свои ручки. Undefined — берётся с трека.
@@ -185,7 +188,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 15;
+export const PATCH_VERSION = 16;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -402,6 +405,7 @@ export function normalizePatch(p: Patch): Patch {
         forkedFrom?: string;
         volume?: number;
         pan?: number;
+        rate?: unknown;
         mods?: unknown;
       }[];
       if (Array.isArray(t.patterns) && t.patterns.length > 0) {
@@ -446,6 +450,10 @@ export function normalizePatch(p: Patch): Patch {
             forkedFrom: pt.forkedFrom,
             volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
+            rate:
+              typeof pt.rate === 'number' && Number.isFinite(pt.rate)
+                ? clamp(pt.rate, 0.25, 32, 1)
+                : undefined,
             mods: mods.length > 0 ? mods : undefined,
             muted: !!(pt as { muted?: unknown }).muted,
             solo: !!(pt as { solo?: unknown }).solo,

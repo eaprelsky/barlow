@@ -25,8 +25,13 @@ export function tickDuration(bpm: number): number {
   return 60 / bpm / 4;
 }
 
-export function stepDuration(track: Track, bpm: number): number {
-  return track.rate * tickDuration(bpm);
+/** Скорость шага: эскиз может переопределять шаг трека (как громкость/панораму). */
+export function effectiveRate(track: Track, pattern: Pattern | undefined): number {
+  return pattern?.rate ?? track.rate;
+}
+
+export function stepDuration(track: Track, bpm: number, pattern?: Pattern): number {
+  return effectiveRate(track, pattern) * tickDuration(bpm);
 }
 
 export function startStepIndex(track: Track, pattern: Pattern): number {
@@ -44,7 +49,7 @@ export function stepIndexAt(
 ): number {
   const elapsed = ctxTime - resetTime;
   if (elapsed < 0) return -1;
-  return (Math.floor(elapsed / stepDuration(track, bpm)) + track.phase) % pattern.length;
+  return (Math.floor(elapsed / stepDuration(track, bpm, pattern)) + track.phase) % pattern.length;
 }
 
 interface TrackClock {
@@ -879,7 +884,7 @@ export class AudioEngine {
       }
       if (!chain) continue;
       chain = this.applyTrackParams(track.id, chain, track, eff);
-      const stepDur = stepDuration(track, patch.bpm);
+      const stepDur = stepDuration(track, patch.bpm, pattern);
       let g = 0;
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
@@ -913,7 +918,6 @@ export class AudioEngine {
     const noise = makeNoiseBuffer(ctx);
 
     for (const track of patch.tracks) {
-      const stepDur = stepDuration(track, patch.bpm);
       let t = 0.05;
       let prevVoice: Voice | null = null;
       for (const item of fixedItems) {
@@ -921,6 +925,8 @@ export class AudioEngine {
         const pattern = patternInScene(track, scene);
         if (!pattern) continue;
         const audible = audibleSet(patch, scene).has(pattern.id);
+        // Шаг — свой у каждого эскиза (override или шаг трека).
+        const stepDur = stepDuration(track, patch.bpm, pattern);
         // Цепочка на каждую сцену: эскиз может нести свои ручки и модуляции.
         // Не dispose-им: запланированные ноты привязаны к узлам.
         const eff = effectiveParams(track, pattern);

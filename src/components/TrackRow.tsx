@@ -780,6 +780,47 @@ export const TrackRow = memo(function TrackRow({
                 <span className="pan-label">{panLabel(pattern.pan ?? track.pan)}</span>
               </span>
             </label>
+            <label
+              title={
+                pattern.rate === undefined
+                  ? `Скорость шагов этой партии. Сейчас — как у трека (×${track.rate}); выбор переопределит только для этого эскиза`
+                  : 'Скорость шагов этой партии — своя, пока играет эскиз. «с трека» вернёт общий шаг'
+              }
+            >
+              шаг эскиза
+              <span className="inline">
+                <select
+                  value={
+                    RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
+                      ? String(pattern.rate ?? track.rate)
+                      : 'custom'
+                  }
+                  onChange={(e) => {
+                    if (e.target.value === 'reset') onPatternChange(track.id, pattern.id, { rate: undefined });
+                    else if (e.target.value !== 'custom')
+                      onPatternChange(track.id, pattern.id, { rate: Number(e.target.value) });
+                  }}
+                >
+                  {RATE_OPTIONS.map((o) => (
+                    <option key={o.v} value={String(o.v)}>{o.label}</option>
+                  ))}
+                  {pattern.rate !== undefined && (
+                    <option value="reset">как у трека (×{track.rate})</option>
+                  )}
+                  {!RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate)) && (
+                    <option value="custom">своя ×{pattern.rate ?? track.rate}</option>
+                  )}
+                </select>
+                {pattern.rate !== undefined && (
+                  <button
+                    title="Убрать переопределение: этот эскиз будет играть с шагом трека"
+                    onClick={() => onPatternChange(track.id, pattern.id, { rate: undefined })}
+                  >
+                    с трека
+                  </button>
+                )}
+              </span>
+            </label>
           </div>
           </>
           )}
