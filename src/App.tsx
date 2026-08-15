@@ -54,10 +54,15 @@ function uniqueName(base: string, used: string[]): string {
   }
 }
 
+// Имя нового эскиза: первая свободная буква дорожки (B, C, …).
+// Штрихи форков («A′») не занимают букву — базовое имя считается «A».
 const nextPatternName = (track: Track): string => {
-  // A, B, C … Z, дальше — просто счётчик.
-  const last = track.patterns.length;
-  return last < 26 ? String.fromCharCode(65 + last) : `P${last + 1}`;
+  const used = new Set(track.patterns.map((p) => p.name.replace(/′+$/, '').trim()));
+  for (let i = 1; i < 26; i++) {
+    const candidate = String.fromCharCode(65 + i);
+    if (!used.has(candidate)) return candidate;
+  }
+  return `P${track.patterns.length + 1}`;
 };
 
 export default function App() {
@@ -558,8 +563,8 @@ export default function App() {
       <footer>
         <span>
           клик по клетке — нота · столбик нот — аккорд · номер шага — громкость
-          и вероятность · белая полоска на ноте — вероятность · правый клик —
-          стереть шаг · правый клик по эскизу — форк (вариация)
+          и вероятность · правый клик по эскизу — форк · эскизы у каждой
+          дорожки свои, буквы — имена в пределах дорожки
         </span>
         <span>независимые циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ')}</span>
       </footer>
