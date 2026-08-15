@@ -25,6 +25,7 @@ interface Props {
   onSelectPattern: (trackId: string, patternId: string) => void;
   onAddPattern: (trackId: string) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
+  onRemovePattern: (trackId: string, patternId: string) => void;
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
@@ -45,6 +46,7 @@ export const TrackRow = memo(function TrackRow({
   onSelectPattern,
   onAddPattern,
   onForkPattern,
+  onRemovePattern,
   onEuclid,
   onMutate,
   onRemove,
@@ -106,13 +108,23 @@ export const TrackRow = memo(function TrackRow({
     changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
   };
 
-  const updateMod = (i: number, upd: Partial<Mod>) =>
-    change({ mods: track.mods.map((m, j) => (j === i ? { ...m, ...upd } : m)) });
+  const updateMod = (i: number, upd: Partial<Mod>) => {
+    const base = pattern.mods ?? track.mods;
+    changePatternMods(base.map((m, j) => (j === i ? { ...m, ...upd } : m)));
+  };
 
-  const addMod = () =>
-    change({ mods: [...track.mods, { target: 'pan', shape: 'sine', rate: 0.2, depth: 0.5 }] });
+  const addMod = () => {
+    const base = pattern.mods ?? track.mods;
+    changePatternMods([...base, { target: 'pan', shape: 'sine', rate: 0.2, depth: 0.5 }]);
+  };
 
-  const removeMod = (i: number) => change({ mods: track.mods.filter((_, j) => j !== i) });
+  const removeMod = (i: number) =>
+    changePatternMods((pattern.mods ?? track.mods).filter((_, j) => j !== i));
+
+  // Модуляции живут на эскизе: первая правка переносит наследованный
+  // с трека список в этот эскиз (правки дальше — только здесь).
+  const changePatternMods = (mods: Mod[]) =>
+    onPatternChange(track.id, pattern.id, { mods });
 
   // Колесо над нотой — шорткат для ползунков панели шага.
   // Нативный слушатель с passive:false — React-овый onWheel пассивный,
@@ -223,23 +235,35 @@ export const TrackRow = memo(function TrackRow({
             </select>
           </label>
           {track.waveform === 'sample' ? (
-            <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
-              сэмпл
-              <span className="inline">
-                <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
-                  {track.sampleName ?? 'не выбран'}
+            <>
+              <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
+                сэмпл
+                <span className="inline">
+                  <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
+                    {track.sampleName ?? 'не выбран'}
+                  </span>
+                  <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
+                  <input
+                    ref={sampleFileRef} type="file" accept="audio/*" hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) loadSampleFile(f);
+                      e.target.value = '';
+                    }}
+                  />
                 </span>
-                <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
-                <input
-                  ref={sampleFileRef} type="file" accept="audio/*" hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) loadSampleFile(f);
-                    e.target.value = '';
-                  }}
-                />
-              </span>
-            </label>
+              </label>
+              <label title="Шкала = набор скоростей воспроизведения сэмпла (питч): пентатоника даст музыкальные ступени, «гармоники 1–8» — питч-стек">
+                шкала питча
+                <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
+                  {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
+                    .filter((n, i, arr) => arr.indexOf(n) === i)
+                    .map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                </select>
+              </label>
+            </>
           ) : (
             <>
               <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
@@ -270,19 +294,9 @@ export const TrackRow = memo(function TrackRow({
           </label>
         </div>
         <div className="group">
-          <label>
+          <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать в «ещё…»">
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
-          </label>
-          <label title="Панорама: слева — центр — справа">
-            панорама
-            <span className="inline">
-              <input
-                type="range" min={0} max={1} step={0.05} value={track.pan}
-                onChange={(e) => change({ pan: Number(e.target.value) })}
-              />
-              <span className="pan-label">{panLabel(track.pan)}</span>
-            </span>
           </label>
         </div>
         <div className="group ops">
@@ -348,14 +362,33 @@ export const TrackRow = memo(function TrackRow({
               />
             </label>
           </div>
-          <div className="group mods-group">
-            <label title="Модуляции: LFO непрерывно качает выбранный параметр. Панорама + синус 0.2 Гц = пинг-понг между ушами">
-              модуляции (LFO)
+          <div className="group">
+            <label title="Эскиз = партия: свои ручки, пока он играет (в этой и других сценах, где он звучит)">
+              громкость эскиза
+              <NumField
+                value={pattern.volume ?? track.volume} min={0} max={1} step={0.05}
+                onChange={(volume) => onPatternChange(track.id, pattern.id, { volume })}
+              />
             </label>
-            {track.mods.length === 0 && (
+            <label title="Панорама этого эскиза: слева — центр — справа. Синус-LFO 0.2 Гц на панораме ниже — пинг-понг">
+              панорама эскиза
+              <span className="inline">
+                <input
+                  type="range" min={0} max={1} step={0.05} value={pattern.pan ?? track.pan}
+                  onChange={(e) => onPatternChange(track.id, pattern.id, { pan: Number(e.target.value) })}
+                />
+                <span className="pan-label">{panLabel(pattern.pan ?? track.pan)}</span>
+              </span>
+            </label>
+          </div>
+          <div className="group mods-group">
+            <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет">
+              модуляции эскиза «{pattern.name}» (LFO)
+            </label>
+            {(pattern.mods ?? track.mods).length === 0 && (
               <span className="none">нет — добавь, например, LFO на панораму (пинг-понг)</span>
             )}
-            {track.mods.map((m, i) => (
+            {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i}>
                 <select
                   value={m.target}
@@ -394,6 +427,15 @@ export const TrackRow = memo(function TrackRow({
               </div>
             ))}
             <button onClick={addMod} title="Добавить LFO">+ модуляция</button>
+            {track.patterns.length > 1 && (
+              <button
+                className="remove"
+                title="Удалить этот эскиз (сцены, где он играл, перейдут на первый оставшийся)"
+                onClick={() => onRemovePattern(track.id, pattern.id)}
+              >
+                удалить эскиз «{pattern.name}»
+              </button>
+            )}
           </div>
         </div>
       )}

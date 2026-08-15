@@ -39,6 +39,10 @@ export interface Pattern {
   steps: Step[];
   // Паттерн-родитель для форков (навигация «вариация от…»).
   forkedFrom?: string;
+  // Партия = ноты + свои ручки. Undefined — берётся с трека.
+  volume?: number;
+  pan?: number;
+  mods?: Mod[];
 }
 
 export type ModTarget = 'pan' | 'volume' | 'filterFreq';
@@ -120,7 +124,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 8;
+export const PATCH_VERSION = 9;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -265,7 +269,16 @@ export function normalizePatch(p: Patch): Patch {
     .filter((t) => t && typeof t.id === 'string' && typeof t.name === 'string')
     .map((t): Track => {
       // Сырые паттерны: из v6 пришли patterns, из старых — steps/length на треке.
-      let rawPatterns: { id?: string; name?: string; length?: number; steps?: unknown; forkedFrom?: string }[];
+      let rawPatterns: {
+        id?: string;
+        name?: string;
+        length?: number;
+        steps?: unknown;
+        forkedFrom?: string;
+        volume?: number;
+        pan?: number;
+        mods?: unknown;
+      }[];
       if (Array.isArray(t.patterns) && t.patterns.length > 0) {
         rawPatterns = t.patterns as typeof rawPatterns;
       } else {
@@ -296,12 +309,16 @@ export function normalizePatch(p: Patch): Patch {
         .filter((pt) => pt && typeof pt.id === 'string')
         .map((pt) => {
           const length = Math.round(clamp(pt.length ?? 16, 1, 64, 16));
+          const mods = normalizeMods((pt as { mods?: unknown }).mods);
           return {
             id: pt.id!,
             name: typeof pt.name === 'string' && pt.name ? pt.name : '?',
             length,
             steps: normalizeSteps(pt.steps, length, scale),
             forkedFrom: pt.forkedFrom,
+            volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
+            pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
+            mods: mods.length > 0 ? mods : undefined,
           };
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));

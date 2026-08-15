@@ -67,8 +67,16 @@ interface TrackChain {
   modSig: string;
 }
 
-const modsSignature = (track: Track) =>
-  track.mods.map((m) => `${m.target}:${m.shape}`).join(',');
+const modsSigOf = (mods: Mod[]) => mods.map((m) => `${m.target}:${m.shape}`).join(',');
+
+/** Эскиз может переопределять ручки трека (громкость/панорама/модуляции). */
+export function effectiveParams(track: Track, pattern: Pattern | undefined) {
+  return {
+    volume: pattern?.volume ?? track.volume,
+    pan: pattern?.pan ?? track.pan,
+    mods: pattern?.mods ?? track.mods,
+  };
+}
 
 function modScale(target: ModTarget, depth: number): number {
   switch (target) {
@@ -118,7 +126,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     lfo.start(0);
     return { lfo, depth };
   });
-  return { filter, panner, gain, mods, modSig: modsSignature(track) };
+  return { filter, panner, gain, mods, modSig: modsSigOf(track.mods) };
 }
 
 function disposeChain(chain: TrackChain): void {
@@ -301,38 +309,13 @@ export class AudioEngine {
     }
   }
 
-  /** Обновить данные патча без остановки: движок читает их на каждом шаге. */
+  /** Обновить данные патча без остановки: движок читает их на каждом шаге.
+   *  Параметры цепочек применяет scheduler — ему известен активный эскиз. */
   setPatch(patch: Patch): void {
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
-    if (!this.ctx || !this.master) return;
-    // Актуализируем цепочки: параметры существующих, disconnect удалённых.
-    const alive = new Set<string>();
-    const t0 = this.ctx.currentTime;
-    for (const track of patch.tracks) {
-      alive.add(track.id);
-      let chain = this.chains.get(track.id);
-      if (chain && chain.modSig !== modsSignature(track)) {
-        // Набор модуляций изменился — цепочку дешевле пересобрать.
-        disposeChain(chain);
-        this.chains.delete(track.id);
-        chain = undefined;
-      }
-      if (!chain) {
-        chain = makeChain(this.ctx, track, this.master);
-        this.chains.set(track.id, chain);
-      } else {
-        chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
-        chain.panner.pan.setTargetAtTime(track.pan * 2 - 1, t0, 0.03);
-        chain.gain.gain.setTargetAtTime(track.volume, t0, 0.03);
-        track.mods.forEach((m: Mod, i) => {
-          const nodes = chain!.mods[i];
-          if (!nodes) return;
-          nodes.lfo.frequency.setTargetAtTime(m.rate, t0, 0.05);
-          nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
-        });
-      }
-    }
+    if (!this.ctx) return;
+    const alive = new Set(patch.tracks.map((t) => t.id));
     for (const [id, chain] of this.chains) {
       if (!alive.has(id)) {
         disposeChain(chain);
@@ -340,6 +323,37 @@ export class AudioEngine {
         this.clocks.delete(id);
       }
     }
+  }
+
+  /** Применить эффективные параметры эскиза к цепочке трека.
+   *  Смена набора модуляций пересобирает цепочку (хвосты нот обрываются —
+   *  сознательно, как стоп клипа). */
+  private applyTrackParams(
+    trackId: string,
+    chain: TrackChain,
+    track: Track,
+    eff: { volume: number; pan: number; mods: Mod[] },
+  ): TrackChain {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return chain;
+    const t0 = ctx.currentTime;
+    const sig = modsSigOf(eff.mods);
+    if (chain.modSig !== sig) {
+      disposeChain(chain);
+      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master);
+      this.chains.set(trackId, fresh);
+      return fresh;
+    }
+    chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
+    chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
+    chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
+    eff.mods.forEach((m, i) => {
+      const nodes = chain.mods[i];
+      if (!nodes) return;
+      nodes.lfo.frequency.setTargetAtTime(m.rate, t0, 0.05);
+      nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
+    });
+    return chain;
   }
 
   private validScene(want: string): string {
@@ -487,8 +501,14 @@ export class AudioEngine {
       const clock = this.clocks.get(track.id);
       const pattern = patternInScene(track, scene);
       if (!clock || !pattern) continue;
-      const chain = this.chains.get(track.id);
+      const eff = effectiveParams(track, pattern);
+      let chain = this.chains.get(track.id);
+      if (!chain && this.master) {
+        chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master);
+        this.chains.set(track.id, chain);
+      }
       if (!chain) continue;
+      chain = this.applyTrackParams(track.id, chain, track, eff);
       const stepDur = stepDuration(track, patch.bpm);
       let g = 0;
       while (clock.nextStepTime < horizon && g++ < 1024) {
@@ -519,13 +539,16 @@ export class AudioEngine {
     const noise = makeNoiseBuffer(ctx);
 
     for (const track of patch.tracks) {
-      const chain = makeChain(ctx, track, master);
       const stepDur = stepDuration(track, patch.bpm);
       let t = 0.05;
       for (const item of fixedItems) {
         const scene = patch.scenes.find((s) => s.id === item.sceneId);
         const pattern = patternInScene(track, scene);
         if (!pattern) continue;
+        // Цепочка на каждую сцену: эскиз может нести свои ручки и модуляции.
+        // Не dispose-им: запланированные ноты привязаны к узлам.
+        const eff = effectiveParams(track, pattern);
+        const chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master);
         const itemDur = item.bars * BAR_TICKS * tickDur;
         let idx = startStepIndex(track, pattern);
         const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;

@@ -16,7 +16,7 @@ import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
-const STORAGE_KEY = 'barlow.patch.v8';
+const STORAGE_KEY = 'barlow.patch.v9';
 const UI_KEY = 'barlow.ui.v1';
 const WAV_BARS = 8;
 
@@ -125,40 +125,18 @@ export default function App() {
   );
 
   const addScene = useCallback(() => {
-    // Новая сцена — снимок ансамбля с независимыми копиями эскизов:
-    // правки в ней не задевают старые сцены. Общий эскиз при желании
-    // можно выбрать чипом на треке.
+    // Новая сцена — снимок ансамбля ссылками на те же эскизы (общие:
+    // правишь эскиз — меняется во всех сценах, где он играет; для
+    // независимой вариации — форк эскиза правым кликом по чипу).
     const freshId = uid('s');
     setPatch((p) => {
       const from = p.scenes.find((s) => s.id === sceneId) ?? p.scenes[0];
-      const forked = new Map<string, Pattern>();
-      const slots: Record<string, string> = {};
-      for (const t of p.tracks) {
-        const src = patternInScene(t, from);
-        if (!src) continue;
-        const copy = makePattern(
-          `${src.name}′`,
-          src.length,
-          src.steps.map((s) => ({ ...s, notes: [...s.notes] })),
-        );
-        copy.forkedFrom = src.id;
-        forked.set(t.id, copy);
-        slots[t.id] = copy.id;
-      }
       const scene = {
         id: freshId,
         name: uniqueName('сцена', p.scenes.map((s) => s.name)),
-        slots,
+        slots: { ...(from?.slots ?? {}) },
       };
-      return {
-        ...p,
-        tracks: p.tracks.map((t) => {
-          const copy = forked.get(t.id);
-          return copy ? { ...t, patterns: [...t.patterns, copy] } : t;
-        }),
-        scenes: [...p.scenes, scene],
-        chain: [...p.chain, { sceneId: scene.id, bars: 8 }],
-      };
+      return { ...p, scenes: [...p.scenes, scene], chain: [...p.chain, { sceneId: scene.id, bars: 8 }] };
     });
     if (engine.playing) engine.setScene(freshId);
     setSceneId(freshId);
@@ -293,6 +271,9 @@ export default function App() {
           src.steps.map((s) => ({ ...s, notes: [...s.notes] })),
         );
         copy.forkedFrom = src.id;
+        copy.volume = src.volume;
+        copy.pan = src.pan;
+        copy.mods = src.mods?.map((m) => ({ ...m }));
         return {
           ...p,
           tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns: [...t.patterns, copy] } : t)),
@@ -304,6 +285,23 @@ export default function App() {
     },
     [sceneId],
   );
+
+  const removePattern = useCallback((trackId: string, patternId: string) => {
+    setPatch((p) => {
+      const track = p.tracks.find((t) => t.id === trackId);
+      if (!track || track.patterns.length <= 1) return p;
+      const patterns = track.patterns.filter((pt) => pt.id !== patternId);
+      const fallback = patterns[0].id;
+      return {
+        ...p,
+        tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns } : t)),
+        // Сцены, игравшие удалённый эскиз, переходят на первый оставшийся.
+        scenes: p.scenes.map((s) =>
+          s.slots[trackId] === patternId ? { ...s, slots: { ...s.slots, [trackId]: fallback } } : s,
+        ),
+      };
+    });
+  }, []);
 
   const applyEuclid = useCallback(
     (trackId: string, pulses: number) => {
@@ -548,6 +546,7 @@ export default function App() {
             onSelectPattern={selectPattern}
             onAddPattern={addPattern}
             onForkPattern={forkPattern}
+            onRemovePattern={removePattern}
             onEuclid={applyEuclid}
             onMutate={mutate}
             onRemove={removeTrack}
