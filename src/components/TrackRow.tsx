@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { Mod, ModTarget, Pattern, Step, Track, Waveform } from '../types';
-import { MOD_TARGET_LABELS, WAVEFORM_LABELS, makeStep } from '../types';
+import type { Effect, Mod, ModTarget, Pattern, Step, Track, Waveform } from '../types';
+import { EFFECT_LABELS, MOD_TARGET_LABELS, WAVEFORM_LABELS, makeStep } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
 import { putSample } from '../audio/library';
@@ -125,6 +125,24 @@ export const TrackRow = memo(function TrackRow({
   // с трека список в этот эскиз (правки дальше — только здесь).
   const changePatternMods = (mods: Mod[]) =>
     onPatternChange(track.id, pattern.id, { mods });
+
+  // Эффекты — на треке, последовательность важна (фильтр → эффекты → панорама).
+  const effects = track.effects ?? [];
+  const updateEffect = (i: number, upd: Partial<Effect>) =>
+    change({ effects: effects.map((e, j) => (j === i ? { ...e, ...upd } : e)) });
+  const setEffectType = (i: number, type: Effect['type']) =>
+    change({
+      effects: effects.map((e, j) => {
+        if (j !== i) return e;
+        const mix = e.mix;
+        return type === 'delay'
+          ? { type: 'delay', timeSec: 0.28, feedback: 0.35, mix }
+          : { type: 'reverb', sizeSec: 1.8, mix };
+      }),
+    });
+  const removeEffect = (i: number) => change({ effects: effects.filter((_, j) => j !== i) });
+  const addEffect = () =>
+    change({ effects: [...effects, { type: 'delay', timeSec: 0.28, feedback: 0.35, mix: 0.3 }] });
 
   // Колесо над нотой — шорткат для ползунков панели шага.
   // Нативный слушатель с passive:false — React-овый onWheel пассивный,
@@ -390,6 +408,60 @@ export const TrackRow = memo(function TrackRow({
                 <span className="pan-label">{panLabel(pattern.pan ?? track.pan)}</span>
               </span>
             </label>
+          </div>
+          <div className="group mods-group">
+            <label title="Эффекты трека, включаются последовательно: фильтр → эффекты → панорама">
+              эффекты
+            </label>
+            {effects.length === 0 && (
+              <span className="none">нет — добавь задержку (эхо) или реверб (пространство)</span>
+            )}
+            {effects.map((fx, i) => (
+              <div className="mod-row" key={i}>
+                <select value={fx.type} title="Тип эффекта" onChange={(e) => setEffectType(i, e.target.value as Effect['type'])}>
+                  {(Object.keys(EFFECT_LABELS) as Effect['type'][]).map((t) => (
+                    <option key={t} value={t}>{EFFECT_LABELS[t]}</option>
+                  ))}
+                </select>
+                {fx.type === 'delay' ? (
+                  <>
+                    <label title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс, четверть ≈ 508 мс)">
+                      повтор, мс
+                      <NumField
+                        value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10}
+                        onChange={(ms) => updateEffect(i, { timeSec: ms / 1000 })}
+                      />
+                    </label>
+                    <label title="Насколько затухает каждый следующий повтор: 0% — один повтор, 80% — длинное эхо">
+                      затухание
+                      <input
+                        type="range" min={0} max={0.9} step={0.05} value={fx.feedback}
+                        onChange={(e) => updateEffect(i, { feedback: Number(e.target.value) })}
+                      />
+                      {Math.round(fx.feedback * 100)}%
+                    </label>
+                  </>
+                ) : (
+                  <label title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
+                    размер, с
+                    <NumField
+                      value={fx.sizeSec} min={0.2} max={8} step={0.1}
+                      onChange={(sizeSec) => updateEffect(i, { sizeSec })}
+                    />
+                  </label>
+                )}
+                <label title="Сколько эффекта подмешать к чистому звуку">
+                  уровень
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={fx.mix}
+                    onChange={(e) => updateEffect(i, { mix: Number(e.target.value) })}
+                  />
+                  {Math.round(fx.mix * 100)}%
+                </label>
+                <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
+              </div>
+            ))}
+            <button onClick={addEffect} title="Добавить эффект">+ эффект</button>
           </div>
           <div className="group mods-group">
             <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет">

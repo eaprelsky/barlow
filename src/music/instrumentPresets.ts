@@ -27,6 +27,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     track: {
       name: 'лид', waveform: 'triangle', freq: 329.6, scale: PENTATONIC_MINOR,
       length: 7, rate: 2, decay: 0.18, filterFreq: 4500, volume: 0.55,
+      effects: [{ type: 'delay', timeSec: 0.28, feedback: 0.4, mix: 0.25 }],
     },
   },
   {
@@ -53,6 +54,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     track: {
       name: 'дрон', waveform: 'sawtooth', freq: 110, scale: [1, 9 / 8],
       length: 3, rate: 16, attack: 0.3, decay: 2.5, filterFreq: 700, volume: 0.4,
+      effects: [{ type: 'reverb', sizeSec: 3.5, mix: 0.4 }],
     },
   },
   {

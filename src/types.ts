@@ -53,6 +53,16 @@ export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
   filterFreq: 'фильтр',
 };
 
+/** Вставной эффект трека (после фильтра, до панорамы). */
+export type Effect =
+  | { type: 'delay'; timeSec: number; feedback: number; mix: number }
+  | { type: 'reverb'; sizeSec: number; mix: number };
+
+export const EFFECT_LABELS: Record<Effect['type'], string> = {
+  delay: 'задержка (эхо)',
+  reverb: 'реверб (пространство)',
+};
+
 /** Источник модуляции: LFO с формой, скоростью (Гц) и глубиной (0..1). */
 export interface Mod {
   target: ModTarget;
@@ -98,6 +108,8 @@ export interface Track {
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
+  // Вставные эффекты: задержка (эхо) и реверб.
+  effects?: Effect[];
   // Эскизы дорожки. Какой играет — решает сцена.
   patterns: Pattern[];
 }
@@ -127,7 +139,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 10;
+export const PATCH_VERSION = 11;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -168,6 +180,7 @@ export function makeTrack(
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     mono: partial.mono,
+    effects: partial.effects,
     patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
     id: partial.id,
     name: partial.name,
@@ -211,6 +224,30 @@ const clamp = (v: number, lo: number, hi: number, fallback: number) =>
 
 const MOD_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'] as const;
 const MOD_TARGETS = ['pan', 'volume', 'filterFreq'] as const;
+
+function normalizeEffects(raw: unknown): Effect[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Effect[] = [];
+  for (const item of raw) {
+    const e = item as { type?: unknown; timeSec?: unknown; feedback?: unknown; mix?: unknown; sizeSec?: unknown };
+    if (!e || typeof e !== 'object') continue;
+    if (e.type === 'delay') {
+      out.push({
+        type: 'delay',
+        timeSec: clamp(typeof e.timeSec === 'number' ? e.timeSec : 0.28, 0.01, 2, 0.28),
+        feedback: clamp(typeof e.feedback === 'number' ? e.feedback : 0.35, 0, 0.9, 0.35),
+        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.3, 0, 1, 0.3),
+      });
+    } else if (e.type === 'reverb') {
+      out.push({
+        type: 'reverb',
+        sizeSec: clamp(typeof e.sizeSec === 'number' ? e.sizeSec : 1.8, 0.2, 8, 1.8),
+        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.25, 0, 1, 0.25),
+      });
+    }
+  }
+  return out;
+}
 
 function normalizeMods(raw: unknown): Mod[] {
   if (!Array.isArray(raw)) return [];
@@ -345,6 +382,7 @@ export function normalizePatch(p: Patch): Patch {
         sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
         mono: !!t.mono,
+        effects: normalizeEffects((t as { effects?: unknown }).effects),
       };
     });
 

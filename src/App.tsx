@@ -16,7 +16,7 @@ import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
-const STORAGE_KEY = 'barlow.patch.v10';
+const STORAGE_KEY = 'barlow.patch.v11';
 const UI_KEY = 'barlow.ui.v1';
 const WAV_BARS = 8;
 

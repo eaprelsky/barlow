@@ -49,6 +49,7 @@ export function defaultPatch(): Patch {
       decay: 0.06,
       filterFreq: 6500,
       volume: 0.5,
+      effects: [{ type: 'reverb', sizeSec: 1.2, mix: 0.18 }],
       patterns: [
         makePattern('A', 9, stepsFromMask(euclid(9, 4))),
         makePattern('B', 9, stepsFromMask(euclid(9, 5))),
@@ -64,6 +65,7 @@ export function defaultPatch(): Patch {
       decay: 0.18,
       filterFreq: 4200,
       volume: 0.55,
+      effects: [{ type: 'delay', timeSec: 0.28, feedback: 0.4, mix: 0.2 }],
       patterns: [
         makePattern('A', 7, withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]])),
       ],

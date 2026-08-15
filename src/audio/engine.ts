@@ -11,7 +11,7 @@
 // Голос (triggerVoice) отвязан от конкретного контекста: им же пользуется
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
-import type { Mod, ModTarget, Patch, Pattern, Scene, Step, Track } from '../types';
+import type { Effect, Mod, ModTarget, Patch, Pattern, Scene, Step, Track } from '../types';
 import { patternInScene, stepFreqs } from '../types';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
@@ -58,16 +58,49 @@ interface ModNodes {
   depth: GainNode;
 }
 
+interface FxNodes {
+  dry: GainNode;
+  wet: GainNode;
+  delay?: DelayNode;
+  feedback?: GainNode;
+  convolver?: ConvolverNode;
+}
+
 interface TrackChain {
   filter: BiquadFilterNode;
   panner: StereoPannerNode;
   gain: GainNode;
   mods: ModNodes[];
-  // Сигнатура набора модуляций: изменилась — цепочка пересобирается.
+  fx: FxNodes[];
+  // Сигнатура набора модуляций и эффектов: изменилась — цепочка пересобирается.
   modSig: string;
 }
 
 const modsSigOf = (mods: Mod[]) => mods.map((m) => `${m.target}:${m.shape}`).join(',');
+const fxSigOf = (fx: Effect[]) => fx.map((e) => e.type).join(',');
+// equal-power кроссфейд dry/wet — без провала громкости посередине.
+const dryGain = (mix: number) => Math.cos((mix * Math.PI) / 2);
+const wetGain = (mix: number) => Math.sin((mix * Math.PI) / 2);
+
+// Процедурный impulse response для реверба: стереошумовое облако с
+// экспоненциальным затуханием. Кэш общий для live и offline контекстов.
+const irCache = new Map<string, AudioBuffer>();
+function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const key = `${ctx.sampleRate}:${seconds.toFixed(2)}`;
+  let ir = irCache.get(key);
+  if (!ir) {
+    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+    ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+      }
+    }
+    irCache.set(key, ir);
+  }
+  return ir;
+}
 
 /** Эскиз может переопределять ручки трека (громкость/панорама/модуляции). */
 export function effectiveParams(track: Track, pattern: Pattern | undefined) {
@@ -110,9 +143,42 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   panner.pan.value = track.pan * 2 - 1;
   const gain = ctx.createGain();
   gain.gain.value = track.volume;
-  filter.connect(panner);
   panner.connect(gain);
   gain.connect(dest);
+
+  // Эффекты: фильтр → (dry|wet каждого эффекта) → панорама.
+  const fx: FxNodes[] = [];
+  let node: AudioNode = filter;
+  for (const e of track.effects ?? []) {
+    const sum = ctx.createGain();
+    const dry = ctx.createGain();
+    const wet = ctx.createGain();
+    dry.gain.value = dryGain(e.mix);
+    wet.gain.value = wetGain(e.mix);
+    node.connect(dry);
+    dry.connect(sum);
+    node.connect(wet);
+    wet.connect(sum);
+    if (e.type === 'delay') {
+      const delay = ctx.createDelay(2.5);
+      delay.delayTime.value = e.timeSec;
+      const feedback = ctx.createGain();
+      feedback.gain.value = e.feedback;
+      wet.connect(delay);
+      delay.connect(sum);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      fx.push({ dry, wet, delay, feedback });
+    } else {
+      const conv = ctx.createConvolver();
+      conv.buffer = getImpulse(ctx, e.sizeSec);
+      wet.connect(conv);
+      conv.connect(sum);
+      fx.push({ dry, wet, convolver: conv });
+    }
+    node = sum;
+  }
+  node.connect(panner);
   const mods: ModNodes[] = track.mods.map((m) => {
     const lfo = ctx.createOscillator();
     lfo.type = m.shape;
@@ -126,7 +192,14 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     lfo.start(0);
     return { lfo, depth };
   });
-  return { filter, panner, gain, mods, modSig: modsSigOf(track.mods) };
+  return {
+    filter,
+    panner,
+    gain,
+    mods,
+    fx,
+    modSig: `${modsSigOf(track.mods)}|${fxSigOf(track.effects ?? [])}`,
+  };
 }
 
 function disposeChain(chain: TrackChain): void {
@@ -138,6 +211,13 @@ function disposeChain(chain: TrackChain): void {
     }
     m.lfo.disconnect();
     m.depth.disconnect();
+  }
+  for (const f of chain.fx) {
+    f.dry.disconnect();
+    f.wet.disconnect();
+    f.delay?.disconnect();
+    f.feedback?.disconnect();
+    f.convolver?.disconnect();
   }
   chain.filter.disconnect();
   chain.panner.disconnect();
@@ -376,7 +456,7 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx || !this.master) return chain;
     const t0 = ctx.currentTime;
-    const sig = modsSigOf(eff.mods);
+    const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       disposeChain(chain);
       const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master);
@@ -391,6 +471,19 @@ export class AudioEngine {
       if (!nodes) return;
       nodes.lfo.frequency.setTargetAtTime(m.rate, t0, 0.05);
       nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
+    });
+    (track.effects ?? []).forEach((e, i) => {
+      const n = chain.fx[i];
+      if (!n) return;
+      n.dry.gain.setTargetAtTime(dryGain(e.mix), t0, 0.03);
+      n.wet.gain.setTargetAtTime(wetGain(e.mix), t0, 0.03);
+      if (e.type === 'delay') {
+        n.delay?.delayTime.setTargetAtTime(e.timeSec, t0, 0.05);
+        n.feedback?.gain.setTargetAtTime(e.feedback, t0, 0.05);
+      } else if (n.convolver) {
+        const ir = getImpulse(ctx, e.sizeSec);
+        if (n.convolver.buffer !== ir) n.convolver.buffer = ir;
+      }
     });
     return chain;
   }
