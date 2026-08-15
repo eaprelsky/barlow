@@ -1,10 +1,17 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { Pattern, Step, Track, Waveform } from '../types';
-import { WAVEFORM_LABELS, makeStep } from '../types';
+import type { Mod, ModTarget, Pattern, Step, Track, Waveform } from '../types';
+import { MOD_TARGET_LABELS, WAVEFORM_LABELS, makeStep } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
+const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
+
+function panLabel(pan: number): string {
+  if (pan < 0.49) return `L${Math.round((0.5 - pan) * 200)}`;
+  if (pan > 0.51) return `R${Math.round((pan - 0.5) * 200)}`;
+  return 'центр';
+}
 
 interface Props {
   track: Track;
@@ -90,6 +97,14 @@ export const TrackRow = memo(function TrackRow({
   const setStepField = (col: number, field: 'vel' | 'prob', v: number) => {
     changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
   };
+
+  const updateMod = (i: number, upd: Partial<Mod>) =>
+    change({ mods: track.mods.map((m, j) => (j === i ? { ...m, ...upd } : m)) });
+
+  const addMod = () =>
+    change({ mods: [...track.mods, { target: 'pan', shape: 'sine', rate: 0.2, depth: 0.5 }] });
+
+  const removeMod = (i: number) => change({ mods: track.mods.filter((_, j) => j !== i) });
 
   // Колесо над нотой — шорткат для ползунков панели шага.
   // Нативный слушатель с passive:false — React-овый onWheel пассивный,
@@ -229,6 +244,16 @@ export const TrackRow = memo(function TrackRow({
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
           </label>
+          <label title="Панорама: слева — центр — справа">
+            панорама
+            <span className="inline">
+              <input
+                type="range" min={0} max={1} step={0.05} value={track.pan}
+                onChange={(e) => change({ pan: Number(e.target.value) })}
+              />
+              <span className="pan-label">{panLabel(track.pan)}</span>
+            </span>
+          </label>
         </div>
         <div className="group ops">
           <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо">
@@ -278,7 +303,7 @@ export const TrackRow = memo(function TrackRow({
             </label>
           </div>
           <div className="group">
-            <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
+            <label title="Нота стартует во сколько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
               падение тона, ×
               <NumField
                 value={track.pitchDrop} min={1} max={16} step={0.5}
@@ -292,6 +317,53 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(pitchTime) => change({ pitchTime })}
               />
             </label>
+          </div>
+          <div className="group mods-group">
+            <label title="Модуляции: LFO непрерывно качает выбранный параметр. Панорама + синус 0.2 Гц = пинг-понг между ушами">
+              модуляции (LFO)
+            </label>
+            {track.mods.length === 0 && (
+              <span className="none">нет — добавь, например, LFO на панораму (пинг-понг)</span>
+            )}
+            {track.mods.map((m, i) => (
+              <div className="mod-row" key={i}>
+                <select
+                  value={m.target}
+                  title="Какой параметр качает LFO"
+                  onChange={(e) => updateMod(i, { target: e.target.value as ModTarget })}
+                >
+                  {(Object.keys(MOD_TARGET_LABELS) as ModTarget[]).map((t) => (
+                    <option key={t} value={t}>{MOD_TARGET_LABELS[t]}</option>
+                  ))}
+                </select>
+                <select
+                  value={m.shape}
+                  title="Форма колебания"
+                  onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
+                >
+                  {LFO_SHAPES.map((s) => (
+                    <option key={s} value={s}>{WAVEFORM_LABELS[s]}</option>
+                  ))}
+                </select>
+                <label title="Скорость колебаний, Гц. 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
+                  Гц
+                  <NumField
+                    value={m.rate} min={0.01} max={40} step={0.05}
+                    onChange={(rate) => updateMod(i, { rate })}
+                  />
+                </label>
+                <label title="Глубина: насколько сильно LFO отклоняет параметр">
+                  глубина
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={m.depth}
+                    onChange={(e) => updateMod(i, { depth: Number(e.target.value) })}
+                  />
+                  {Math.round(m.depth * 100)}%
+                </label>
+                <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
+              </div>
+            ))}
+            <button onClick={addMod} title="Добавить LFO">+ модуляция</button>
           </div>
         </div>
       )}

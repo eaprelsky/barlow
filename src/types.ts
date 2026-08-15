@@ -40,6 +40,22 @@ export interface Pattern {
   forkedFrom?: string;
 }
 
+export type ModTarget = 'pan' | 'volume' | 'filterFreq';
+
+export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
+  pan: 'панорама',
+  volume: 'громкость',
+  filterFreq: 'фильтр',
+};
+
+/** Источник модуляции: LFO с формой, скоростью (Гц) и глубиной (0..1). */
+export interface Mod {
+  target: ModTarget;
+  shape: 'sine' | 'triangle' | 'square' | 'sawtooth';
+  rate: number;
+  depth: number;
+}
+
 export interface Track {
   id: string;
   name: string;
@@ -66,6 +82,10 @@ export interface Track {
   decay: number;
   // Громкость трека 0..1.
   volume: number;
+  // Панорама 0..1 (0.5 — центр).
+  pan: number;
+  // Модуляции: LFO, подключённые к параметрам трека (см. docs/DESIGN.md).
+  mods: Mod[];
   // Эскизы дорожки. Какой играет — решает сцена.
   patterns: Pattern[];
 }
@@ -95,7 +115,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 6;
+export const PATCH_VERSION = 7;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -131,6 +151,8 @@ export function makeTrack(
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
     volume: partial.volume ?? 0.8,
+    pan: partial.pan ?? 0.5,
+    mods: partial.mods ?? [],
     patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
     id: partial.id,
     name: partial.name,
@@ -171,6 +193,31 @@ export function isPatch(value: unknown): value is Patch {
 
 const clamp = (v: number, lo: number, hi: number, fallback: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+
+const MOD_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'] as const;
+const MOD_TARGETS = ['pan', 'volume', 'filterFreq'] as const;
+
+function normalizeMods(raw: unknown): Mod[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Mod[] = [];
+  for (const m of raw as Partial<Mod>[]) {
+    if (!m || typeof m !== 'object') continue;
+    const target = (MOD_TARGETS as readonly string[]).includes(String(m.target))
+      ? (m.target as ModTarget)
+      : null;
+    const shape = (MOD_SHAPES as readonly string[]).includes(String(m.shape))
+      ? (m.shape as Mod['shape'])
+      : null;
+    if (!target || !shape) continue;
+    out.push({
+      target,
+      shape,
+      rate: clamp(m.rate ?? 0.2, 0.01, 40, 0.2),
+      depth: clamp(m.depth ?? 0.5, 0, 1, 0.5),
+    });
+  }
+  return out;
+}
 
 function normalizeSteps(raw: unknown, length: number, scale: number[]): Step[] {
   const maxNote = scale.length - 1;
@@ -265,6 +312,8 @@ export function normalizePatch(p: Patch): Patch {
         attack: clamp(t.attack, 0, 1, 0.002),
         decay: clamp(t.decay, 0.01, 4, 0.25),
         volume: clamp(t.volume, 0, 1, 0.8),
+        pan: clamp((t as { pan?: number }).pan ?? 0.5, 0, 1, 0.5),
+        mods: normalizeMods((t as { mods?: unknown }).mods),
       };
     });
 

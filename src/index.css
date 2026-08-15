@@ -281,6 +281,48 @@ header .master-vol input[type='range'] {
   border-style: dashed;
 }
 
+.pan-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 42px;
+}
+
+.mods-group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.mods-group .none {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.mod-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mod-row select {
+  width: 110px;
+}
+
+.mod-row label {
+  flex-direction: row;
+  align-items: center;
+  font-size: 11px;
+}
+
+.mod-row input[type='range'] {
+  width: 80px;
+}
+
+.mod-row input[type='number'] {
+  width: 64px;
+}
+
 .spacer {
   flex: 1;
 }

@@ -11,7 +11,7 @@
 // Голос (triggerVoice) отвязан от конкретного контекста: им же пользуется
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
-import type { Patch, Pattern, Scene, Step, Track } from '../types';
+import type { Mod, ModTarget, Patch, Pattern, Scene, Step, Track } from '../types';
 import { patternInScene, stepFreqs } from '../types';
 import { audioBufferToWav } from './wav';
 
@@ -52,9 +52,32 @@ interface TrackClock {
   resetTime: number;
 }
 
+interface ModNodes {
+  lfo: OscillatorNode;
+  depth: GainNode;
+}
+
 interface TrackChain {
   filter: BiquadFilterNode;
+  panner: StereoPannerNode;
   gain: GainNode;
+  mods: ModNodes[];
+  // Сигнатура набора модуляций: изменилась — цепочка пересобирается.
+  modSig: string;
+}
+
+const modsSignature = (track: Track) =>
+  track.mods.map((m) => `${m.target}:${m.shape}`).join(',');
+
+function modScale(target: ModTarget, depth: number): number {
+  switch (target) {
+    case 'pan':
+      return depth; // ±1 максимум
+    case 'volume':
+      return depth * 0.5;
+    case 'filterFreq':
+      return depth * 1800;
+  }
 }
 
 function fires(step: Step): boolean {
@@ -74,11 +97,42 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   filter.type = 'lowpass';
   filter.frequency.value = track.filterFreq;
   filter.Q.value = 0.8;
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = track.pan * 2 - 1;
   const gain = ctx.createGain();
   gain.gain.value = track.volume;
-  filter.connect(gain);
+  filter.connect(panner);
+  panner.connect(gain);
   gain.connect(dest);
-  return { filter, gain };
+  const mods: ModNodes[] = track.mods.map((m) => {
+    const lfo = ctx.createOscillator();
+    lfo.type = m.shape;
+    lfo.frequency.value = m.rate;
+    const depth = ctx.createGain();
+    depth.gain.value = modScale(m.target, m.depth);
+    lfo.connect(depth);
+    const param: AudioParam =
+      m.target === 'pan' ? panner.pan : m.target === 'volume' ? gain.gain : filter.frequency;
+    depth.connect(param);
+    lfo.start(0);
+    return { lfo, depth };
+  });
+  return { filter, panner, gain, mods, modSig: modsSignature(track) };
+}
+
+function disposeChain(chain: TrackChain): void {
+  for (const m of chain.mods) {
+    try {
+      m.lfo.stop();
+    } catch {
+      /* уже остановлен */
+    }
+    m.lfo.disconnect();
+    m.depth.disconnect();
+  }
+  chain.filter.disconnect();
+  chain.panner.disconnect();
+  chain.gain.disconnect();
 }
 
 function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
@@ -219,20 +273,34 @@ export class AudioEngine {
     if (!this.ctx || !this.master) return;
     // Актуализируем цепочки: параметры существующих, disconnect удалённых.
     const alive = new Set<string>();
+    const t0 = this.ctx.currentTime;
     for (const track of patch.tracks) {
       alive.add(track.id);
       let chain = this.chains.get(track.id);
+      if (chain && chain.modSig !== modsSignature(track)) {
+        // Набор модуляций изменился — цепочку дешевле пересобрать.
+        disposeChain(chain);
+        this.chains.delete(track.id);
+        chain = undefined;
+      }
       if (!chain) {
         chain = makeChain(this.ctx, track, this.master);
         this.chains.set(track.id, chain);
+      } else {
+        chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
+        chain.panner.pan.setTargetAtTime(track.pan * 2 - 1, t0, 0.03);
+        chain.gain.gain.setTargetAtTime(track.volume, t0, 0.03);
+        track.mods.forEach((m: Mod, i) => {
+          const nodes = chain!.mods[i];
+          if (!nodes) return;
+          nodes.lfo.frequency.setTargetAtTime(m.rate, t0, 0.05);
+          nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
+        });
       }
-      chain.filter.frequency.setTargetAtTime(track.filterFreq, this.ctx.currentTime, 0.03);
-      chain.gain.gain.setTargetAtTime(track.volume, this.ctx.currentTime, 0.03);
     }
     for (const [id, chain] of this.chains) {
       if (!alive.has(id)) {
-        chain.filter.disconnect();
-        chain.gain.disconnect();
+        disposeChain(chain);
         this.chains.delete(id);
         this.clocks.delete(id);
       }
