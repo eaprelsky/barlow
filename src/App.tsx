@@ -125,13 +125,44 @@ export default function App() {
   );
 
   const addScene = useCallback(() => {
+    // Новая сцена — снимок ансамбля с независимыми копиями эскизов:
+    // правки в ней не задевают старые сцены. Общий эскиз при желании
+    // можно выбрать чипом на треке.
+    const freshId = uid('s');
     setPatch((p) => {
       const from = p.scenes.find((s) => s.id === sceneId) ?? p.scenes[0];
-      // Новая сцена — снимок текущего состояния ансамбля.
-      const scene = { id: uid('s'), name: uniqueName('сцена', p.scenes.map((s) => s.name)), slots: { ...from.slots } };
-      return { ...p, scenes: [...p.scenes, scene], chain: [...p.chain, { sceneId: scene.id, bars: 8 }] };
+      const forked = new Map<string, Pattern>();
+      const slots: Record<string, string> = {};
+      for (const t of p.tracks) {
+        const src = patternInScene(t, from);
+        if (!src) continue;
+        const copy = makePattern(
+          `${src.name}′`,
+          src.length,
+          src.steps.map((s) => ({ ...s, notes: [...s.notes] })),
+        );
+        copy.forkedFrom = src.id;
+        forked.set(t.id, copy);
+        slots[t.id] = copy.id;
+      }
+      const scene = {
+        id: freshId,
+        name: uniqueName('сцена', p.scenes.map((s) => s.name)),
+        slots,
+      };
+      return {
+        ...p,
+        tracks: p.tracks.map((t) => {
+          const copy = forked.get(t.id);
+          return copy ? { ...t, patterns: [...t.patterns, copy] } : t;
+        }),
+        scenes: [...p.scenes, scene],
+        chain: [...p.chain, { sceneId: scene.id, bars: 8 }],
+      };
     });
-  }, [sceneId]);
+    if (engine.playing) engine.setScene(freshId);
+    setSceneId(freshId);
+  }, [sceneId, engine]);
 
   const removeScene = useCallback(
     (id: string) => {
@@ -458,7 +489,7 @@ export default function App() {
             {playing && engine.currentSceneId === s.id ? ' ●' : ''}
           </button>
         ))}
-        <button className="scene-btn add" title="Новая сцена — снимок текущего состояния ансамбля" onClick={addScene}>+</button>
+        <button className="scene-btn add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
         <span className="spacer" />
         <label title="Играть сцены по цепочке (арранжмент). Выключено — текущая сцена держится, пока не кликнешь другую">
           <input
