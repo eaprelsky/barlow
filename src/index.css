@@ -983,3 +983,31 @@ header button.on {
   width: 200px;
   font-size: 12px;
 }
+
+/* Мьют/соло партии */
+
+.ms-btns {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.ms {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.ms.on-m {
+  color: #e05555;
+  border-color: #e05555;
+  background: rgba(224, 85, 85, 0.08);
+}
+
+.ms.on-s {
+  color: #ffd166;
+  border-color: #ffd166;
+  background: rgba(255, 209, 102, 0.08);
+}

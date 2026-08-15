@@ -360,6 +360,18 @@ export const TrackRow = memo(function TrackRow({
           <button className="fold" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
           <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+          <span className="ms-btns">
+            <button
+              className={pattern.muted ? 'ms on-m' : 'ms'}
+              title="Мьют этой партии (эскиз молчит во всех сценах, где играет)"
+              onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
+            >M</button>
+            <button
+              className={pattern.solo ? 'ms on-s' : 'ms'}
+              title="Соло этой партии"
+              onClick={() => onPatternChange(track.id, pattern.id, { solo: !pattern.solo })}
+            >S</button>
+          </span>
           <span className="mini-wave">{WAVEFORM_LABELS[track.waveform]}</span>
           {patternChips}
           <input
@@ -389,6 +401,18 @@ export const TrackRow = memo(function TrackRow({
       <div className="track-head">
         <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
         <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+        <span className="ms-btns">
+          <button
+            className={pattern.muted ? 'ms on-m' : 'ms'}
+            title="Мьют этой партии: эскиз молчит во всех сценах, где играет. Часы идут — сняв мьют, войдёшь в фазе"
+            onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
+          >M</button>
+          <button
+            className={pattern.solo ? 'ms on-s' : 'ms'}
+            title="Соло этой партии: если хоть один эскиз в соло — слышны только соло"
+            onClick={() => onPatternChange(track.id, pattern.id, { solo: !pattern.solo })}
+          >S</button>
+        </span>
         <div className="group">
           <label title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
             эскизы

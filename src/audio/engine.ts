@@ -103,6 +103,17 @@ function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   return ir;
 }
 
+/** Слышен ли эскиз: мьют выключает, соло — выключает всех остальных. */
+function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
+  const active = patch.tracks.map((t) => patternInScene(t, scene)).filter((p): p is Pattern => !!p);
+  const anySolo = active.some((p) => p.solo);
+  const out = new Set<string>();
+  for (const p of active) {
+    if (!p.muted && (!anySolo || p.solo)) out.add(p.id);
+  }
+  return out;
+}
+
 /** Эскиз может переопределять ручки трека (громкость/панорама/модуляции). */
 export function effectiveParams(track: Track, pattern: Pattern | undefined) {
   return {
@@ -687,6 +698,7 @@ export class AudioEngine {
     }
 
     const scene = this.scene();
+    const audible = audibleSet(patch, scene);
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
       if (!pattern) continue;
@@ -711,7 +723,7 @@ export class AudioEngine {
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         const notes = step ? liveNotes(step) : [];
-        if (notes.length > 0) {
+        if (notes.length > 0 && audible.has(pattern.id)) {
           const at = clock.nextStepTime;
           if (track.mono) this.duckLastVoice(track.id, at);
           const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at);
@@ -747,6 +759,7 @@ export class AudioEngine {
         const scene = patch.scenes.find((s) => s.id === item.sceneId);
         const pattern = patternInScene(track, scene);
         if (!pattern) continue;
+        const audible = audibleSet(patch, scene).has(pattern.id);
         // Цепочка на каждую сцену: эскиз может нести свои ручки и модуляции.
         // Не dispose-им: запланированные ноты привязаны к узлам.
         const eff = effectiveParams(track, pattern);
@@ -757,7 +770,7 @@ export class AudioEngine {
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
-          if (notes.length > 0) {
+          if (notes.length > 0 && audible) {
             if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
             const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt);
             if (track.mono) prevVoice = voice;

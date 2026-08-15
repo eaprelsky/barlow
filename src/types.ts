@@ -51,6 +51,10 @@ export interface Pattern {
   volume?: number;
   pan?: number;
   mods?: Mod[];
+  // Партия молчит во всех сценах, где играет.
+  muted?: boolean;
+  // Глобальное соло: если хоть один играющий эскиз в соло — слышны только они.
+  solo?: boolean;
 }
 
 export type ModTarget = 'pan' | 'volume' | 'filterFreq';
@@ -151,7 +155,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 13;
+export const PATCH_VERSION = 14;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -405,6 +409,8 @@ export function normalizePatch(p: Patch): Patch {
             volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
             mods: mods.length > 0 ? mods : undefined,
+            muted: !!(pt as { muted?: unknown }).muted,
+            solo: !!(pt as { solo?: unknown }).solo,
           };
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));
