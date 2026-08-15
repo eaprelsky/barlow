@@ -61,8 +61,9 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     name: 'сэмплер',
     hint: 'играет загруженный сэмпл; строки стана = скорость воспроизведения (питч)',
     track: {
-      name: 'сэмпл', waveform: 'sample', scale: [0.5, 1, 1.5, 2],
-      length: 16, rate: 2, attack: 0.001, decay: 0.35, filterFreq: 12000, volume: 0.8,
+      name: 'сэмпл', waveform: 'sample',
+      scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      length: 16, rate: 2, attack: 0.001, decay: 1.2, filterFreq: 12000, volume: 0.8,
     },
   },
   {

@@ -371,7 +371,13 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(filterFreq) => change({ filterFreq })}
               />
             </label>
-            <label title="Сколько секунд звучит нота после удара">
+            <label
+              title={
+                track.waveform === 'sample'
+                  ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
+                  : 'Сколько секунд звучит нота после удара'
+              }
+            >
               спад, с
               <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
             </label>
