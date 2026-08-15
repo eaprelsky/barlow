@@ -688,9 +688,16 @@ export class AudioEngine {
 
     const scene = this.scene();
     for (const track of patch.tracks) {
-      const clock = this.clocks.get(track.id);
       const pattern = patternInScene(track, scene);
-      if (!clock || !pattern) continue;
+      if (!pattern) continue;
+      // Трек, добавленный на ходу, вливается с ближайшего мгновения —
+      // лайв-джем: набросал дорожку поверх играющего микса.
+      let clock = this.clocks.get(track.id);
+      if (!clock) {
+        const t = Math.max(ctx.currentTime + 0.05, this.startAt);
+        clock = { nextStepIndex: startStepIndex(track, pattern), nextStepTime: t, resetTime: t };
+        this.clocks.set(track.id, clock);
+      }
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
       if (!chain && this.master) {
