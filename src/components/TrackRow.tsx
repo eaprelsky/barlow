@@ -9,6 +9,7 @@ import {
   scaleOf,
 } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
+import { INSTRUMENT_PRESETS } from '../music/instrumentPresets';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { putSample } from '../audio/library';
@@ -94,6 +95,33 @@ export const TrackRow = memo(function TrackRow({
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
   const [customScale, setCustomScale] = useState('');
+  const [presetIdx, setPresetIdx] = useState(0);
+
+  /** Сменить инструмент трека: тембр/огибающая/фильтры/эффекты — из пресета,
+   *  партии (ноты), громкость и ритм — остаются пользователю. */
+  const applyInstrumentPreset = (idx: number) => {
+    const preset = INSTRUMENT_PRESETS[idx];
+    if (!preset) return;
+    setPresetIdx(idx);
+    const t = preset.track;
+    const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
+    change({
+      waveform: t.waveform,
+      freq: t.freq ?? track.freq,
+      scale,
+      scaleOctUp: 0,
+      scaleOctDown: 0,
+      attack: t.attack ?? track.attack,
+      decay: t.decay ?? track.decay,
+      pitchDrop: t.pitchDrop ?? 1,
+      pitchTime: t.pitchTime ?? 0.08,
+      filterLow: t.filterLow ?? 20,
+      filterFreq: t.filterFreq ?? 8000,
+      effects: t.effects ?? [],
+      mono: t.mono,
+      patterns: clampAllNotes(scale.length - 1),
+    });
+  };
 
   /** Парсер своей шкалы: числа и дроби через запятую/пробел.
    *  «1, 9/8, 5/4, 3/2, 7/4, 2» — готовая just intonation. */
@@ -515,6 +543,14 @@ export const TrackRow = memo(function TrackRow({
           </div>
           {tab === 'snd' && (
           <div className="group">
+            <label title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
+              инструмент
+              <select value={presetIdx} onChange={(e) => applyInstrumentPreset(Number(e.target.value))}>
+                {INSTRUMENT_PRESETS.map((p, i) => (
+                  <option key={p.name} value={i}>{p.name}</option>
+                ))}
+              </select>
+            </label>
             <label title="Форма волны осциллятора — основа тембра">
               волна
               <select value={track.waveform} onChange={(e) => change({ waveform: e.target.value as Waveform })}>
