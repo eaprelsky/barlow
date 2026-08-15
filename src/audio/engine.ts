@@ -147,16 +147,20 @@ function disposeChain(chain: TrackChain): void {
 function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
   const master = ctx.createGain();
   master.gain.value = 0.75 * masterVolume;
-  // Мягкий лимитер на tanh: пики выше ~0.9 плавно пережимаются, а не
-  // обрезаются нулём — иначе сумма громких треков трещит (цифровой клиппинг).
-  // Компрессор тут не годится: он пропускает короткие транзиенты.
+  // Мягкий лимитер: до 0.8 сигнал идеально линеен (ноль искажений),
+  // выше — плавный tanh-пережим. Раньше кривая искажала сразу от нуля:
+  // совпадение пиков баса и бочки звучало периодическим «тыком».
   const shaper = ctx.createWaveShaper();
   shaper.oversample = '4x';
   const n = 2048;
   const curve = new Float32Array(n);
+  const knee = 0.8;
   for (let i = 0; i < n; i++) {
     const x = (i / (n - 1)) * 4 - 2; // диапазон входа [-2, 2]
-    curve[i] = Math.tanh(1.5 * x) / Math.tanh(3);
+    const ax = Math.abs(x);
+    const y =
+      ax <= knee ? ax : knee + (1 - knee) * Math.tanh((ax - knee) / (1 - knee));
+    curve[i] = Math.sign(x) * y;
   }
   shaper.curve = curve;
   master.connect(shaper);
@@ -179,7 +183,10 @@ function triggerVoice(
   // (главный источник клиппинга), и держим запас под мастер-лимитер.
   const peak = Math.max(0.0001, (step.vel * 0.55) / freqs.length);
   // Мгновенная атака = скачок = щелчок; минимальный пологий фронт обязателен.
-  const attack = Math.max(track.attack, 0.0005);
+  // На низких нотах фронт масштабируем периодом волны: четверть периода
+  // самой низкой ноты убирает широкополосный «прищёлк» у баса, панч сохраняя.
+  const lowestPeriod = 1 / Math.min(...freqs);
+  const attack = Math.max(track.attack, Math.min(0.25 * lowestPeriod, 0.012));
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
