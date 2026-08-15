@@ -135,6 +135,32 @@ function liveNotes(step: Step): Note[] {
   return step.notes.filter((nt) => Math.random() < nt.prob);
 }
 
+/** Нормализация сэмплов к одинаковой громкости: ИИ и библиотечные файлы
+ *  приходят с разным уровнем (обычно с большим запасом). Цель — RMS ≈ -16 dBFS
+ *  с потолком пика 0.95; тихие поднимаем, громкие не трогаем. */
+function normalizeBuffer(buf: AudioBuffer): void {
+  let peak = 0;
+  let sumSq = 0;
+  let count = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const a = Math.abs(d[i]);
+      if (a > peak) peak = a;
+      sumSq += d[i] * d[i];
+      count++;
+    }
+  }
+  if (count === 0 || peak === 0) return;
+  const rms = Math.sqrt(sumSq / count);
+  const gain = Math.min(0.95 / peak, 0.16 / rms, 8);
+  if (gain <= 1.01) return;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) d[i] *= gain;
+  }
+}
+
 function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
   const len = Math.floor(ctx.sampleRate * 2);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -435,6 +461,7 @@ export class AudioEngine {
       if (!blob) continue;
       try {
         const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+        normalizeBuffer(buf);
         this.sampleCache.set(track.sampleId, buf);
       } catch {
         // Битый формат — молча пропускаем, трек будет просто молчать.

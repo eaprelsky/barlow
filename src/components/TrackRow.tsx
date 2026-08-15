@@ -366,31 +366,6 @@ export const TrackRow = memo(function TrackRow({
                     ))}
                 </select>
               </label>
-              <label title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»">
-                сгенерировать по описанию
-                <span className="inline gen-row">
-                  <input
-                    className="gen-prompt"
-                    placeholder="например: глубокий басовый удар с глиной"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && prompt.trim()) onGenerateSample(track.id, prompt.trim(), genSeconds);
-                    }}
-                  />
-                  <NumField
-                    value={genSeconds} min={0.5} max={20} step={0.5}
-                    onChange={(v) => setGenSeconds(v)}
-                  />
-                  <button
-                    disabled={genBusy || !prompt.trim()}
-                    title="Сгенерировать и положить в слот (Enter в поле тоже работает)"
-                    onClick={() => onGenerateSample(track.id, prompt.trim(), genSeconds)}
-                  >
-                    {genBusy ? 'генерирую…' : 'сгенерировать'}
-                  </button>
-                </span>
-              </label>
             </>
           ) : (
             <>
@@ -639,6 +614,43 @@ export const TrackRow = memo(function TrackRow({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {track.waveform === 'sample' && (
+        <div className="gen-bar">
+          <label
+            className="gen-label"
+            title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»"
+          >
+            описание
+            <input
+              className="gen-prompt"
+              placeholder="например: глубокий басовый удар с глиной, хрустящее стеклянное тиканье, шорох виниловой пыли…"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && prompt.trim()) onGenerateSample(track.id, prompt.trim(), genSeconds);
+              }}
+            />
+          </label>
+          <label title="Длительность сэмпла в секундах">
+            сек
+            <NumField
+              value={genSeconds} min={0.5} max={20} step={0.5}
+              onChange={(v) => setGenSeconds(v)}
+            />
+          </label>
+          <button
+            disabled={genBusy || !prompt.trim()}
+            title="Сгенерировать и положить в слот (Enter в поле тоже работает)"
+            onClick={() => onGenerateSample(track.id, prompt.trim(), genSeconds)}
+          >
+            {genBusy ? 'генерирую…' : 'сгенерировать'}
+          </button>
+          {track.sampleName && genBusy === false && (
+            <span className="mini-info" title="Сейчас в слоте">в слоте: {track.sampleName}</span>
+          )}
         </div>
       )}
 
