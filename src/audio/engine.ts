@@ -11,8 +11,8 @@
 // Голос (triggerVoice) отвязан от конкретного контекста: им же пользуется
 // оффлайн-рендер в WAV через OfflineAudioContext.
 
-import type { Effect, Mod, ModTarget, Patch, Pattern, Scene, Step, Track } from '../types';
-import { patternInScene, stepFreqs } from '../types';
+import type { Effect, Mod, Note, Patch, Pattern, Scene, Step, Track } from '../types';
+import { patternInScene, scaleOf } from '../types';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
 
@@ -111,7 +111,7 @@ export function effectiveParams(track: Track, pattern: Pattern | undefined) {
   };
 }
 
-function modScale(target: ModTarget, depth: number): number {
+function modScale(target: string, depth: number): number {
   switch (target) {
     case 'pan':
       return depth; // ±1 максимум
@@ -119,11 +119,20 @@ function modScale(target: ModTarget, depth: number): number {
       return depth * 0.5;
     case 'filterFreq':
       return depth * 1800;
+    case 'fxTime':
+      return depth * 0.12; // до ±120 мс — даб-варп времени эха
+    case 'fxFeedback':
+      return depth * 0.35;
+    case 'fxMix':
+      return depth * 0.35;
+    default:
+      return depth;
   }
 }
 
-function fires(step: Step): boolean {
-  return step.notes.length > 0 && Math.random() < step.prob;
+/** Ноты, сработавшие в этом проходе (вероятность — у каждой ноты своя). */
+function liveNotes(step: Step): Note[] {
+  return step.notes.filter((nt) => Math.random() < nt.prob);
 }
 
 function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
@@ -186,9 +195,14 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     const depth = ctx.createGain();
     depth.gain.value = modScale(m.target, m.depth);
     lfo.connect(depth);
-    const param: AudioParam =
-      m.target === 'pan' ? panner.pan : m.target === 'volume' ? gain.gain : filter.frequency;
-    depth.connect(param);
+    let param: AudioParam | null = null;
+    if (m.target === 'pan') param = panner.pan;
+    else if (m.target === 'volume') param = gain.gain;
+    else if (m.target === 'filterFreq') param = filter.frequency;
+    else if (m.target === 'fxMix') param = fx[0]?.wet.gain ?? null;
+    else if (m.target === 'fxTime') param = fx[0]?.delay?.delayTime ?? null;
+    else if (m.target === 'fxFeedback') param = fx[0]?.feedback?.gain ?? null;
+    if (param) depth.connect(param);
     lfo.start(0);
     return { lfo, depth };
   });
@@ -272,14 +286,21 @@ function triggerVoice(
   noise: AudioBuffer,
   sample: AudioBuffer | null,
   track: Track,
-  step: Step,
+  notes: Note[],
   time: number,
 ): Voice {
-  const freqs = stepFreqs(track, step);
-  if (freqs.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
+  if (notes.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
+  const rows = scaleOf(track);
+  const freqs = notes.map((nt) => {
+    const idx = Math.min(Math.max(Math.round(nt.n), 0), rows.length - 1);
+    return track.freq * (rows[idx] ?? 1);
+  });
   // Аккорд делим поровну между нотами — вертикаль не громче одиночной ноты
   // (главный источник клиппинга), и держим запас под мастер-лимитер.
-  const peak = Math.max(0.0001, (step.vel * 0.55) / freqs.length);
+  // Готовый сэмпл уже мастерен — ему запас осцилляторов не нужен.
+  const headroom = track.waveform === 'sample' ? 0.95 : 0.55;
+  const topVel = Math.max(...notes.map((nt) => nt.vel));
+  const peak = Math.max(0.0001, (topVel * headroom) / notes.length);
   // Мгновенная атака = скачок = щелчок; минимальный пологий фронт обязателен.
   // На низких нотах фронт масштабируем периодом волны: четверть периода
   // самой низкой ноты убирает широкополосный «прищёлк» у баса, панч сохраняя.
@@ -304,9 +325,9 @@ function triggerVoice(
     // Сэмпл-плеер: шкала задаёт скорость воспроизведения (питч),
     // длина ноты — как всегда, атакой и спадом.
     if (!sample) return { amp, sources, stopAt };
-    const max = track.scale.length - 1;
-    for (const n of step.notes) {
-      const ratio = track.scale[Math.min(Math.max(Math.round(n), 0), max)] ?? 1;
+    const max = rows.length - 1;
+    for (const nt of notes) {
+      const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
       const src = ctx.createBufferSource();
       src.buffer = sample;
       src.playbackRate.value = ratio;
@@ -646,10 +667,11 @@ export class AudioEngine {
       let g = 0;
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
-        if (step && fires(step)) {
+        const notes = step ? liveNotes(step) : [];
+        if (notes.length > 0) {
           const at = clock.nextStepTime;
           if (track.mono) this.duckLastVoice(track.id, at);
-          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, step, at);
+          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at);
           if (track.mono) this.lastVoices.set(track.id, voice);
         }
         clock.nextStepTime += stepDur;
@@ -691,9 +713,10 @@ export class AudioEngine {
         const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
-          if (step && fires(step)) {
+          const notes = step ? liveNotes(step) : [];
+          if (notes.length > 0) {
             if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
-            const voice = triggerVoice(ctx, chain, noise, sample, track, step, tt);
+            const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt);
             if (track.mono) prevVoice = voice;
           }
           idx = (idx + 1) % pattern.length;

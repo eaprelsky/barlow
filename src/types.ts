@@ -16,19 +16,27 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
   sample: 'сэмпл',
 };
 
-export interface Step {
-  // Индексы шкалы, звучащие на этом шаге. Пусто — пауза, несколько — аккорд.
-  notes: number[];
-  // Громкость шага 0..1 (весь аккорд целиком).
+export interface Note {
+  // Индекс строки шкалы (см. scaleOf).
+  n: number;
+  // Громкость этой ноты 0..1.
   vel: number;
-  // Вероятность срабатывания шага 0..1 — живой, дышащий ритм.
+  // Вероятность срабатывания этой ноты 0..1.
   prob: number;
+}
+
+export interface Step {
+  // Звучащие ноты шага. Пусто — пауза, несколько — аккорд.
+  // У каждой ноты свои громкость и вероятность.
+  notes: Note[];
 }
 
 interface LegacyStepFields {
   on?: boolean;
   note?: number;
   mul?: number;
+  vel?: number;
+  prob?: number;
 }
 
 export interface Pattern {
@@ -65,7 +73,7 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
 
 /** Источник модуляции: LFO с формой, скоростью (Гц) и глубиной (0..1). */
 export interface Mod {
-  target: ModTarget;
+  target: string;
   shape: 'sine' | 'triangle' | 'square' | 'sawtooth';
   rate: number;
   depth: number;
@@ -83,6 +91,9 @@ export interface Track {
   // Шкала: отношения частот к тонике, по возрастанию. Произвольные
   // значения — микротюнинг без привязки к 12 полутонам.
   scale: number[];
+  // Добавленные октавы шкалы вверх/вниз (расширение диапазона стана).
+  scaleOctUp?: number;
+  scaleOctDown?: number;
   // Тоника шкалы, Гц.
   freq: number;
   // Падение тона: во сколько раз выше тоники нота стартует и слетает
@@ -139,14 +150,18 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 11;
+export const PATCH_VERSION = 12;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
   `${prefix}${Date.now().toString(36)}${(idSeq++).toString(36)}`;
 
 export function makeStep(on = false, note = 0, vel = 0.8, prob = 1): Step {
-  return { notes: on ? [note] : [], vel, prob };
+  return { notes: on ? [{ n: note, vel, prob }] : [] };
+}
+
+export function makeNote(n = 0, vel = 0.8, prob = 1): Note {
+  return { n, vel, prob };
 }
 
 export function makePattern(name: string, length: number, steps?: Step[]): Pattern {
@@ -181,6 +196,8 @@ export function makeTrack(
     sampleName: partial.sampleName,
     mono: partial.mono,
     effects: partial.effects,
+    scaleOctUp: partial.scaleOctUp,
+    scaleOctDown: partial.scaleOctDown,
     patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
     id: partial.id,
     name: partial.name,
@@ -199,12 +216,25 @@ export function patternInScene(track: Track, scene: Scene | undefined): Pattern 
   return track.patterns.find((p) => p.id === wanted) ?? track.patterns[0];
 }
 
+/** Строки нотного стана: базовая шкала + добавленные октавы. */
+export function scaleOf(track: Track): number[] {
+  const up = track.scaleOctUp ?? 0;
+  const down = track.scaleOctDown ?? 0;
+  const rows: number[] = [];
+  for (let o = -down; o <= up; o++) {
+    const k = 2 ** o;
+    for (const r of track.scale) rows.push(r * k);
+  }
+  return rows;
+}
+
 /** Частоты всех нот шага (аккорда), Гц. Пусто — пауза. */
 export function stepFreqs(track: Track, step: Step): number[] {
-  const max = track.scale.length - 1;
-  return step.notes.map((i) => {
-    const idx = Math.min(Math.max(Math.round(i), 0), max);
-    return track.freq * (track.scale[idx] ?? 1);
+  const rows = scaleOf(track);
+  const max = rows.length - 1;
+  return step.notes.map((nt) => {
+    const idx = Math.min(Math.max(Math.round(nt.n), 0), max);
+    return track.freq * (rows[idx] ?? 1);
   });
 }
 
@@ -223,7 +253,7 @@ const clamp = (v: number, lo: number, hi: number, fallback: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 
 const MOD_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'] as const;
-const MOD_TARGETS = ['pan', 'volume', 'filterFreq'] as const;
+const MOD_TARGETS = ['pan', 'volume', 'filterFreq', 'fxTime', 'fxFeedback', 'fxMix'] as const;
 
 function normalizeEffects(raw: unknown): Effect[] {
   if (!Array.isArray(raw)) return [];
@@ -271,34 +301,44 @@ function normalizeMods(raw: unknown): Mod[] {
   return out;
 }
 
-function normalizeSteps(raw: unknown, length: number, scale: number[]): Step[] {
-  const maxNote = scale.length - 1;
+function normalizeSteps(
+  raw: unknown,
+  length: number,
+  rowsLen: number,
+  scale: number[],
+): Step[] {
+  const maxNote = rowsLen - 1;
   const rawSteps = Array.isArray(raw) ? (raw as (Partial<Step> & LegacyStepFields)[]) : [];
   return Array.from({ length }, (_, i) => {
     const s = rawSteps[i];
-    let notes: number[];
-    if (Array.isArray(s?.notes)) {
-      notes = [
-        ...new Set(
-          s.notes
-            .filter((n): n is number => typeof n === 'number')
-            .map((n) => Math.min(Math.max(Math.round(n), 0), maxNote)),
-        ),
-      ];
+    // v12: ноты — объекты со своими vel/prob; v11 — индексы с общими
+    // vel/prob шага; старше — одиночные note/mul/on.
+    let notes: Note[];
+    if (Array.isArray(s?.notes) && s.notes.length > 0 && typeof s.notes[0] === 'object') {
+      notes = (s.notes as Partial<Note>[])
+        .filter((nt) => nt && typeof nt.n === 'number')
+        .map((nt) => ({
+          n: Math.min(Math.max(Math.round(nt.n!), 0), maxNote),
+          vel: clamp(nt.vel ?? 0.8, 0, 1, 0.8),
+          prob: clamp(nt.prob ?? 1, 0, 1, 1),
+        }));
+    } else if (Array.isArray(s?.notes)) {
+      const vel = clamp(s?.vel ?? 0.8, 0, 1, 0.8);
+      const prob = clamp(s?.prob ?? 1, 0, 1, 1);
+      notes = (s.notes as unknown as number[])
+        .filter((n): n is number => typeof n === 'number')
+        .map((n) => ({ n: Math.min(Math.max(Math.round(n), 0), maxNote), vel, prob }));
     } else {
-      // v3/v2: одиночная нота на шаге.
       let note = typeof s?.note === 'number' ? Math.round(s.note) : 0;
       if (typeof s?.mul === 'number' && s.mul > 0) {
         const idx = scale.indexOf(s.mul);
         if (idx >= 0) note = idx;
       }
-      notes = s?.on ? [Math.min(Math.max(note, 0), maxNote)] : [];
+      notes = s?.on
+        ? [{ n: Math.min(Math.max(note, 0), maxNote), vel: clamp(s?.vel ?? 0.8, 0, 1, 0.8), prob: clamp(s?.prob ?? 1, 0, 1, 1) }]
+        : [];
     }
-    return {
-      notes,
-      vel: clamp(s?.vel ?? 0.8, 0, 1, 0.8),
-      prob: clamp(s?.prob ?? 1, 0, 1, 1),
-    };
+    return { notes };
   });
 }
 
@@ -346,6 +386,9 @@ export function normalizePatch(p: Patch): Patch {
       }
       if (scale.length === 0) scale = [1];
 
+      const octUp = Math.round(clamp((t as { scaleOctUp?: number }).scaleOctUp ?? 0, 0, 4, 0));
+      const octDown = Math.round(clamp((t as { scaleOctDown?: number }).scaleOctDown ?? 0, 0, 4, 0));
+      const rowsLen = scale.length * (1 + octUp + octDown);
       const patterns: Pattern[] = rawPatterns
         .filter((pt) => pt && typeof pt.id === 'string')
         .map((pt) => {
@@ -355,7 +398,7 @@ export function normalizePatch(p: Patch): Patch {
             id: pt.id!,
             name: typeof pt.name === 'string' && pt.name ? pt.name : '?',
             length,
-            steps: normalizeSteps(pt.steps, length, scale),
+            steps: normalizeSteps(pt.steps, length, rowsLen, scale),
             forkedFrom: pt.forkedFrom,
             volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
@@ -383,6 +426,8 @@ export function normalizePatch(p: Patch): Patch {
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
         mono: !!t.mono,
         effects: normalizeEffects((t as { effects?: unknown }).effects),
+        scaleOctUp: octUp,
+        scaleOctDown: octDown,
       };
     });
 

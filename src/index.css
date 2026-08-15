@@ -577,3 +577,77 @@ footer {
   white-space: nowrap;
   display: inline-block;
 }
+
+/* Липкая шапка: транспорт и сцены всегда на виду */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: linear-gradient(var(--bg) 82%, transparent);
+  padding-top: 4px;
+}
+
+.topbar .scenes {
+  border-bottom: none;
+  padding-bottom: 8px;
+}
+
+.scene-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scene-name-input {
+  width: 110px;
+  font-size: 12px;
+}
+
+/* Кнопки октав у нотного стана */
+
+.oct-row {
+  display: flex;
+  gap: 3px;
+  height: auto;
+}
+
+.oct-btn {
+  width: 24px;
+  height: 14px;
+  padding: 0;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.oct-btn:hover:not(:disabled) {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+.oct-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Панель шага: по строке на ноту */
+
+.note-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.np-label {
+  min-width: 44px;
+  color: var(--accent-2);
+  font-size: 12px;
+}

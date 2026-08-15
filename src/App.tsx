@@ -6,17 +6,19 @@ import { mutatePattern } from './music/mutate';
 import { INSTRUMENT_PRESETS } from './music/instrumentPresets';
 import {
   isPatch,
+  makeNote,
   makePattern,
   makeTrack,
   normalizePatch,
   patternInScene,
+  scaleOf,
   uid,
 } from './types';
 import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { NumField } from './components/NumField';
 
-const STORAGE_KEY = 'barlow.patch.v11';
+const STORAGE_KEY = 'barlow.patch.v12';
 const UI_KEY = 'barlow.ui.v1';
 const WAV_BARS = 8;
 
@@ -321,7 +323,13 @@ export default function App() {
             ...t,
             patterns: t.patterns.map((pt) =>
               pt.id === pattern.id
-                ? { ...pt, steps: pattern.steps.map((s, i) => ({ ...s, notes: mask[i] ? (s.notes.length ? s.notes : [0]) : [] })) }
+                ? {
+                    ...pt,
+                    steps: pattern.steps.map((s, i) => ({
+                      ...s,
+                      notes: mask[i] ? (s.notes.length ? s.notes : [makeNote(0)]) : [],
+                    })),
+                  }
                 : pt,
             ),
           };
@@ -342,7 +350,7 @@ export default function App() {
           return {
             ...t,
             patterns: t.patterns.map((pt) =>
-              pt.id === pattern.id ? mutatePattern(pt, t.scale.length) : pt,
+              pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length) : pt,
             ),
           };
         }),
@@ -421,6 +429,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="topbar">
       <header>
         <span className="logo">barlow</span>
         <button className={playing ? 'stop' : ''} onClick={togglePlay}>
@@ -504,6 +513,31 @@ export default function App() {
         <button className="more-btn" onClick={() => setShowChain((v) => !v)}>
           {showChain ? 'арранжмент ▴' : 'арранжмент ▾'}
         </button>
+        {currentScene && (
+          <span className="scene-edit" title="Переименуй или удали текущую сцену">
+            <input
+              className="scene-name-input"
+              value={currentScene.name}
+              onChange={(e) =>
+                setPatch((p) => ({
+                  ...p,
+                  scenes: p.scenes.map((sc) =>
+                    sc.id === currentScene.id ? { ...sc, name: e.target.value } : sc,
+                  ),
+                }))
+              }
+            />
+            <button
+              className="remove"
+              title={patch.scenes.length <= 1 ? 'Единственную сцену удалить нельзя' : 'Удалить текущую сцену'}
+              disabled={patch.scenes.length <= 1}
+              onClick={() => removeScene(currentScene.id)}
+            >
+              удалить сцену
+            </button>
+          </span>
+        )}
+      </div>
       </div>
 
       {showChain && (

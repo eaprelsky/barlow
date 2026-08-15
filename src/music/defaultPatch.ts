@@ -1,6 +1,6 @@
 import { euclid } from './euclid';
 import { SCALE_PRESETS } from './scales';
-import { PATCH_VERSION, makePattern, makeScene, makeStep, makeTrack, uid } from '../types';
+import { PATCH_VERSION, makeNote, makePattern, makeScene, makeStep, makeTrack, uid } from '../types';
 import type { Patch, Step, Track } from '../types';
 
 const scale = (name: string): number[] =>
@@ -15,7 +15,8 @@ function withMelody(steps: Step[], notes: number[][]): Step[] {
   let k = 0;
   return steps.map((s) => {
     if (s.notes.length === 0) return s;
-    return { ...s, notes: notes[k++] ?? [0] };
+    const ns = notes[k++] ?? [0];
+    return { ...s, notes: ns.map((n) => makeNote(n)) };
   });
 }
 

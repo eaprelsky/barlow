@@ -1,6 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { Effect, Mod, ModTarget, Pattern, Step, Track, Waveform } from '../types';
-import { EFFECT_LABELS, MOD_TARGET_LABELS, WAVEFORM_LABELS, makeStep } from '../types';
+import type { Effect, Mod, Pattern, Step, Track, Waveform } from '../types';
+import {
+  EFFECT_LABELS,
+  MOD_TARGET_LABELS,
+  WAVEFORM_LABELS,
+  makeNote,
+  makeStep,
+  scaleOf,
+} from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
 import { putSample } from '../audio/library';
@@ -12,6 +19,21 @@ function panLabel(pan: number): string {
   if (pan < 0.49) return `L${Math.round((0.5 - pan) * 200)}`;
   if (pan > 0.51) return `R${Math.round((pan - 0.5) * 200)}`;
   return 'центр';
+}
+
+function fmtRatio(r: number): string {
+  return Math.abs(r - Math.round(r)) < 1e-6 ? String(Math.round(r)) : r.toFixed(2);
+}
+
+/** Заняты ли ноты в верхней/нижней добавленной октаве (удалять нельзя). */
+function octaveBusy(track: Track, dir: 'up' | 'down'): boolean {
+  const base = track.scale.length;
+  const rows = scaleOf(track).length;
+  const from = dir === 'up' ? rows - base : 0;
+  const to = dir === 'up' ? rows : base;
+  return track.patterns.some((pt) =>
+    pt.steps.some((s) => s.notes.some((nt) => nt.n >= from && nt.n < to)),
+  );
 }
 
 interface Props {
@@ -29,10 +51,6 @@ interface Props {
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
-}
-
-function fmtRatio(r: number): string {
-  return Math.abs(r - Math.round(r)) < 1e-6 ? String(Math.round(r)) : r.toFixed(2);
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -57,14 +75,17 @@ export const TrackRow = memo(function TrackRow({
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
+  const rows = scaleOf(track).map((ratio, i) => ({ ratio, i })).reverse();
+  const baseLen = track.scale.length;
+
+  const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
+  const changeSteps = (steps: Step[]) => onPatternChange(track.id, pattern.id, { steps });
+
   const loadSampleFile = (f: File) => {
     void putSample(f, f.name)
       .then((meta) => change({ sampleId: meta.id, sampleName: meta.name }))
       .catch(() => alert('Не удалось сохранить сэмпл в библиотеку'));
   };
-
-  const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
-  const changeSteps = (steps: Step[]) => onPatternChange(track.id, pattern.id, { steps });
 
   const setLength = (length: number) => {
     const clamped = Math.max(1, Math.min(64, Math.round(length) || 1));
@@ -74,29 +95,82 @@ export const TrackRow = memo(function TrackRow({
     onPatternChange(track.id, pattern.id, { length: clamped, steps });
   };
 
+  /** Клампит ноты во всех эскизах под новую длину стана. */
+  const clampAllNotes = (max: number) =>
+    track.patterns.map((pt) => ({
+      ...pt,
+      steps: pt.steps.map((s) => ({
+        ...s,
+        notes: s.notes
+          .map((nt) => ({ ...nt, n: Math.min(nt.n, max) }))
+          .filter((nt, i, arr) => arr.findIndex((x) => x.n === nt.n) === i),
+      })),
+    }));
+
   const setScaleByName = (name: string) => {
     const preset = SCALE_PRESETS.find((p) => p.name === name);
     if (!preset) return; // «своя» — не меняем
-    const max = preset.ratios.length - 1;
     change({
       scale: preset.ratios,
-      patterns: track.patterns.map((pt) => ({
-        ...pt,
-        steps: pt.steps.map((s) => ({ ...s, notes: s.notes.map((n) => Math.min(n, max)) })),
-      })),
+      scaleOctUp: 0,
+      scaleOctDown: 0,
+      patterns: clampAllNotes(preset.ratios.length - 1),
     });
   };
 
-  // Клик по ячейке: добавить/убрать высоту в этом шаге. Несколько кликов
-  // по разным строкам колонки — аккорд; когда высот не остаётся — пауза.
+  const addOctave = (dir: 'up' | 'down') => {
+    const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
+    const now = (track[key] ?? 0) + 1;
+    if (now > 4) return;
+    change({ [key]: now } as Partial<Track>);
+  };
+
+  const removeOctave = (dir: 'up' | 'down') => {
+    if (octaveBusy(track, dir)) return;
+    const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
+    const now = (track[key] ?? 0) - 1;
+    if (now < 0) return;
+    const base = baseLen;
+    const patterns = track.patterns.map((pt) => ({
+      ...pt,
+      steps: pt.steps.map((s) => ({
+        ...s,
+        notes: s.notes
+          .map((nt) => ({ ...nt, n: nt.n - base }))
+          .filter((nt) => nt.n >= 0),
+      })),
+    }));
+    change({ [key]: now, patterns } as Partial<Track>);
+  };
+
+  // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
+  // колонке — аккорд; когда нот не остаётся — пауза.
   const clickCell = (col: number, row: number) => {
     changeSteps(
       pattern.steps.map((s, j) => {
         if (j !== col) return s;
-        const has = s.notes.includes(row);
-        const notes = has ? s.notes.filter((n) => n !== row) : [...s.notes, row].sort((a, b) => a - b);
+        const has = s.notes.some((nt) => nt.n === row);
+        const notes = has ? s.notes.filter((nt) => nt.n !== row) : [...s.notes, makeNote(row)];
         return { ...s, notes };
       }),
+    );
+  };
+
+  const removeNoteAt = (col: number, row: number) => {
+    changeSteps(
+      pattern.steps.map((s, j) =>
+        j === col ? { ...s, notes: s.notes.filter((nt) => nt.n !== row) } : s,
+      ),
+    );
+  };
+
+  const setNoteField = (col: number, row: number, field: 'vel' | 'prob', v: number) => {
+    changeSteps(
+      pattern.steps.map((s, j) =>
+        j === col
+          ? { ...s, notes: s.notes.map((nt) => (nt.n === row ? { ...nt, [field]: v } : nt)) }
+          : s,
+      ),
     );
   };
 
@@ -104,9 +178,48 @@ export const TrackRow = memo(function TrackRow({
     changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
 
-  const setStepField = (col: number, field: 'vel' | 'prob', v: number) => {
-    changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, [field]: v } : s)));
-  };
+  // Колесо над нотой — шорткат громкости/вероятности (как в панели шага).
+  // Нативный слушатель с passive:false — React-овый onWheel пассивный.
+  const stateRef = useRef({ track, pattern, onPatternChange });
+  stateRef.current = { track, pattern, onPatternChange };
+  useEffect(() => {
+    const el = rollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>('.cell');
+      if (!cell) return;
+      const col = Number(cell.dataset.col);
+      const row = Number(cell.dataset.row);
+      const { pattern: pt, onPatternChange: changeOne } = stateRef.current;
+      const s = pt.steps[col];
+      const nt = s?.notes.find((x) => x.n === row);
+      if (!nt) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.05 : -0.05;
+      changeOne(stateRef.current.track.id, pt.id, {
+        steps: pt.steps.map((st, j) =>
+          j !== col
+            ? st
+            : {
+                ...st,
+                notes: st.notes.map((x) =>
+                  x.n !== row
+                    ? x
+                    : e.shiftKey
+                      ? { ...x, prob: Math.min(1, Math.max(0, x.prob + delta)) }
+                      : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + delta)) },
+                ),
+              },
+        ),
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Модуляции живут на эскизе: первая правка переносит наследованный
+  // с трека список в этот эскиз (правки дальше — только здесь).
+  const changePatternMods = (mods: Mod[]) => onPatternChange(track.id, pattern.id, { mods });
 
   const updateMod = (i: number, upd: Partial<Mod>) => {
     const base = pattern.mods ?? track.mods;
@@ -121,12 +234,7 @@ export const TrackRow = memo(function TrackRow({
   const removeMod = (i: number) =>
     changePatternMods((pattern.mods ?? track.mods).filter((_, j) => j !== i));
 
-  // Модуляции живут на эскизе: первая правка переносит наследованный
-  // с трека список в этот эскиз (правки дальше — только здесь).
-  const changePatternMods = (mods: Mod[]) =>
-    onPatternChange(track.id, pattern.id, { mods });
-
-  // Эффекты — на треке, последовательность важна (фильтр → эффекты → панорама).
+  // Эффекты — на треке: фильтр → эффекты → панорама.
   const effects = track.effects ?? [];
   const updateDelay = (i: number, upd: Partial<Extract<Effect, { type: 'delay' }>>) =>
     change({ effects: effects.map((e, j) => (j === i && e.type === 'delay' ? { ...e, ...upd } : e)) });
@@ -146,34 +254,9 @@ export const TrackRow = memo(function TrackRow({
   const addEffect = () =>
     change({ effects: [...effects, { type: 'delay', timeSec: 0.28, feedback: 0.35, mix: 0.3 }] });
 
-  // Колесо над нотой — шорткат для ползунков панели шага.
-  // Нативный слушатель с passive:false — React-овый onWheel пассивный,
-  // preventDefault в нём не работает и страница скроллится.
-  const stateRef = useRef({ track, pattern, onPatternChange });
-  stateRef.current = { track, pattern, onPatternChange };
-  useEffect(() => {
-    const el = rollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      const cell = (e.target as HTMLElement).closest<HTMLElement>('.cell');
-      if (!cell) return;
-      const col = Number(cell.dataset.col);
-      const { pattern: pt, onPatternChange: changeOne } = stateRef.current;
-      const s = pt.steps[col];
-      if (!s || s.notes.length === 0) return;
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.05 : -0.05;
-      const steps = pt.steps.map((st, j) => {
-        if (j !== col) return st;
-        return e.shiftKey
-          ? { ...st, prob: Math.min(1, Math.max(0, st.prob + delta)) }
-          : { ...st, vel: Math.min(1, Math.max(0.05, st.vel + delta)) };
-      });
-      changeOne(stateRef.current.track.id, pt.id, { steps });
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  const modTargets: string[] = ['pan', 'volume', 'filterFreq'];
+  if (effects.length > 0) modTargets.push('fxMix');
+  if (effects.some((e) => e.type === 'delay')) modTargets.push('fxTime', 'fxFeedback');
 
   const patternChips = (
     <div className="pattern-chips">
@@ -183,8 +266,8 @@ export const TrackRow = memo(function TrackRow({
           className={pt.id === pattern.id ? 'chip on' : 'chip'}
           title={
             pt.forkedFrom
-              ? 'вариация (форк другого эскиза). Клик — играть в этой сцене, правый клик — форк от этого'
-              : 'эскиз дорожки — общий для всех сцен, где играет: правка меняет его везде. Клик — играть в этой сцене, правый клик — независимая копия (форк)'
+              ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
+              : 'эскиз дорожки — общий для всех сцен, где играет. Клик — играть, правый клик — независимая копия (форк)'
           }
           onClick={() => onSelectPattern(track.id, pt.id)}
           onContextMenu={(e) => {
@@ -195,11 +278,7 @@ export const TrackRow = memo(function TrackRow({
           {pt.name}
         </button>
       ))}
-      <button
-        className="chip add"
-        title="Новый пустой эскиз"
-        onClick={() => onAddPattern(track.id)}
-      >
+      <button className="chip add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
         +
       </button>
     </div>
@@ -228,17 +307,15 @@ export const TrackRow = memo(function TrackRow({
   }
 
   const selectedStep = selectedCol !== null ? (pattern.steps[selectedCol] ?? null) : null;
-  const rows = track.scale.map((ratio, i) => ({ ratio, i })).reverse();
+  const up = track.scaleOctUp ?? 0;
+  const down = track.scaleOctDown ?? 0;
+  const scaleRows = scaleOf(track);
 
   return (
     <div className="track">
       <div className="track-head">
         <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
-        <input
-          className="track-name"
-          value={track.name}
-          onChange={(e) => change({ name: e.target.value })}
-        />
+        <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
         <div className="group">
           <label title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
             эскизы
@@ -273,7 +350,7 @@ export const TrackRow = memo(function TrackRow({
                   />
                 </span>
               </label>
-              <label title="Шкала = набор скоростей воспроизведения сэмпла (питч): пентатоника даст музыкальные ступени, «гармоники 1–8» — питч-стек">
+              <label title="Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана">
                 шкала питча
                 <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
                   {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
@@ -290,7 +367,7 @@ export const TrackRow = memo(function TrackRow({
                 тоника, Гц
                 <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
               </label>
-              <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны">
+              <label title="Набор высот нотного стана. Любые отношения частот: пентатоники, чистые интервалы (just intonation), четвертитоны. Октавы добавляются кнопками у стана">
                 шкала
                 <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
                   {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
@@ -381,8 +458,6 @@ export const TrackRow = memo(function TrackRow({
               спад, с
               <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
             </label>
-          </div>
-          <div className="group">
             <label title="Нота стартует во сколько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
               падение тона, ×
               <NumField
@@ -476,7 +551,7 @@ export const TrackRow = memo(function TrackRow({
             <button onClick={addEffect} title="Добавить эффект">+ эффект</button>
           </div>
           <div className="group mods-group">
-            <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет">
+            <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет. Цели эффектов действуют на первый эффект в списке">
               модуляции эскиза «{pattern.name}» (LFO)
             </label>
             {(pattern.mods ?? track.mods).length === 0 && (
@@ -487,10 +562,12 @@ export const TrackRow = memo(function TrackRow({
                 <select
                   value={m.target}
                   title="Какой параметр качает LFO"
-                  onChange={(e) => updateMod(i, { target: e.target.value as ModTarget })}
+                  onChange={(e) => updateMod(i, { target: e.target.value as string })}
                 >
-                  {(Object.keys(MOD_TARGET_LABELS) as ModTarget[]).map((t) => (
-                    <option key={t} value={t}>{MOD_TARGET_LABELS[t]}</option>
+                  {modTargets.map((t) => (
+                    <option key={t} value={t}>
+                      {MOD_TARGET_LABELS[t as keyof typeof MOD_TARGET_LABELS] ?? t}
+                    </option>
                   ))}
                 </select>
                 <select
@@ -498,8 +575,8 @@ export const TrackRow = memo(function TrackRow({
                   title="Форма колебания"
                   onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
                 >
-                  {LFO_SHAPES.map((s) => (
-                    <option key={s} value={s}>{WAVEFORM_LABELS[s]}</option>
+                  {LFO_SHAPES.map((sh) => (
+                    <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
                   ))}
                 </select>
                 <label title="Скорость колебаний, Гц. 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
@@ -536,51 +613,71 @@ export const TrackRow = memo(function TrackRow({
 
       <div className="roll" ref={rollRef}>
         <div className="roll-side">
-          <div className="col-num-spacer" />
+          <div className="col-num-spacer oct-row">
+            <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
+            <button
+              className="oct-btn"
+              title={octaveBusy(track, 'up') ? 'В верхней октаве есть ноты — сначала убери их' : 'Убрать верхнюю октаву'}
+              disabled={up === 0 || octaveBusy(track, 'up')}
+              onClick={() => removeOctave('up')}
+            >−</button>
+          </div>
           {rows.map(({ ratio }) => (
             <div key={ratio} className="scale-cell" title={`отношение ${fmtRatio(ratio)} к тонике`}>
               ×{fmtRatio(ratio)}
             </div>
           ))}
+          <div className="col-num-spacer oct-row">
+            <button className="oct-btn" title="Добавить октаву вниз" onClick={() => addOctave('down')}>+окт</button>
+            <button
+              className="oct-btn"
+              title={octaveBusy(track, 'down') ? 'В нижней октаве есть ноты — сначала убери их' : 'Убрать нижнюю октаву'}
+              disabled={down === 0 || octaveBusy(track, 'down')}
+              onClick={() => removeOctave('down')}
+            >−</button>
+          </div>
         </div>
         <div className="roll-cols">
           {pattern.steps.map((s, col) => (
             <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
               <button
                 className={'col-num' + (col === selectedCol ? ' sel' : '')}
-                title="Настройки шага: громкость и вероятность"
+                title="Настройки нот шага: громкость и вероятность каждой"
                 onClick={() => setSelectedCol(col === selectedCol ? null : col)}
               >
                 {col + 1}
               </button>
               <div className="roll-col">
                 {rows.map(({ ratio, i }) => {
-                  const on = s.notes.includes(i);
+                  const nt = s.notes.find((x) => x.n === i);
+                  const on = !!nt;
                   const chord = on && s.notes.length > 1;
                   return (
                     <button
                       key={i}
                       data-col={col}
+                      data-row={i}
                       className={[
                         'cell',
                         on ? 'on' : '',
                         ratio === 1 ? 'tonic-row' : '',
                         col === activeStep ? 'ph' : '',
                       ].join(' ')}
-                      style={on ? { opacity: String(0.55 + 0.45 * s.vel) } : undefined}
+                      style={on ? { opacity: String(0.55 + 0.45 * nt!.vel) } : undefined}
                       title={
                         on
-                          ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''}\nклик по другой строке — добавить ноту (аккорд) · правый клик — стереть шаг`
+                          ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
                           : `${(track.freq * ratio).toFixed(1)} Гц — поставить ноту`
                       }
                       onClick={() => clickCell(col, i)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        clearCell(col);
+                        if (on) removeNoteAt(col, i);
+                        else clearCell(col);
                       }}
                     >
-                      {on && s.prob < 1 && (
-                        <span className="pbar" style={{ width: `${Math.round(s.prob * 100)}%` }} />
+                      {on && nt!.prob < 1 && (
+                        <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
                       )}
                     </button>
                   );
@@ -594,26 +691,41 @@ export const TrackRow = memo(function TrackRow({
       {selectedStep && selectedCol !== null && (
         <div className="step-panel">
           <span className="sp-label">шаг {selectedCol + 1}</span>
-          <label className="sp-field">
-            громкость
-            <input
-              type="range" min={0.05} max={1} step={0.05} value={selectedStep.vel}
-              onChange={(e) => setStepField(selectedCol, 'vel', Number(e.target.value))}
-            />
-            {Math.round(selectedStep.vel * 100)}%
-          </label>
-          <label
-            className="sp-field"
-            title="Шанс, что нота прозвучит при каждом проходе цикла. Меньше 100% — ритм живой, никогда не повторяется точно"
-          >
-            вероятность
-            <input
-              type="range" min={0} max={1} step={0.05} value={selectedStep.prob}
-              onChange={(e) => setStepField(selectedCol, 'prob', Number(e.target.value))}
-            />
-            {Math.round(selectedStep.prob * 100)}%
-          </label>
-          <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
+          {selectedStep.notes.length === 0 && (
+            <span className="none">пусто — поставь ноты кликом по стану</span>
+          )}
+          {selectedStep.notes.map((nt) => (
+            <div className="note-panel" key={nt.n}>
+              <span className="np-label" title="Высота ноты">
+                ×{fmtRatio(scaleRows[nt.n] ?? 1)}
+              </span>
+              <label className="sp-field">
+                громкость
+                <input
+                  type="range" min={0.05} max={1} step={0.05} value={nt.vel}
+                  onChange={(e) => setNoteField(selectedCol, nt.n, 'vel', Number(e.target.value))}
+                />
+                {Math.round(nt.vel * 100)}%
+              </label>
+              <label
+                className="sp-field"
+                title="Шанс, что нота прозвучит при каждом проходе цикла — у каждой ноты свой"
+              >
+                вероятность
+                <input
+                  type="range" min={0} max={1} step={0.05} value={nt.prob}
+                  onChange={(e) => setNoteField(selectedCol, nt.n, 'prob', Number(e.target.value))}
+                />
+                {Math.round(nt.prob * 100)}%
+              </label>
+              <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>
+                ×
+              </button>
+            </div>
+          ))}
+          {selectedStep.notes.length > 0 && (
+            <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
+          )}
         </div>
       )}
     </div>
