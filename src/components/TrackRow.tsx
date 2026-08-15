@@ -10,8 +10,9 @@ import {
 } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
 import { NumField } from './NumField';
-import { EnvGraph } from './EnvGraph';
+import { EnvGraph, PitchGraph } from './EnvGraph';
 import { putSample } from '../audio/library';
+import { tickDuration } from '../audio/engine';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -53,6 +54,7 @@ function octaveBusy(track: Track, dir: 'up' | 'down'): boolean {
 interface Props {
   track: Track;
   pattern: Pattern;
+  bpm: number;
   activeStep: number;
   collapsed: boolean;
   onToggleCollapse: (id: string) => void;
@@ -72,6 +74,7 @@ interface Props {
 export const TrackRow = memo(function TrackRow({
   track,
   pattern,
+  bpm,
   activeStep,
   collapsed,
   onToggleCollapse,
@@ -493,54 +496,58 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'env' && (
           <div className="group env-tab">
-            <EnvGraph attack={track.attack} decay={track.decay} pitchDrop={track.pitchDrop} pitchTime={track.pitchTime} />
-            <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие"
+            <div className="env-block">
+              <EnvGraph attack={track.attack} decay={track.decay} gridSec={tickDuration(bpm)} />
+              <span className="env-info">
+                нота ≈ {(Math.max(track.attack, 0.0005) + track.decay).toFixed(2)} с ·{' '}
+                {((Math.max(track.attack, 0.0005) + track.decay) / tickDuration(bpm)).toFixed(1)} шестнадцатых
+              </span>
+            </div>
+            <div className="env-block">
+              <PitchGraph
+                pitchDrop={track.pitchDrop}
+                pitchTime={track.pitchTime}
+                total={Math.max(track.attack, 0.0005) + track.decay}
+              />
+            </div>
+            <div className="env-fields">
+              <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие">
+                атака, мс
+                <NumField
+                  value={Math.round(Math.max(track.attack, 0.0005) * 1000)} min={0} max={500} step={1}
+                  onChange={(ms) => change({ attack: Math.max(0.0005, ms / 1000) })}
+                />
+              </label>
+              <label
+                title={
+                  track.waveform === 'sample'
+                    ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
+                    : 'Сколько секунд звучит нота после удара'
+                }
               >
-              атака, мс
-              <NumField
-                value={Math.round(Math.max(track.attack, 0.0005) * 1000)} min={0} max={500} step={1}
-                onChange={(ms) => change({ attack: Math.max(0.0005, ms / 1000) })}
-              />
-            </label>
-            <label
-              title={
-                track.waveform === 'sample'
-                  ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
-                  : 'Сколько секунд звучит нота после удара'
-              }
-            >
-              спад, с
-              <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
-            </label>
-            <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
-              падение тона, ×
-              <NumField
-                value={track.pitchDrop} min={1} max={16} step={0.5}
-                onChange={(pitchDrop) => change({ pitchDrop })}
-              />
-            </label>
-            <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-              время падения, с
-              <NumField
-                value={track.pitchTime} min={0} max={2} step={0.01}
-                onChange={(pitchTime) => change({ pitchTime })}
-              />
-            </label>
+                спад, с
+                <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
+              </label>
+              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме">
+                падение тона, ×
+                <NumField
+                  value={track.pitchDrop} min={1} max={16} step={0.5}
+                  onChange={(pitchDrop) => change({ pitchDrop })}
+                />
+              </label>
+              <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
+                время падения, с
+                <NumField
+                  value={track.pitchTime} min={0} max={2} step={0.01}
+                  onChange={(pitchTime) => change({ pitchTime })}
+                />
+              </label>
+            </div>
           </div>
           )}
           {tab === 'timbre' && (
           <>
           <div className="group">
-            <label
-              className="mono-label"
-              title="Одна нота за раз: новая мягко глушит хвост предыдущей. Убирает фазовую интерференцию наложений — басам включать"
-            >
-              моно
-              <input
-                type="checkbox" checked={!!track.mono}
-                onChange={(e) => change({ mono: e.target.checked })}
-              />
-            </label>
             <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
               фаза, шагов
               <NumField
@@ -548,8 +555,15 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(phase) => change({ phase: Math.round(phase) })}
               />
             </label>
-            <label title="Фильтр нижних частот: приглушает всё выше этой частоты. Меньше — глуше и мягче, больше — ярче и звонче. У баса держи низко (200–500), у хэтов высоко (6000+)">
-              фильтр, Гц
+            <label title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай">
+              низ, Гц
+              <NumField
+                value={track.filterLow} min={20} max={4000} step={10}
+                onChange={(filterLow) => change({ filterLow })}
+              />
+            </label>
+            <label title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+">
+              верх, Гц
               <NumField
                 value={track.filterFreq} min={60} max={12000} step={10}
                 onChange={(filterFreq) => change({ filterFreq })}
@@ -579,48 +593,40 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'fx' && (
           <div className="group mods-group">
-            <label title="Эффекты трека, включаются последовательно: фильтр → эффекты → панорама">
-              эффекты
-            </label>
-            {effects.length === 0 && (
-              <span className="none">пусто — «+ эффект»</span>
-            )}
             {effects.map((fx, i) => (
               <div className="mod-row" key={i}>
-                <select value={fx.type} title="Тип эффекта" onChange={(e) => setEffectType(i, e.target.value as Effect['type'])}>
+                <select value={fx.type} title="Тип эффекта: фильтр → эффекты → панорама" onChange={(e) => setEffectType(i, e.target.value as Effect['type'])}>
                   {(Object.keys(EFFECT_LABELS) as Effect['type'][]).map((t) => (
                     <option key={t} value={t}>{EFFECT_LABELS[t]}</option>
                   ))}
                 </select>
                 {fx.type === 'delay' ? (
                   <>
-                    <label title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс, четверть ≈ 508 мс)">
-                      повтор, мс
+                    <span className="mr" title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс)">
                       <NumField
                         value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10}
                         onChange={(ms) => updateDelay(i, { timeSec: ms / 1000 })}
                       />
-                    </label>
-                    <label title="Насколько затухает каждый следующий повтор: 0% — один повтор, 80% — длинное эхо">
-                      затухание
+                      <i>мс</i>
+                    </span>
+                    <span className="mr" title="Затухание повторов: 0% — один повтор, 80% — длинное эхо">
                       <input
                         type="range" min={0} max={0.9} step={0.05} value={fx.feedback}
                         onChange={(e) => updateDelay(i, { feedback: Number(e.target.value) })}
                       />
-                      {Math.round(fx.feedback * 100)}%
-                    </label>
+                      <i>{Math.round(fx.feedback * 100)}%</i>
+                    </span>
                   </>
                 ) : (
-                  <label title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
-                    размер, с
+                  <span className="mr" title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
                     <NumField
                       value={fx.sizeSec} min={0.2} max={8} step={0.1}
                       onChange={(sizeSec) => updateReverb(i, { sizeSec })}
                     />
-                  </label>
+                    <i>с</i>
+                  </span>
                 )}
-                <label title="Сколько эффекта подмешать к чистому звуку">
-                  уровень
+                <span className="mr" title="Сколько эффекта подмешать к чистому звуку">
                   <input
                     type="range" min={0} max={1} step={0.05} value={fx.mix}
                     onChange={(e) => {
@@ -629,8 +635,8 @@ export const TrackRow = memo(function TrackRow({
                       else updateReverb(i, { mix });
                     }}
                   />
-                  {Math.round(fx.mix * 100)}%
-                </label>
+                  <i>{Math.round(fx.mix * 100)}%</i>
+                </span>
                 <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
               </div>
             ))}
@@ -639,17 +645,11 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'mods' && (
           <div className="group mods-group">
-            <label title="Модуляции этого эскиза: LFO непрерывно качает выбранный параметр, пока эскиз играет. Цели эффектов действуют на первый эффект в списке">
-              модуляции «{pattern.name}»
-            </label>
-            {(pattern.mods ?? track.mods).length === 0 && (
-              <span className="none">пусто — «+ модуляция»</span>
-            )}
             {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i}>
                 <select
                   value={m.target}
-                  title="Какой параметр качает LFO"
+                  title="Какой параметр качает LFO. Цели эффектов — на первый эффект в списке"
                   onChange={(e) => updateMod(i, { target: e.target.value as string })}
                 >
                   {modTargets.map((t) => (
@@ -667,21 +667,20 @@ export const TrackRow = memo(function TrackRow({
                     <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
                   ))}
                 </select>
-                <label title="Скорость колебаний, Гц. 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
-                  Гц
+                <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
                   <NumField
                     value={m.rate} min={0.01} max={40} step={0.05}
                     onChange={(rate) => updateMod(i, { rate })}
                   />
-                </label>
-                <label title="Глубина: насколько сильно LFO отклоняет параметр">
-                  глубина
+                  <i>Гц</i>
+                </span>
+                <span className="mr" title="Глубина: насколько сильно LFO отклоняет параметр">
                   <input
                     type="range" min={0} max={1} step={0.05} value={m.depth}
                     onChange={(e) => updateMod(i, { depth: Number(e.target.value) })}
                   />
-                  {Math.round(m.depth * 100)}%
-                </label>
+                  <i>{Math.round(m.depth * 100)}%</i>
+                </span>
                 <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
               </div>
             ))}

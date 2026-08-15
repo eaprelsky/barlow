@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
@@ -92,7 +93,64 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
-  const [patch, setPatch] = useState<Patch>(loadPatch);
+  const [patch, setPatchRaw] = useState<Patch>(loadPatch);
+  const undoStack = useRef<Patch[]>([]);
+  const redoStack = useRef<Patch[]>([]);
+  const lastPush = useRef(0);
+
+  // Все правки патча идут через этот сеттер: он пишет историю.
+  // Быстрые изменения (движение ползунка) коалесцируются в один шаг (< 700 мс).
+  const setPatch: Dispatch<SetStateAction<Patch>> = useCallback((updater) => {
+    setPatchRaw((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (next === prev) return prev;
+      const now = Date.now();
+      if (now - lastPush.current > 700) {
+        undoStack.current.push(prev);
+        if (undoStack.current.length > 100) undoStack.current.shift();
+        redoStack.current = [];
+        lastPush.current = now;
+      }
+      return next;
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    setPatchRaw((prev) => {
+      const p = undoStack.current.pop();
+      if (!p) return prev;
+      redoStack.current.push(prev);
+      lastPush.current = 0;
+      return p;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setPatchRaw((prev) => {
+      const p = redoStack.current.pop();
+      if (!p) return prev;
+      undoStack.current.push(prev);
+      lastPush.current = 0;
+      return p;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (k === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [presetIdx, setPresetIdx] = useState(0);
@@ -223,8 +281,20 @@ export default function App() {
     setPatch((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
   }, []);
 
+  const clearAll = useCallback(() => {
+    if (engine.playing) {
+      engine.stop();
+      setPlaying(false);
+    }
+    const scene = { id: uid('s'), name: 'сцена 1', slots: {} as Record<string, string> };
+    setPatch((p) => ({ ...p, tracks: [], scenes: [scene], chain: [{ sceneId: scene.id, bars: 8 }] }));
+    setSceneId(scene.id);
+  }, [engine]);
+
   const removeTrack = useCallback((id: string) => {
     setPatch((p) => {
+      const victim = p.tracks.find((t) => t.id === id);
+      if (victim && !window.confirm(`Удалить трек «${victim.name}»? Ctrl+Z вернёт`)) return p;
       const tracks = p.tracks.filter((x) => x.id !== id);
       const scenes = p.scenes.map((s) => {
         const slots = { ...s.slots };
@@ -536,6 +606,18 @@ export default function App() {
         >
           добавить трек
         </button>
+        <button
+          className="undo-btn"
+          disabled={undoStack.current.length === 0}
+          onClick={undo}
+          title="Отменить (Ctrl+Z)"
+        >↶</button>
+        <button
+          className="undo-btn"
+          disabled={redoStack.current.length === 0}
+          onClick={redo}
+          title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
+        >↷</button>
         <div className="menu">
           <button onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">файл ▾</button>
           {fileOpen && (
@@ -545,7 +627,13 @@ export default function App() {
               </button>
               <button onClick={() => { exportPatch(); setFileOpen(false); }}>экспорт патча</button>
               <button onClick={() => { fileRef.current?.click(); setFileOpen(false); }}>импорт патча</button>
-              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс</button>
+              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс к демо</button>
+              <button
+                onClick={() => { clearAll(); setFileOpen(false); }}
+                title="Пустой проект: без треков, одна сцена. Undo вернёт всё обратно"
+              >
+                очистить всё
+              </button>
             </div>
           )}
         </div>
@@ -688,6 +776,7 @@ export default function App() {
             key={t.id}
             track={t}
             pattern={patternInScene(t, currentScene)}
+            bpm={patch.bpm}
             activeStep={activeOf(t)}
             collapsed={!!ui.collapsed[t.id]}
             onToggleCollapse={toggleCollapse}

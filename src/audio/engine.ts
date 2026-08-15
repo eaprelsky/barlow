@@ -67,6 +67,7 @@ interface FxNodes {
 }
 
 interface TrackChain {
+  hp: BiquadFilterNode;
   filter: BiquadFilterNode;
   panner: StereoPannerNode;
   gain: GainNode;
@@ -170,10 +171,15 @@ function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
 }
 
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = track.filterLow;
+  hp.Q.value = 0.7;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = track.filterFreq;
   filter.Q.value = 0.8;
+  hp.connect(filter);
   const panner = ctx.createStereoPanner();
   panner.pan.value = track.pan * 2 - 1;
   const gain = ctx.createGain();
@@ -181,7 +187,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   panner.connect(gain);
   gain.connect(dest);
 
-  // Эффекты: фильтр → (dry|wet каждого эффекта) → панорама.
+  // Эффекты: фильтры → (dry|wet каждого эффекта) → панорама.
   const fx: FxNodes[] = [];
   let node: AudioNode = filter;
   for (const e of track.effects ?? []) {
@@ -233,6 +239,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     return { lfo, depth };
   });
   return {
+    hp,
     filter,
     panner,
     gain,
@@ -259,6 +266,7 @@ function disposeChain(chain: TrackChain): void {
     f.feedback?.disconnect();
     f.convolver?.disconnect();
   }
+  chain.hp.disconnect();
   chain.filter.disconnect();
   chain.panner.disconnect();
   chain.gain.disconnect();
@@ -336,7 +344,7 @@ function triggerVoice(
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
   amp.gain.exponentialRampToValueAtTime(0.0001, time + attack + track.decay);
-  amp.connect(chain.filter);
+  amp.connect(chain.hp);
   const stopAt = time + attack + track.decay + 0.05;
 
   const sources: AudioScheduledSourceNode[] = [];
@@ -511,6 +519,7 @@ export class AudioEngine {
       this.chains.set(trackId, fresh);
       return fresh;
     }
+    chain.hp.frequency.setTargetAtTime(track.filterLow, t0, 0.03);
     chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
     chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
     chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);

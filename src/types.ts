@@ -101,7 +101,8 @@ export interface Track {
   pitchDrop: number;
   // Длительность падения тона, с.
   pitchTime: number;
-  // Частота lowpass-фильтра трека, Гц.
+  // Частоты обрезки: highpass снизу и lowpass сверху, Гц.
+  filterLow: number;
   filterFreq: number;
   // Огибающая ноты, сек.
   attack: number;
@@ -150,7 +151,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 12;
+export const PATCH_VERSION = 13;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -186,6 +187,7 @@ export function makeTrack(
     freq: partial.freq ?? 220,
     pitchDrop: partial.pitchDrop ?? 1,
     pitchTime: partial.pitchTime ?? 0.08,
+    filterLow: partial.filterLow ?? 20,
     filterFreq: partial.filterFreq ?? 8000,
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
@@ -416,6 +418,7 @@ export function normalizePatch(p: Patch): Patch {
         freq: clamp(t.freq, 20, 9000, 220),
         pitchDrop: clamp(t.pitchDrop ?? 1, 1, 16, 1),
         pitchTime: clamp(t.pitchTime ?? 0.08, 0, 2, 0.08),
+        filterLow: clamp((t as { filterLow?: number }).filterLow ?? 20, 20, 4000, 20),
         filterFreq: clamp(t.filterFreq, 60, 12000, 8000),
         attack: clamp(t.attack, 0, 1, 0.002),
         decay: clamp(t.decay, 0.01, 4, 0.25),

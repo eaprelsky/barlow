@@ -906,3 +906,71 @@ header button.on {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Undo/redo */
+
+.undo-btn {
+  padding: 5px 10px;
+  font-size: 14px;
+}
+
+/* Огибающая: блоки графика и поля */
+
+.env-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.env-info {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.env-fields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.env-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.env-text {
+  fill: var(--text-dim);
+  font-size: 9px;
+}
+
+/* Компактные строки модуляций/эффектов: юниты справа от полей */
+
+.mod-row .mr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mod-row .mr i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 24px;
+}
+
+.mod-row select {
+  min-width: 92px;
+  width: auto;
+}
+
+.mod-row input[type='range'] {
+  width: 74px;
+}
+
+/* Селекты не обрезают текст и не спорят со стрелкой */
+
+.group select {
+  min-width: 128px;
+  padding-right: 26px;
+}
