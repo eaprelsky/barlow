@@ -75,6 +75,7 @@ interface Props {
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
   soloActive: boolean;
   onSolo: (trackId: string) => void;
+  patternSceneCounts: Record<string, number>;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   genBusy: boolean;
 }
@@ -99,6 +100,7 @@ export const TrackRow = memo(function TrackRow({
   onReorder,
   soloActive,
   onSolo,
+  patternSceneCounts,
   onGenerateSample,
   genBusy,
 }: Props) {
@@ -410,24 +412,29 @@ export const TrackRow = memo(function TrackRow({
 
   const patternChips = (
     <div className="pattern-chips">
-      {track.patterns.map((pt) => (
-        <button
-          key={pt.id}
-          className={pt.id === pattern.id ? 'chip on' : 'chip'}
-          title={
-            pt.forkedFrom
-              ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
-              : 'эскиз дорожки — общий для всех сцен, где играет. Клик — играть, правый клик — независимая копия (форк)'
-          }
-          onClick={() => onSelectPattern(track.id, pt.id)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onForkPattern(track.id, pt.id);
-          }}
-        >
-          {pt.name}
-        </button>
-      ))}
+      {track.patterns.map((pt) => {
+        const scenes = patternSceneCounts[pt.id] ?? 0;
+        return (
+          <button
+            key={pt.id}
+            className={pt.id === pattern.id ? 'chip on' : 'chip'}
+            title={
+              (pt.forkedFrom
+                ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
+                : 'эскиз дорожки — общий для всех сцен, где играет. Клик — играть, правый клик — независимая копия (форк)') +
+              (scenes > 1 ? `. Играет в ${scenes} сценах — правка эскиза меняет его во всех них` : '')
+            }
+            onClick={() => onSelectPattern(track.id, pt.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onForkPattern(track.id, pt.id);
+            }}
+          >
+            {pt.name}
+            {scenes > 1 && <sup className="scene-cnt">{scenes}</sup>}
+          </button>
+        );
+      })}
       <button className="chip add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
         +
       </button>

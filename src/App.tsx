@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
@@ -193,6 +193,17 @@ export default function App() {
   }, [playing, engine, sceneId]);
 
   const currentScene = patch.scenes.find((s) => s.id === sceneId) ?? patch.scenes[0];
+
+  // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
+  // меняет все сцены, где он играет». Стабильная ссылка — треки не
+  // перерисовываются лишний раз.
+  const patternSceneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const sc of patch.scenes) {
+      for (const pid of Object.values(sc.slots)) counts[pid] = (counts[pid] ?? 0) + 1;
+    }
+    return counts;
+  }, [patch.scenes]);
 
   const togglePlay = useCallback(() => {
     if (engine.playing) {
@@ -916,6 +927,7 @@ export default function App() {
             onReorder={reorderTrack}
             soloActive={currentScene?.soloTrackId === t.id}
             onSolo={toggleSceneSolo}
+            patternSceneCounts={patternSceneCounts}
             onGenerateSample={generateSample}
             genBusy={!!genBusy[t.id]}
           />
