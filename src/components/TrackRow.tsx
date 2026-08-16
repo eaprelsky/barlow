@@ -1585,7 +1585,7 @@ export const TrackRow = memo(function TrackRow({
                   const smooth = res.map((x, i) => {
                     let sum = 0;
                     let c = 0;
-                    for (let k = i - 2; k <= i + 2; k++) {
+                    for (let k = i - 1; k <= i + 1; k++) {
                       const y = res[Math.min(res.length - 1, Math.max(0, k))];
                       sum += y.pos;
                       c++;

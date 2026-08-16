@@ -1380,7 +1380,7 @@ button.danger:hover {
 .scratch-track {
   position: relative;
   flex: 1;
-  height: 64px;
+  height: 96px;
   background: var(--cell-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
