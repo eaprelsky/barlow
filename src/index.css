@@ -1368,8 +1368,8 @@ button.danger:hover {
 /* Скрэтч-пэд */
 .scratch-bar {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 12px;
   margin-bottom: 10px;
   background: var(--panel-2);
@@ -1377,10 +1377,26 @@ button.danger:hover {
   border-radius: 8px;
 }
 
+.scratch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scratch-row {
+  display: flex;
+  gap: 6px;
+}
+
+.scratch-bar.recording .scratch-track {
+  border-color: #e05555;
+  box-shadow: inset 0 0 0 1px rgba(224, 85, 85, 0.6);
+}
+
 .scratch-track {
   position: relative;
   flex: 1;
-  height: 96px;
+  height: 120px;
   background: var(--cell-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1435,9 +1451,10 @@ button.danger:hover {
   pointer-events: none;
 }
 
-.scratch-track button.on {
+.scratch-actions button.on {
   border-color: #e05555;
   color: #e05555;
+  background: rgba(224, 85, 85, 0.1);
 }
 
 /* Мини-карта волны сэмпла и оси скрэтч-пэда */
@@ -1449,7 +1466,7 @@ button.danger:hover {
 
 .scratch-map {
   width: 100%;
-  height: 96px;
+  height: 120px;
 }
 
 .scratch-axis {
