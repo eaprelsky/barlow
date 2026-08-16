@@ -863,6 +863,13 @@ export default function App() {
           микшер
         </button>
         <button
+          className={showChain ? 'on' : ''}
+          onClick={() => setShowChain((v) => !v)}
+          title="Цепочка: порядок сцен и их длины — арранжмент от начала до конца"
+        >
+          цепочка
+        </button>
+        <button
           className={showAi ? 'on' : ''}
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
           title="Настройки: ключ ИИ-генерации"
@@ -971,18 +978,20 @@ export default function App() {
         ))}
         <button className="scene-btn add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
         <span className="spacer" />
-        <label title="Играть сцены по цепочке (арранжмент). Выключено — текущая сцена держится, пока не кликнешь другую">
-          <input
-            type="checkbox" checked={patch.followChain}
-            onChange={(e) => setFollowChain(e.target.checked)}
-          />
-          по цепочке
-        </label>
-        <button className="more-btn" onClick={() => setShowChain((v) => !v)}>
-          {showChain ? 'арранжмент ▴' : 'арранжмент ▾'}
-        </button>
+        <span
+          className="seg"
+          title="Режим игры: «сцена» — текущая держится, пока не выберешь другую; «цепочка» — сцены идут по порядку из панели «цепочка»"
+        >
+          <button className={!patch.followChain ? 'on' : ''} onClick={() => setFollowChain(false)}>
+            сцена
+          </button>
+          <button className={patch.followChain ? 'on' : ''} onClick={() => setFollowChain(true)}>
+            цепочка
+          </button>
+        </span>
         {currentScene && (
           <span className="scene-edit" title="Переименуй или удали текущую сцену">
+            <span className="mini-info">название сцены</span>
             <input
               className="scene-name-input"
               value={currentScene.name}
@@ -1010,7 +1019,7 @@ export default function App() {
 
       {showChain && (
         <div className="chain-panel">
-          <span className="scenes-label">цепочка (арранжмент)</span>
+          <span className="scenes-label">цепочка — порядок и длины сцен</span>
           {patch.chain.map((it, i) => {
             const isPlaying =
               playing && patch.followChain && engine.currentChainPos === i;

@@ -1486,3 +1486,25 @@ button.danger:hover {
   flex-direction: column;
   gap: 3px;
 }
+
+/* Сегментный переключатель режима игры (сцена | цепочка) */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.seg button {
+  border: none;
+  border-radius: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.seg button.on {
+  background: var(--panel);
+  color: var(--accent);
+}
