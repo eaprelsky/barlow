@@ -644,7 +644,9 @@ function scheduleGrainCloud(
   peak: number,
   sources: AudioScheduledSourceNode[],
 ): number {
-  const dur = Math.max(0.05, track.attack + track.decay);
+  // Гейт в облаке общий: облако тянется по самой длинной ноте шага.
+  const gMax = Math.max(1, ...notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4)));
+  const dur = Math.max(0.05, (track.attack + track.decay) * gMax);
   const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
   const pos = clampNum(track.grainPos ?? 0.3, 0, 1);
   const scatter = clampNum(track.grainScatter ?? 0.15, 0, 1);
@@ -770,10 +772,28 @@ function triggerVoice(
   // самой низкой ноты убирает широкополосный «прищёлк» у баса, панч сохраняя.
   const lowestPeriod = 1 / Math.min(...freqs);
   const attack = Math.max(track.attack, Math.min(0.25 * lowestPeriod, 0.012));
+
+  // Длина ноты (Note.gate): множитель 0.1–4× от огибающей трека.
+  // Огибающая голоса тянется по самой длинной ноте шага, короткие ноты
+  // получают личный гейн с экспоненциальным обрезом.
+  const gates = notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4));
+  const maxGate = Math.max(1, ...gates);
+  const voiceLen = (attack + track.decay) * maxGate;
+  const noteGainOf = (i: number): GainNode | null => {
+    if (gates[i] >= maxGate - 1e-9) return null;
+    const ng = ctx.createGain();
+    const end = Math.max(time + 0.03, time + (attack + track.decay) * gates[i]);
+    ng.gain.setValueAtTime(1, time);
+    ng.gain.exponentialRampToValueAtTime(0.0001, end);
+    ng.connect(amp);
+    return ng;
+  };
+  /** Куда подключать источник ноты i: через её гейт-гейн или сразу в amp. */
+  const noteDest = (i: number): AudioNode => noteGainOf(i) ?? amp;
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
-  amp.gain.exponentialRampToValueAtTime(0.0001, time + attack + track.decay);
-  const stopAt = time + attack + track.decay + 0.05;
+  amp.gain.exponentialRampToValueAtTime(0.0001, time + voiceLen);
+  const stopAt = time + voiceLen + 0.05;
 
   if (track.waveform === 'noise') {
     const src = ctx.createBufferSource();
@@ -787,7 +807,7 @@ function triggerVoice(
     // длина ноты — как всегда, атакой и спадом.
     if (!sample) return { amp, sources, stopAt };
     const max = rows.length - 1;
-    for (const nt of notes) {
+    notes.forEach((nt, ni) => {
       const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
       const src = ctx.createBufferSource();
       src.buffer = sample;
@@ -801,29 +821,29 @@ function triggerVoice(
       }
       const vbS = vibBus(1 / 1200);
       if (vbS) vbS.connect(src.playbackRate);
-      src.connect(amp);
+      src.connect(noteDest(ni));
       src.start(time);
       src.stop(stopAt);
       sources.push(src);
-    }
+    });
   } else if (track.waveform === 'karplus') {
     // Струна: каждая нота — свой буфер (кэш по частоте и затуханию).
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       const len = Math.min(4, attack + track.decay + 0.05);
       const src = ctx.createBufferSource();
       src.buffer = karplusBuffer(ctx, f, track.ksLife ?? 2.5, len);
-      src.connect(amp);
+      src.connect(noteDest(fi));
       src.start(time);
       src.stop(stopAt);
       sources.push(src);
-    }
+    });
   } else if (track.waveform === 'fm') {
     // Классический FM: синусная несущая, синусный модулятор в её частоту.
     // Девиация = индекс × частота модулятора; индекс тает к хвосту ноты —
     // яркая атака, спокойное послезвучие (как у FM-пиано).
     const ratio = track.fmRatio ?? 2;
     const index = track.fmIndex ?? 3;
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       const carrier = ctx.createOscillator();
       carrier.type = 'sine';
       const mod = ctx.createOscillator();
@@ -846,13 +866,13 @@ function triggerVoice(
       }
       const vbF = vibBus(1);
       if (vbF) vbF.connect(carrier.detune);
-      carrier.connect(amp);
+      carrier.connect(noteDest(fi));
       mod.start(time);
       carrier.start(time);
       mod.stop(stopAt);
       carrier.stop(stopAt);
       sources.push(carrier, mod);
-    }
+    });
   } else if (track.waveform === 'supersaw') {
     // Супер-пила: расстроенный унисон из семи пил, морф = ширина расстройки.
     const detune = 4 + (track.voiceMorph ?? 0.5) * 36; // центов на крайнем голосе
@@ -866,7 +886,7 @@ function triggerVoice(
       { det: detune, gain: 0.32 },
     ];
     const norm = voices.reduce((sum, v) => sum + v.gain, 0);
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       for (const v of voices) {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
@@ -882,12 +902,12 @@ function triggerVoice(
         const vbSS = vibBus(1);
         if (vbSS) vbSS.connect(osc.detune);
         osc.connect(g);
-        g.connect(amp);
+        g.connect(noteDest(fi));
         osc.start(time);
         osc.stop(stopAt);
         sources.push(osc);
       }
-    }
+    });
   } else if (track.waveform === 'additive' || track.waveform === 'organ') {
     // Гармоники: морф = число гармоник (2..16, спад k^-1.5).
     // Орган: регистры-унисоны 1,2,3,4,6,8; морф открывает их по одному.
@@ -905,7 +925,7 @@ function triggerVoice(
       amps = Array.from({ length: n }, (_, i) => Math.pow(i + 1, -1.5));
     }
     const wave = harmonicWave(ctx, amps);
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       const osc = ctx.createOscillator();
       osc.setPeriodicWave(wave);
       if (track.pitchDrop > 1 && track.pitchTime > 0) {
@@ -916,16 +936,16 @@ function triggerVoice(
       }
       const vbA = vibBus(1);
       if (vbA) vbA.connect(osc.detune);
-      osc.connect(amp);
+      osc.connect(noteDest(fi));
       osc.start(time);
       osc.stop(stopAt);
       sources.push(osc);
-    }
+    });
   } else if (track.waveform === 'formant') {
     // Вокал: пила сквозь три формантных полосовых фильтра — гласная
     // не зависит от высоты ноты, морф едет А → Э → И → О → У.
     const [f1, f2, f3] = vowelOf(track.voiceMorph ?? 0.5);
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
       if (track.pitchDrop > 1 && track.pitchTime > 0) {
@@ -940,7 +960,7 @@ function triggerVoice(
       const dry = ctx.createGain();
       dry.gain.value = 0.12;
       osc.connect(dry);
-      dry.connect(amp);
+      dry.connect(noteDest(fi));
       (
         [
           [f1, 10, 1],
@@ -956,18 +976,18 @@ function triggerVoice(
         g.gain.value = level;
         osc.connect(bp);
         bp.connect(g);
-        g.connect(amp);
+        g.connect(noteDest(fi));
       });
       osc.start(time);
       osc.stop(stopAt);
       sources.push(osc);
-    }
+    });
   } else if (track.waveform === 'modal') {
     // Колокол/маримба: шумовой щелчок в банк параллельных резонаторов.
     // Морф = материал (частоты партиалов) и время звона (Q).
     const m = track.voiceMorph ?? 0.5;
     const q0 = 30 + m * 130;
-    for (const f of freqs) {
+    freqs.forEach((f, fi) => {
       const src = ctx.createBufferSource();
       src.buffer = noise;
       PARTIALS_A.forEach((pa, i) => {
@@ -980,12 +1000,12 @@ function triggerVoice(
         g.gain.value = 0.9 / (i + 1);
         src.connect(bp);
         bp.connect(g);
-        g.connect(amp);
+        g.connect(noteDest(fi));
       });
       src.start(time, Math.random() * 1.5, 0.004);
       src.stop(time + 0.02);
       sources.push(src);
-    }
+    });
   } else {
     // Аккорд: по осциллятору на ноту, огибающая общая.
     for (const f of freqs) {
@@ -1001,7 +1021,7 @@ function triggerVoice(
       }
       const vbO = vibBus(1);
       if (vbO) vbO.connect(osc.detune);
-      osc.connect(amp);
+      osc.connect(noteDest(freqs.indexOf(f)));
       osc.start(time);
       osc.stop(stopAt);
       sources.push(osc);

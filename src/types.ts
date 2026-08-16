@@ -55,6 +55,9 @@ export interface Note {
   vel: number;
   // Вероятность срабатывания этой ноты 0..1.
   prob: number;
+  // Длина ноты: множитель 0.1–4× от огибающей трека (атака + спад).
+  // 1 — как у трека, короче — тычки, длиннее — подтяжки.
+  gate?: number;
 }
 
 export interface Step {
@@ -250,7 +253,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 24;
+export const PATCH_VERSION = 25;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -475,13 +478,14 @@ function normalizeSteps(
           n: Math.min(Math.max(Math.round(nt.n!), 0), maxNote),
           vel: clamp(nt.vel ?? 0.8, 0, 1, 0.8),
           prob: clamp(nt.prob ?? 1, 0, 1, 1),
+          gate: clamp(nt.gate ?? 1, 0.1, 4, 1),
         }));
     } else if (Array.isArray(s?.notes)) {
       const vel = clamp(s?.vel ?? 0.8, 0, 1, 0.8);
       const prob = clamp(s?.prob ?? 1, 0, 1, 1);
       notes = (s.notes as unknown as number[])
         .filter((n): n is number => typeof n === 'number')
-        .map((n) => ({ n: Math.min(Math.max(Math.round(n), 0), maxNote), vel, prob }));
+        .map((n) => ({ n: Math.min(Math.max(Math.round(n), 0), maxNote), vel, prob, gate: 1 }));
     } else {
       let note = typeof s?.note === 'number' ? Math.round(s.note) : 0;
       if (typeof s?.mul === 'number' && s.mul > 0) {
@@ -489,7 +493,7 @@ function normalizeSteps(
         if (idx >= 0) note = idx;
       }
       notes = s?.on
-        ? [{ n: Math.min(Math.max(note, 0), maxNote), vel: clamp(s?.vel ?? 0.8, 0, 1, 0.8), prob: clamp(s?.prob ?? 1, 0, 1, 1) }]
+        ? [{ n: Math.min(Math.max(note, 0), maxNote), vel: clamp(s?.vel ?? 0.8, 0, 1, 0.8), prob: clamp(s?.prob ?? 1, 0, 1, 1), gate: 1 }]
         : [];
     }
     return { notes };

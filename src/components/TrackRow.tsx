@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { Effect, Mod, Pattern, Step, Track, Waveform } from '../types';
+import type { Effect, Mod, Note, Pattern, Step, Track, Waveform } from '../types';
 import {
   EFFECT_LABELS,
   MOD_TARGET_LABELS,
@@ -349,7 +349,7 @@ export const TrackRow = memo(function TrackRow({
 
   // Слайдер панели шага — коалесцируется (движение = один шаг undo),
   // в отличие от командных правок нот.
-  const setNoteField = (col: number, row: number, field: 'vel' | 'prob', v: number) => {
+  const setNoteField = (col: number, row: number, field: 'vel' | 'prob' | 'gate', v: number) => {
     onPatternChange(
       track.id,
       pattern.id,
@@ -614,7 +614,15 @@ export const TrackRow = memo(function TrackRow({
       const nt = s?.notes.find((x) => x.n === row);
       if (!nt) return;
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.05 : -0.05;
+      // Alt — длина ноты (шаг 0.1), Shift — вероятность, просто колесо — громкость.
+      const step = e.altKey ? 0.1 : 0.05;
+      const d = e.deltaY < 0 ? step : -step;
+      const field = (x: Note) =>
+        e.altKey
+          ? { ...x, gate: Math.min(4, Math.max(0.1, +((x.gate ?? 1) + d).toFixed(2))) }
+          : e.shiftKey
+            ? { ...x, prob: Math.min(1, Math.max(0, x.prob + d)) }
+            : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + d)) };
       // Колесо над выделенной нотой крутит поле сразу у всей группы.
       if (selSet.has(`${col}:${row}`)) {
         changeOne(stateRef.current.track.id, pt.id, {
@@ -622,9 +630,7 @@ export const TrackRow = memo(function TrackRow({
             ...st,
             notes: st.notes.map((x) => {
               if (!selSet.has(`${j}:${x.n}`)) return x;
-              return e.shiftKey
-                ? { ...x, prob: Math.min(1, Math.max(0, x.prob + delta)) }
-                : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + delta)) };
+              return field(x);
             }),
           })),
         });
@@ -636,13 +642,7 @@ export const TrackRow = memo(function TrackRow({
             ? st
             : {
                 ...st,
-                notes: st.notes.map((x) =>
-                  x.n !== row
-                    ? x
-                    : e.shiftKey
-                      ? { ...x, prob: Math.min(1, Math.max(0, x.prob + delta)) }
-                      : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + delta)) },
-                ),
+                notes: st.notes.map((x) => (x.n === row ? field(x) : x)),
               },
         ),
       });
@@ -1550,7 +1550,7 @@ export const TrackRow = memo(function TrackRow({
                       }
                       title={
                         on
-                          ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
+                          ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%${Math.abs((nt!.gate ?? 1) - 1) > 1e-6 ? ` · длина ×${(nt!.gate ?? 1).toFixed(1)}` : ''}\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
                           : `${(track.freq * ratio).toFixed(1)} Гц — поставить ноту`
                       }
                       onPointerDown={(e) => cellDown(e, col, i, on)}
@@ -1569,6 +1569,12 @@ export const TrackRow = memo(function TrackRow({
                     >
                       {on && nt!.prob < 1 && (
                         <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
+                      )}
+                      {on && Math.abs((nt!.gate ?? 1) - 1) > 1e-6 && (
+                        <span
+                          className="gbar"
+                          style={{ height: `${Math.min(100, Math.round(((nt!.gate ?? 1) / 4) * 100))}%` }}
+                        />
                       )}
                     </button>
                   );
@@ -1609,6 +1615,16 @@ export const TrackRow = memo(function TrackRow({
                   onChange={(e) => setNoteField(selectedCol, nt.n, 'prob', Number(e.target.value))}
                 />
                 {Math.round(nt.prob * 100)}%
+              </label>
+              <label
+                className="sp-field"
+                title="Длина ноты: множитель от огибающей трека (атака + спад). 1 — как у трека; 0.2–0.5 — короткие тычки; 2–4 — подтяжки поверх соседних шагов. Alt+колесо над нотой тоже крутит"
+              >
+                длина ×
+                <NumField
+                  value={nt.gate ?? 1} min={0.1} max={4} step={0.1}
+                  onChange={(v) => setNoteField(selectedCol, nt.n, 'gate', Math.max(0.1, Math.round(v * 10) / 10))}
+                />
               </label>
               <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>
                 ×
