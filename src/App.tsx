@@ -212,6 +212,21 @@ export default function App() {
 
   // ---- Сцены ----
 
+  /** Соло сцены (эксклюзивное): повторный клик по соло-треку снимает. */
+  const toggleSceneSolo = useCallback(
+    (trackId: string) => {
+      setPatch((p) => ({
+        ...p,
+        scenes: p.scenes.map((s) =>
+          s.id === sceneId
+            ? { ...s, soloTrackId: s.soloTrackId === trackId ? undefined : trackId }
+            : s,
+        ),
+      }));
+    },
+    [sceneId, setPatch],
+  );
+
   const selectScene = useCallback(
     (id: string) => {
       if (engine.playing) engine.setScene(id);
@@ -353,7 +368,8 @@ export default function App() {
         const scenes = p.scenes.map((s) => {
           const slots = { ...s.slots };
           delete slots[id];
-          return { ...s, slots };
+          const soloTrackId = s.soloTrackId === id ? undefined : s.soloTrackId;
+          return { ...s, slots, soloTrackId };
         });
         return { ...p, tracks, scenes };
       });
@@ -849,6 +865,8 @@ export default function App() {
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
             onReorder={reorderTrack}
+            soloActive={currentScene?.soloTrackId === t.id}
+            onSolo={toggleSceneSolo}
             onGenerateSample={generateSample}
             genBusy={!!genBusy[t.id]}
           />

@@ -69,8 +69,6 @@ export interface Pattern {
   mods?: Mod[];
   // Партия молчит во всех сценах, где играет.
   muted?: boolean;
-  // Глобальное соло: если хоть один играющий эскиз в соло — слышны только они.
-  solo?: boolean;
 }
 
 export type ModTarget = 'pan' | 'volume' | 'filterFreq';
@@ -168,6 +166,9 @@ export interface Scene {
   name: string;
   // trackId → patternId: какой эскиз играет дорожка в этой сцене.
   slots: Record<string, string>;
+  // Эксклюзивное соло этой сцены: слышна только эта дорожка (любой её
+  // эскиз). Соло — свойство сцены, с эскизами не переносится.
+  soloTrackId?: string;
 }
 
 export interface ChainItem {
@@ -188,7 +189,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 16;
+export const PATCH_VERSION = 17;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -392,10 +393,18 @@ function normalizeSteps(
 // Доводит патч любой версии до валидного состояния текущей схемы.
 // v5 и ниже: единственный рисунок трека становится паттерном «A»,
 // создаётся одна сцена и цепочка из неё.
+// v16 → v17: соло переезжает с эскиза в сцену (эксклюзивное soloTrackId).
 export function normalizePatch(p: Patch): Patch {
+  // Миграция v16: trackId → id эскизов со старым флагом solo.
+  const soloByTrack = new Map<string, Set<string>>();
   const tracks: Track[] = p.tracks
     .filter((t) => t && typeof t.id === 'string' && typeof t.name === 'string')
     .map((t): Track => {
+      const legacySolo = new Set(
+        (Array.isArray(t.patterns) ? t.patterns : []).map((pt) => (pt as { solo?: unknown }).solo ? pt.id : ''),
+      );
+      legacySolo.delete('');
+      if (legacySolo.size > 0) soloByTrack.set(t.id, legacySolo);
       // Сырые паттерны: из v6 пришли patterns, из старых — steps/length на треке.
       let rawPatterns: {
         id?: string;
@@ -456,7 +465,6 @@ export function normalizePatch(p: Patch): Patch {
                 : undefined,
             mods: mods.length > 0 ? mods : undefined,
             muted: !!(pt as { muted?: unknown }).muted,
-            solo: !!(pt as { solo?: unknown }).solo,
           };
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));
@@ -502,13 +510,21 @@ export function normalizePatch(p: Patch): Patch {
   }
 
   // Слоты чистим от несуществующих треков/паттернов, добавляем недостающие.
+  // Соло сцены: существующее валидируем, иначе мигрируем со старого
+  // solo эскиза (эскиз в соло играл в этой сцене → солирует трек).
   for (const scene of scenes) {
     const slots: Record<string, string> = {};
     for (const t of tracks) {
       const want = scene.slots?.[t.id];
       slots[t.id] = t.patterns.some((pt) => pt.id === want) ? want : t.patterns[0].id;
+      if (!scene.soloTrackId && soloByTrack.get(t.id)?.has(slots[t.id])) {
+        scene.soloTrackId = t.id;
+      }
     }
     scene.slots = slots;
+    if (scene.soloTrackId && !tracks.some((t) => t.id === scene.soloTrackId)) {
+      scene.soloTrackId = undefined;
+    }
   }
 
   const sceneIds = new Set(scenes.map((s) => s.id));

@@ -73,6 +73,8 @@ interface Props {
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
+  soloActive: boolean;
+  onSolo: (trackId: string) => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   genBusy: boolean;
 }
@@ -95,6 +97,8 @@ export const TrackRow = memo(function TrackRow({
   onRemove,
   onDuplicate,
   onReorder,
+  soloActive,
+  onSolo,
   onGenerateSample,
   genBusy,
 }: Props) {
@@ -465,9 +469,9 @@ export const TrackRow = memo(function TrackRow({
               onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
             >M</button>
             <button
-              className={pattern.solo ? 'ms on-s' : 'ms'}
-              title="Соло этой партии"
-              onClick={() => onPatternChange(track.id, pattern.id, { solo: !pattern.solo })}
+              className={soloActive ? 'ms on-s' : 'ms'}
+              title="Соло в этой сцене: слышна только эта дорожка. Повторный клик — снять"
+              onClick={() => onSolo(track.id)}
             >S</button>
           </span>
           <span className="mini-wave">{WAVEFORM_LABELS[track.waveform]}</span>
@@ -513,9 +517,9 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
           >M</button>
           <button
-            className={pattern.solo ? 'ms on-s' : 'ms'}
-            title="Соло этой партии: если хоть один эскиз в соло — слышны только соло"
-            onClick={() => onPatternChange(track.id, pattern.id, { solo: !pattern.solo })}
+            className={soloActive ? 'ms on-s' : 'ms'}
+            title="Соло в этой сцене: слышна только эта дорожка (любой её эскиз). С других сцен не переносится. Повторный клик — снять"
+            onClick={() => onSolo(track.id)}
           >S</button>
         </span>
         <div className="group">

@@ -108,13 +108,16 @@ function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   return ir;
 }
 
-/** Слышен ли эскиз: мьют выключает, соло — выключает всех остальных. */
+/** Слышимые эскизы сцены: мьют партии глушит, соло сцены (эксклюзивное,
+ *  привязано к дорожке — работает с любым эскизом трека) оставляет только
+ *  свою дорожку. */
 function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
-  const active = patch.tracks.map((t) => patternInScene(t, scene)).filter((p): p is Pattern => !!p);
-  const anySolo = active.some((p) => p.solo);
+  const soloTrackId = scene?.soloTrackId;
   const out = new Set<string>();
-  for (const p of active) {
-    if (!p.muted && (!anySolo || p.solo)) out.add(p.id);
+  for (const t of patch.tracks) {
+    const p = patternInScene(t, scene);
+    if (!p || p.muted) continue;
+    if (!soloTrackId || t.id === soloTrackId) out.add(p.id);
   }
   return out;
 }
