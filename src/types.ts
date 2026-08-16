@@ -245,6 +245,8 @@ export type MasterNoise = 'off' | 'white' | 'pink';
 export interface Patch {
   version: number;
   bpm: number;
+  // Название пьесы — попадает в имена файлов экспорта (транслит).
+  title?: string;
   // Общая громкость 0..2. Выше 1 — tanh-лимитер мягко пережимает,
   // звук плотнеет (мастер-сатурация) без клиппинга.
   masterVolume: number;
@@ -265,7 +267,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 27;
+export const PATCH_VERSION = 28;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -694,6 +696,11 @@ export function normalizePatch(p: Patch): Patch {
   return {
     version: PATCH_VERSION,
     bpm: Math.round(clamp(p.bpm, 30, 300, 120)),
+    title:
+      typeof (p as { title?: unknown }).title === 'string' &&
+      (p as { title?: string }).title!.trim()
+        ? (p as { title?: string }).title!.trim().slice(0, 80)
+        : undefined,
     masterVolume: clamp((p as { masterVolume?: number }).masterVolume ?? 1, 0, 2, 1),
     masterNoise:
       (p as { masterNoise?: unknown }).masterNoise === 'white' ||

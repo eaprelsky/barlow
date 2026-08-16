@@ -26,11 +26,16 @@ import { putSample } from './audio/library';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
+import { slugify } from './utils/slug';
 import { Library } from './components/Library';
 
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
 const WAV_BARS = 8;
+
+/** Стем имён файлов экспорта: название пьесы (транслит) или 'barlow'. */
+const exportStem = (patch: Patch): string =>
+  patch.title ? slugify(patch.title) : 'barlow';
 
 interface AiSettings {
   providerId: string;
@@ -621,8 +626,10 @@ export default function App() {
   // ---- Файлы ----
 
   const exportPatch = () => {
-    void saveBlob(new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }), 'barlow-patch.json')
-      .catch((e) => void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт'));
+    void saveBlob(
+      new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }),
+      `${exportStem(patch)}-patch.json`,
+    ).catch((e) => void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт'));
   };
 
   // Импорт: zip-проект (сэмплы укладываются в библиотеку, хеши совпадают
@@ -656,7 +663,7 @@ export default function App() {
   const exportZip = async () => {
     try {
       const blob = await exportProject(patch);
-      await saveBlob(blob, `barlow-${new Date().toISOString().slice(0, 10)}.zip`);
+      await saveBlob(blob, `${exportStem(patch)}-${new Date().toISOString().slice(0, 10)}.zip`);
     } catch (e) {
       void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт');
     }
@@ -677,7 +684,7 @@ export default function App() {
     setRendering(true);
     try {
       const blob = await engine.renderToWav(patch, sceneId, WAV_BARS);
-      await saveBlob(blob, 'barlow.wav');
+      await saveBlob(blob, `${exportStem(patch)}.wav`);
     } catch (e) {
       void alertDialog(`Рендер не удался: ${errText(e)}`, 'запись wav');
     } finally {
@@ -775,6 +782,15 @@ export default function App() {
           />
           %
         </label>
+        <input
+          className="title-input"
+          value={patch.title ?? ''}
+          placeholder="название пьесы"
+          title="Название пьесы: попадает в имена файлов экспорта (транслитом)"
+          onChange={(e) =>
+            setPatch((p) => ({ ...p, title: e.target.value.trim() ? e.target.value : undefined }))
+          }
+        />
         <span
           className="cycle-info"
           title="Длины циклов дорожек в этой сцене, в шагах. Разные длины = полиритмия: узоры сдвигаются друг относительно друга и не повторяются"

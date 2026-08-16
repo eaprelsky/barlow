@@ -1409,3 +1409,19 @@ button.danger:hover {
   font-size: 11px;
   pointer-events: none;
 }
+
+/* Название пьесы в шапке */
+.title-input {
+  width: 150px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--accent-2);
+  font: inherit;
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

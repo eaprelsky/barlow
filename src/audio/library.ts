@@ -6,6 +6,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktop } from '../platform';
+import { slugify } from '../utils/slug';
 
 export interface SampleMeta {
   id: string; // sha-256 содержимого
@@ -109,7 +110,8 @@ export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
   const id = await sha256Hex(buf);
   const meta: SampleMeta = { id, name, size: blob.size, createdAt: Date.now() };
   if (isDesktop) {
-    meta.file = `${id}.${extOf(blob)}`;
+    // Человекочитаемое имя + короткий хеш: и в папке видно, и уникально.
+    meta.file = `${slugify(name)}-${id.slice(0, 8)}.${extOf(blob)}`;
     await invoke('sample_write', {
       name: meta.file,
       data: Array.from(new Uint8Array(buf)),
