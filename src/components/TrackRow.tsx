@@ -1141,7 +1141,12 @@ export const TrackRow = memo(function TrackRow({
           {tab === 'env' && (
           <div className="group env-tab">
             <div className="env-block">
-              <EnvGraph attack={track.attack} decay={track.decay} gridSec={tickDuration(bpm)} />
+              <EnvGraph
+                attack={track.attack}
+                decay={track.decay}
+                sustain={track.sustain ?? 0}
+                gridSec={tickDuration(bpm)}
+              />
               <span className="env-info">
                 {track.noteSteps && track.noteSteps > 0
                   ? `нота ≈ ${(track.noteSteps * track.rate * tickDuration(bpm)).toFixed(2)} с · ${track.noteSteps} шаг(ов) — по сетке`
@@ -1172,6 +1177,15 @@ export const TrackRow = memo(function TrackRow({
               >
                 спад, с
                 <NumField value={track.decay} min={0.01} max={4} step={0.01} onChange={(decay) => change({ decay })} />
+              </label>
+              <label
+                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием в конце"
+              >
+                плато, %
+                <NumField
+                  value={Math.round((track.sustain ?? 0) * 100)} min={0} max={100} step={5}
+                  onChange={(v) => change({ sustain: v / 100 })}
+                />
               </label>
               <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
                 падение тона, ×

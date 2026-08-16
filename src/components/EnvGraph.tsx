@@ -5,6 +5,7 @@
 interface EnvProps {
   attack: number;
   decay: number;
+  sustain: number; // доля плато (0..1) звуковой части после атаки
   gridSec: number | null; // длительность 1/16 при текущем темпе; null — без сетки
 }
 
@@ -17,14 +18,17 @@ interface PitchProps {
 const W = 280;
 const H = 84;
 
-export function EnvGraph({ attack, decay, gridSec }: EnvProps) {
+export function EnvGraph({ attack, decay, sustain, gridSec }: EnvProps) {
   const attackClamped = Math.max(attack, 0.0005);
   const total = attackClamped + decay + 0.05;
   const x = (t: number) => (t / total) * W;
+  const sus = Math.min(1, Math.max(0, sustain));
+  const holdEnd = attackClamped + decay * sus;
 
   const amp = (t: number): number => {
     if (t <= attackClamped) return t / attackClamped;
-    return Math.exp(-4 * ((t - attackClamped) / decay));
+    if (t <= holdEnd) return 1;
+    return Math.exp(-4 * ((t - holdEnd) / Math.max(0.01, decay * (1 - sus))));
   };
   const pts: string[] = [];
   const steps = 96;
@@ -45,7 +49,7 @@ export function EnvGraph({ attack, decay, gridSec }: EnvProps) {
 
   return (
     <svg className="env-graph" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
-      <title>{`атака ${(attackClamped * 1000).toFixed(0)} мс, спад ${decay.toFixed(2)} с`}</title>
+      <title>{`атака ${(attackClamped * 1000).toFixed(0)} мс, плато ${Math.round(sus * 100)}%, спад ${decay.toFixed(2)} с`}</title>
       {lines.map((t, i) => (
         <line key={i} x1={x(t)} y1={4} x2={x(t)} y2={H - 6} className="env-grid" />
       ))}

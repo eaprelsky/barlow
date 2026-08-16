@@ -830,8 +830,11 @@ function triggerVoice(
   };
   /** Куда подключать источник ноты i: через её гейт-гейн или сразу в amp. */
   const noteDest = (i: number): AudioNode => noteGainOf(i) ?? amp;
+  // Огибающая: атака → плато (sustain, доля звуковой части) → спад.
+  const sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
+  amp.gain.setValueAtTime(peak, time + attack + (voiceLen - attack) * sus);
   amp.gain.exponentialRampToValueAtTime(0.0001, time + voiceLen);
   const stopAt = time + voiceLen + 0.05;
 

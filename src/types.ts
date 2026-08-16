@@ -169,6 +169,10 @@ export interface Track {
   // Огибающая ноты, сек.
   attack: number;
   decay: number;
+  // Плато (sustain): доля 0..1 звуковой части ноты (после атаки), которую
+  // нота держит на полной громкости; остаток — экспоненциальный спад.
+  // 0 — сразу спад после атаки (классический барлоу-перкуссионный хвост).
+  sustain?: number;
   // Громкость трека 0..1.
   volume: number;
   // Панорама 0..1 (0.5 — центр).
@@ -267,7 +271,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 28;
+export const PATCH_VERSION = 29;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -308,6 +312,7 @@ export function makeTrack(
     filterFreq: partial.filterFreq ?? 8000,
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
+    sustain: partial.sustain,
     volume: partial.volume ?? 0.8,
     pan: partial.pan ?? 0.5,
     mods: partial.mods ?? [],
@@ -611,6 +616,7 @@ export function normalizePatch(p: Patch): Patch {
         filterFreq: clamp(t.filterFreq, 60, 12000, 8000),
         attack: clamp(t.attack, 0, 1, 0.002),
         decay: clamp(t.decay, 0.01, 4, 0.25),
+        sustain: clamp(t.sustain ?? 0, 0, 1, 0),
         volume: clamp(t.volume, 0, 1, 0.8),
         pan: clamp((t as { pan?: number }).pan ?? 0.5, 0, 1, 0.5),
         mods: normalizeMods((t as { mods?: unknown }).mods),
