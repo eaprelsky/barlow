@@ -784,6 +784,12 @@ export const TrackRow = memo(function TrackRow({
             title={`громкость ${Math.round(track.volume * 100)}%`}
             onChange={(e) => change({ volume: Number(e.target.value) })}
           />
+          <input
+            className="mini-vol pan"
+            type="range" min={0} max={1} step={0.05} value={track.pan}
+            title={`панорама дорожки: ${panLabel(track.pan)} — разнос инструментов по комнате`}
+            onChange={(e) => change({ pan: Number(e.target.value) })}
+          />
           <span className="mini-info">{pattern.length} шагов</span>
         </div>
       </div>
@@ -877,6 +883,18 @@ export const TrackRow = memo(function TrackRow({
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
             <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
+          </label>
+          <label
+            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг"
+          >
+            пан
+            <span className="inline">
+              <input
+                type="range" min={0} max={1} step={0.05} value={track.pan}
+                onChange={(e) => change({ pan: Number(e.target.value) })}
+              />
+              <span className="pan-label">{panLabel(track.pan)}</span>
+            </span>
           </label>
           <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо">
             раскидать нот

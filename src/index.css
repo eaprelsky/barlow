@@ -1349,3 +1349,8 @@ button.danger:hover {
   padding: 2px 4px;
   margin-left: 4px;
 }
+
+/* Мини-слайдер панорамы в свёрнутой дорожке */
+.mini-vol.pan {
+  width: 64px;
+}
