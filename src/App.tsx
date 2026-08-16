@@ -117,6 +117,14 @@ export default function App() {
     });
   }, []);
 
+  // Дискретная команда (перенос/вставка/удаление нот, структурные правки) —
+  // всегда отдельный шаг истории: не склеивается с соседней правкой по
+  // времени, Ctrl+Z откатывает ровно одно действие.
+  const setPatchStep: Dispatch<SetStateAction<Patch>> = useCallback((updater) => {
+    lastPush.current = 0;
+    setPatch(updater);
+  }, [setPatch]);
+
   const undo = useCallback(() => {
     setPatchRaw((prev) => {
       const p = undoStack.current.pop();
@@ -227,7 +235,7 @@ export default function App() {
   /** Соло сцены (эксклюзивное): повторный клик по соло-треку снимает. */
   const toggleSceneSolo = useCallback(
     (trackId: string) => {
-      setPatch((p) => ({
+      setPatchStep((p) => ({
         ...p,
         scenes: p.scenes.map((s) =>
           s.id === sceneId
@@ -252,7 +260,7 @@ export default function App() {
     // правишь эскиз — меняется во всех сценах, где он играет; для
     // независимой вариации — форк эскиза правым кликом по чипу).
     const freshId = uid('s');
-    setPatch((p) => {
+    setPatchStep((p) => {
       const from = p.scenes.find((s) => s.id === sceneId) ?? p.scenes[0];
       const scene = {
         id: freshId,
@@ -267,7 +275,7 @@ export default function App() {
 
   const removeScene = useCallback(
     (id: string) => {
-      setPatch((p) => {
+      setPatchStep((p) => {
         if (p.scenes.length <= 1) return p;
         const scenes = p.scenes.filter((s) => s.id !== id);
         const chain = p.chain.filter((it) => it.sceneId !== id);
@@ -290,12 +298,12 @@ export default function App() {
   );
 
   const chainAdd = useCallback(() => {
-    setPatch((p) => ({ ...p, chain: [...p.chain, { sceneId: p.scenes[0].id, bars: 8 }] }));
-  }, []);
+    setPatchStep((p) => ({ ...p, chain: [...p.chain, { sceneId: p.scenes[0].id, bars: 8 }] }));
+  }, [setPatchStep]);
 
   const chainRemove = useCallback((idx: number) => {
-    setPatch((p) => (p.chain.length <= 1 ? p : { ...p, chain: p.chain.filter((_, i) => i !== idx) }));
-  }, []);
+    setPatchStep((p) => (p.chain.length <= 1 ? p : { ...p, chain: p.chain.filter((_, i) => i !== idx) }));
+  }, [setPatchStep]);
 
   const chainSetItem = useCallback((idx: number, item: Partial<{ sceneId: string; bars: number }>) => {
     setPatch((p) => ({
@@ -316,13 +324,13 @@ export default function App() {
       setPlaying(false);
     }
     const scene = { id: uid('s'), name: 'сцена 1', slots: {} as Record<string, string> };
-    setPatch((p) => ({ ...p, tracks: [], scenes: [scene], chain: [{ sceneId: scene.id, bars: 8 }] }));
+    setPatchStep((p) => ({ ...p, tracks: [], scenes: [scene], chain: [{ sceneId: scene.id, bars: 8 }] }));
     setSceneId(scene.id);
   }, [engine]);
 
   /** Переставить трек: порядок карточек = порядок массива tracks. */
   const reorderTrack = useCallback((fromId: string, toId: string, place: 'before' | 'after') => {
-    setPatch((p) => {
+    setPatchStep((p) => {
       const moved = p.tracks.find((t) => t.id === fromId);
       if (!moved || fromId === toId) return p;
       const rest = p.tracks.filter((t) => t.id !== fromId);
@@ -335,7 +343,7 @@ export default function App() {
 
   /** Дубль трека: тот же звук, эскизы и рисунок — база для подложек и вариаций. */
   const duplicateTrack = useCallback((id: string) => {
-    setPatch((p) => {
+    setPatchStep((p) => {
       const src = p.tracks.find((t) => t.id === id);
       if (!src) return p;
       // Эскизы копируются с новыми id; в каждой сцене дубль играет копию
@@ -375,7 +383,7 @@ export default function App() {
       danger: true,
     }).then((ok) => {
       if (!ok) return;
-      setPatch((p) => {
+      setPatchStep((p) => {
         const tracks = p.tracks.filter((x) => x.id !== id);
         const scenes = p.scenes.map((s) => {
           const slots = { ...s.slots };
@@ -389,7 +397,7 @@ export default function App() {
   }, [patch.tracks, setPatch]);
 
   const addTrack = useCallback((preset: (typeof INSTRUMENT_PRESETS)[number]) => {
-    setPatch((p) => {
+    setPatchStep((p) => {
       const track = makeTrack({
         id: uid('t'),
         ...preset.track,
@@ -400,6 +408,23 @@ export default function App() {
       return { ...p, tracks: [...p.tracks, track], scenes };
     });
   }, []);
+
+  const changePatternCommand = useCallback(
+    (trackId: string, patternId: string, patchUpd: Partial<Pattern>) => {
+      setPatchStep((p) => ({
+        ...p,
+        tracks: p.tracks.map((t) =>
+          t.id !== trackId
+            ? t
+            : {
+                ...t,
+                patterns: t.patterns.map((pt) => (pt.id === patternId ? { ...pt, ...patchUpd } : pt)),
+              },
+        ),
+      }));
+    },
+    [setPatchStep],
+  );
 
   const changePattern = useCallback(
     (trackId: string, patternId: string, patchUpd: Partial<Pattern>) => {
@@ -432,7 +457,7 @@ export default function App() {
   );
 
   const addPattern = useCallback((trackId: string) => {
-    setPatch((p) => {
+    setPatchStep((p) => {
       const track = p.tracks.find((t) => t.id === trackId);
       if (!track) return p;
       const pattern = makePattern(nextPatternName(track), track.patterns[0]?.length ?? 16);
@@ -450,7 +475,7 @@ export default function App() {
 
   const forkPattern = useCallback(
     (trackId: string, patternId: string) => {
-      setPatch((p) => {
+      setPatchStep((p) => {
         const track = p.tracks.find((t) => t.id === trackId);
         const src = track?.patterns.find((pt) => pt.id === patternId);
         if (!track || !src) return p;
@@ -476,7 +501,7 @@ export default function App() {
   );
 
   const removePattern = useCallback((trackId: string, patternId: string) => {
-    setPatch((p) => {
+    setPatchStep((p) => {
       const track = p.tracks.find((t) => t.id === trackId);
       if (!track || track.patterns.length <= 1) return p;
       const patterns = track.patterns.filter((pt) => pt.id !== patternId);
@@ -494,7 +519,7 @@ export default function App() {
 
   const applyEuclid = useCallback(
     (trackId: string, pulses: number) => {
-      setPatch((p) => ({
+      setPatchStep((p) => ({
         ...p,
         tracks: p.tracks.map((t) => {
           if (t.id !== trackId) return t;
@@ -523,7 +548,7 @@ export default function App() {
 
   const mutate = useCallback(
     (trackId: string) => {
-      setPatch((p) => ({
+      setPatchStep((p) => ({
         ...p,
         tracks: p.tracks.map((t) => {
           if (t.id !== trackId) return t;
@@ -922,6 +947,7 @@ export default function App() {
             onToggleCollapse={toggleCollapse}
             onChange={changeTrack}
             onPatternChange={changePattern}
+            onPatternCommand={changePatternCommand}
             onSelectPattern={selectPattern}
             onAddPattern={addPattern}
             onForkPattern={forkPattern}

@@ -65,6 +65,8 @@ interface Props {
   onToggleCollapse: (id: string) => void;
   onChange: (id: string, t: Track) => void;
   onPatternChange: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
+  // steps-правки (клики, перенос, вставка, удаление) — отдельный шаг undo
+  onPatternCommand: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   onSelectPattern: (trackId: string, patternId: string) => void;
   onAddPattern: (trackId: string) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
@@ -90,6 +92,7 @@ export const TrackRow = memo(function TrackRow({
   onToggleCollapse,
   onChange,
   onPatternChange,
+  onPatternCommand,
   onSelectPattern,
   onAddPattern,
   onForkPattern,
@@ -247,7 +250,7 @@ export const TrackRow = memo(function TrackRow({
   const baseLen = track.scale.length;
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
-  const changeSteps = (steps: Step[]) => onPatternChange(track.id, pattern.id, { steps });
+  const changeSteps = (steps: Step[]) => onPatternCommand(track.id, pattern.id, { steps });
 
   const loadSampleFile = (f: File) => {
     void putSample(f, f.name)
@@ -260,7 +263,7 @@ export const TrackRow = memo(function TrackRow({
     const steps = pattern.steps.slice(0, clamped);
     while (steps.length < clamped) steps.push(makeStep());
     setSelectedCol((c) => (c !== null && c >= clamped ? null : c));
-    onPatternChange(track.id, pattern.id, { length: clamped, steps });
+    onPatternCommand(track.id, pattern.id, { length: clamped, steps });
   };
 
   /** Клампит ноты во всех эскизах под новую длину стана. */
@@ -332,13 +335,19 @@ export const TrackRow = memo(function TrackRow({
     );
   };
 
+  // Слайдер панели шага — коалесцируется (движение = один шаг undo),
+  // в отличие от командных правок нот.
   const setNoteField = (col: number, row: number, field: 'vel' | 'prob', v: number) => {
-    changeSteps(
-      pattern.steps.map((s, j) =>
-        j === col
-          ? { ...s, notes: s.notes.map((nt) => (nt.n === row ? { ...nt, [field]: v } : nt)) }
-          : s,
-      ),
+    onPatternChange(
+      track.id,
+      pattern.id,
+      {
+        steps: pattern.steps.map((s, j) =>
+          j === col
+            ? { ...s, notes: s.notes.map((nt) => (nt.n === row ? { ...nt, [field]: v } : nt)) }
+            : s,
+        ),
+      },
     );
   };
 

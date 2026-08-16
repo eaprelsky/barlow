@@ -1247,8 +1247,14 @@ button.danger:hover {
   box-shadow: inset 0 0 0 2px var(--accent-2);
 }
 
+/* Рамка выделения полностью прозрачна: ноты под ней не затемняются,
+   контур — только перекраска рамки клеток */
 .cell.boxsel {
-  background: rgba(126, 200, 255, 0.12);
+  border-color: rgba(159, 208, 255, 0.55);
+}
+
+.cell.on.boxsel {
+  border-color: rgba(159, 208, 255, 0.75);
 }
 
 .cell.ghost {
