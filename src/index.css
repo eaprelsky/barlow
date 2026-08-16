@@ -1364,3 +1364,48 @@ button.danger:hover {
   border-radius: 2px;
   background: var(--accent-2);
 }
+
+/* Скрэтч-пэд */
+.scratch-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.scratch-track {
+  position: relative;
+  flex: 1;
+  height: 64px;
+  background: var(--cell-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.scratch-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(255, 180, 84, 0.5);
+  pointer-events: auto;
+}
+
+.scratch-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  pointer-events: none;
+}

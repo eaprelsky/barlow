@@ -45,8 +45,15 @@ export const MORPH_LABELS: Partial<Record<Waveform, string>> = {
   organ: 'регистры: микс верхних',
 };
 
-/** Как сэмплер играет буфер: напрямую или облаком гранул. */
-export type SampleMode = 'plain' | 'grain';
+/** Как сэмплер играет буфер: напрямую, облаком гранул или скрэтчем. */
+export type SampleMode = 'plain' | 'grain' | 'scratch';
+
+/** Точка жеста скрэтча: t — доля от длительности ноты, pos — позиция
+ *  иглы в сэмпле (0..1). Жест = ломаная по точкам. */
+export interface ScratchPoint {
+  t: number;
+  pos: number;
+}
 
 export interface Note {
   // Индекс строки шкалы (см. scaleOf).
@@ -192,6 +199,8 @@ export interface Track {
   grainPos?: number;
   // Гранулярный режим: разброс позиции зерна вокруг центра, 0..1.
   grainScatter?: number;
+  // Скрэтч: жест иглы по сэмплу (ломаная t→pos), проигрывается на нотах.
+  scratchPoints?: ScratchPoint[];
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
@@ -253,7 +262,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 25;
+export const PATCH_VERSION = 26;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -603,11 +612,25 @@ export function normalizePatch(p: Patch): Patch {
         vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 12, 5),
         vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 100, 0),
         ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
-        sampleMode: t.sampleMode === 'grain' ? 'grain' : 'plain',
+        sampleMode:
+          t.sampleMode === 'grain' || t.sampleMode === 'scratch' ? t.sampleMode : 'plain',
         grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),
         grainCount: Math.round(clamp(t.grainCount ?? 10, 1, 32, 10)),
         grainPos: clamp(t.grainPos ?? 0.3, 0, 1, 0.3),
         grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
+        scratchPoints: Array.isArray(t.scratchPoints)
+          ? t.scratchPoints
+              .filter(
+                (pt): pt is ScratchPoint =>
+                  pt && Number.isFinite(pt.t) && Number.isFinite(pt.pos),
+              )
+              .map((pt) => ({
+                t: clamp(pt.t, 0, 1, 0),
+                pos: clamp(pt.pos, 0, 1, 0),
+              }))
+              .sort((a, b) => a.t - b.t)
+              .slice(0, 256)
+          : undefined,
         mono: !!t.mono,
         enabled: t.enabled === false ? false : undefined,
         sidechain: (() => {

@@ -1047,6 +1047,9 @@ export default function App() {
             onReorder={reorderTrack}
             soloActive={currentScene?.soloTrackId === t.id}
             onSolo={toggleSceneSolo}
+            onScratchBegin={(pos) => engine.scratchBegin(t, pos)}
+            onScratchMove={(pos) => engine.scratchMove(pos)}
+            onScratchEnd={() => engine.scratchEnd()}
             patternSceneCounts={patternSceneCounts}
             allTracks={trackList}
             onGenerateSample={generateSample}

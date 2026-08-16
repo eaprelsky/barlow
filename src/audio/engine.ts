@@ -612,9 +612,34 @@ function connectMasterNoise(
   return { src, gain };
 }
 
+// Скрэтч-модуль: загружается один раз на контекст (live и offline).
+const scratchLoaded = new WeakSet<BaseAudioContext>();
+async function ensureScratchModule(ctx: BaseAudioContext): Promise<void> {
+  if (scratchLoaded.has(ctx)) return;
+  await ctx.audioWorklet.addModule('/scratch-worklet.js');
+  scratchLoaded.add(ctx);
+}
+
+/** Моно-канал сэмпла для скрэтч-иглы (worklet моно, до панорамы). */
+function monoChannel(buf: AudioBuffer): Float32Array {
+  if (buf.numberOfChannels === 1) return buf.getChannelData(0);
+  const a = buf.getChannelData(0);
+  const b = buf.getChannelData(1);
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = (a[i] + b[i]) / 2;
+  return out;
+}
+
+function makeScratchNode(ctx: BaseAudioContext, sample: AudioBuffer): AudioWorkletNode {
+  const node = new AudioWorkletNode(ctx, 'barlow-scratch', { outputChannelCount: [1] });
+  node.port.postMessage({ type: 'buffer', samples: monoChannel(sample) });
+  return node;
+}
+
 interface Voice {
   amp: GainNode;
-  sources: AudioScheduledSourceNode[];
+  // Осцилляторы/источники со stop, плюс скрэтч-worklet (гасится off-расписанием).
+  sources: (AudioScheduledSourceNode | AudioWorkletNode)[];
   stopAt: number;
 }
 
@@ -622,8 +647,15 @@ interface Voice {
 function duckVoice(v: Voice, t: number): void {
   v.amp.gain.setTargetAtTime(0.00001, t, 0.004);
   for (const s of v.sources) {
+    const sched = s as AudioScheduledSourceNode;
+    if (typeof sched.stop !== 'function') {
+      // worklet: гасим off-параметром — узел завершит себя
+      const off = (s as AudioWorkletNode).parameters?.get('off');
+      if (off) off.setValueAtTime(1, t + 0.06);
+      continue;
+    }
     try {
-      s.stop(t + 0.06);
+      sched.stop(t + 0.06);
     } catch {
       /* уже остановлен */
     }
@@ -642,7 +674,7 @@ function scheduleGrainCloud(
   notes: Note[],
   time: number,
   peak: number,
-  sources: AudioScheduledSourceNode[],
+  sources: (AudioScheduledSourceNode | AudioWorkletNode)[],
 ): number {
   // Гейт в облаке общий: облако тянется по самой длинной ноте шага.
   const gMax = Math.max(1, ...notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4)));
@@ -738,7 +770,7 @@ function triggerVoice(
   const peak = Math.max(0.0001, (topVel * headroom) / notes.length);
   const amp = ctx.createGain();
   amp.connect(chain.hp);
-  const sources: AudioScheduledSourceNode[] = [];
+  const sources: (AudioScheduledSourceNode | AudioWorkletNode)[] = [];
 
   // Вибрато: один LFO на голос, ветки с нужным масштабом (центы — на
   // detune осцилляторов; доли скорости — на playbackRate сэмплов).
@@ -802,6 +834,28 @@ function triggerVoice(
     src.start(time, Math.random() * 1.5, stopAt - time);
     src.stop(stopAt);
     sources.push(src);
+  } else if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'scratch') {
+    // Скрэтч: игла worklet-процессора читает сэмпл по позиции, позиция
+    // автоматизируется жестом (ломаная t→pos). Питч из стана не действует —
+    // скорость задаёт наклон жеста.
+    if (!sample) return { amp, sources, stopAt };
+    const node = makeScratchNode(ctx, sample);
+    const pos = node.parameters.get('position')!;
+    const off = node.parameters.get('off')!;
+    const points = (track.scratchPoints ?? []).slice().sort((a, b) => a.t - b.t);
+    if (points.length === 0) {
+      pos.setValueAtTime(0, time);
+      pos.linearRampToValueAtTime(1, time + voiceLen);
+    } else {
+      pos.setValueAtTime(points[0].pos, time);
+      for (const pt of points) {
+        pos.linearRampToValueAtTime(pt.pos, time + Math.max(0, Math.min(1, pt.t)) * voiceLen);
+      }
+    }
+    off.setValueAtTime(0, time);
+    off.setValueAtTime(1, stopAt + 0.1);
+    node.connect(amp);
+    sources.push(node);
   } else if (track.waveform === 'sample') {
     // Сэмпл-плеер: шкала задаёт скорость воспроизведения (питч),
     // длина ноты — как всегда, атакой и спадом.
@@ -1146,6 +1200,7 @@ export class AudioEngine {
   /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
   async ensureSamples(patch: Patch): Promise<void> {
     const ctx = this.ensureCtx();
+    await ensureScratchModule(ctx);
     for (const track of patch.tracks) {
       if (track.waveform !== 'sample' || !track.sampleId) continue;
       if (this.sampleCache.has(track.sampleId)) continue;
@@ -1332,6 +1387,44 @@ export class AudioEngine {
     this.lastVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
+  }
+
+  // ---- Ручной скрэтч-пэд: игла под мышью, вне планировщика ----
+
+  private scratchNode: AudioWorkletNode | null = null;
+
+  /** Начать ручной скрэтч: игла с заданной позиции. */
+  scratchBegin(track: Track, pos0 = 0): void {
+    if (!this.playing) return; // пэд звучит в контексте играющего микса
+    const ctx = this.ctx;
+    const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+    const chain = this.chains.get(track.id);
+    if (!ctx || !sample || !chain) return;
+    this.scratchEnd();
+    const node = makeScratchNode(ctx, sample);
+    const pos = node.parameters.get('position')!;
+    const off = node.parameters.get('off')!;
+    pos.setValueAtTime(pos0, ctx.currentTime);
+    off.setValueAtTime(0, ctx.currentTime);
+    node.connect(chain.hp);
+    this.scratchNode = node;
+  }
+
+  /** Игла едет за мышью. */
+  scratchMove(pos: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.scratchNode) return;
+    this.scratchNode.parameters
+      .get('position')!
+      .setTargetAtTime(Math.min(1, Math.max(0, pos)), ctx.currentTime, 0.008);
+  }
+
+  /** Отпустили: узел завершает себя по расписанию off. */
+  scratchEnd(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.scratchNode) return;
+    this.scratchNode.parameters.get('off')!.setValueAtTime(1, ctx.currentTime + 0.05);
+    this.scratchNode = null;
   }
 
   /** Ручное переключение сцены: применяется на ближайшей границе такта. */

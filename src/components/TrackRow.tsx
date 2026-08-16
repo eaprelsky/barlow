@@ -86,6 +86,9 @@ interface Props {
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
   soloActive: boolean;
   onSolo: (trackId: string) => void;
+  onScratchBegin: (pos: number) => void;
+  onScratchMove: (pos: number) => void;
+  onScratchEnd: () => void;
   patternSceneCounts: Record<string, number>;
   // Для сайдчейна: все дорожки патча (id + имя).
   allTracks: { id: string; name: string }[];
@@ -114,6 +117,9 @@ export const TrackRow = memo(function TrackRow({
   onReorder,
   soloActive,
   onSolo,
+  onScratchBegin,
+  onScratchMove,
+  onScratchEnd,
   patternSceneCounts,
   allTracks,
   onGenerateSample,
@@ -219,6 +225,8 @@ export const TrackRow = memo(function TrackRow({
   const [more, setMore] = useState(false);
   const [showRoll, setShowRoll] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
+  const scratchRef = useRef<HTMLDivElement | null>(null);
+  const scratchRec = useRef<{ t0: number; pts: { dt: number; pos: number }[] } | null>(null);
   // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
   const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
   const dragProps = {
@@ -1031,6 +1039,7 @@ export const TrackRow = memo(function TrackRow({
                   >
                     <option value="plain">прямой</option>
                     <option value="grain">гранулярный</option>
+                    <option value="scratch">скрэтч</option>
                   </select>
                 </label>
                 {(track.sampleMode ?? 'plain') === 'grain' && (
@@ -1443,6 +1452,67 @@ export const TrackRow = memo(function TrackRow({
             <button onClick={addMod} title="Добавить LFO">+ модуляция</button>
           </div>
           )}
+        </div>
+      )}
+
+      {track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'scratch' && (
+        <div className="scratch-bar">
+          <span className="scenes-label" title="Пэд: зажми и веди — игла читает сэмпл (при играющем транспорте). Отпустил — жест записан и играет на нотах. Точки таскаются, правый клик — удалить">
+            скрэтч-жест
+          </span>
+          <div
+            className="scratch-track"
+            ref={scratchRef}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              const el = scratchRef.current;
+              if (!el) return;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const r = el.getBoundingClientRect();
+              const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
+              scratchRec.current = { t0: performance.now(), pts: [{ dt: 0, pos }] };
+              onScratchBegin(pos);
+            }}
+            onPointerMove={(e) => {
+              const rec = scratchRec.current;
+              const el = scratchRef.current;
+              if (!rec || !el) return;
+              const r = el.getBoundingClientRect();
+              const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
+              onScratchMove(pos);
+              rec.pts.push({ dt: performance.now() - rec.t0, pos });
+            }}
+            onPointerUp={() => {
+              const rec = scratchRec.current;
+              scratchRec.current = null;
+              onScratchEnd();
+              if (!rec || rec.pts.length < 2) return;
+              const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
+              // прореживаем до ~64 точек, нормализуем время к 0..1
+              const stride = Math.max(1, Math.floor(rec.pts.length / 64));
+              const pts = rec.pts
+                .filter((_, i) => i % stride === 0 || i === rec.pts.length - 1)
+                .map((x) => ({ t: Math.min(1, x.dt / dur), pos: x.pos }));
+              change({ scratchPoints: pts });
+            }}
+          >
+            {(track.scratchPoints ?? []).map((pt, i) => (
+              <span
+                key={i}
+                className="scratch-dot"
+                style={{ left: `${pt.t * 100}%`, top: `${(1 - pt.pos) * 100}%` }}
+                title={`позиция ${Math.round(pt.pos * 100)}% на ${Math.round(pt.t * 100)}% ноты`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  change({ scratchPoints: (track.scratchPoints ?? []).filter((_, j) => j !== i) });
+                }}
+              />
+            ))}
+            {(track.scratchPoints ?? []).length === 0 && (
+              <span className="scratch-hint">зажми и веди по пэду — запишешь жест</span>
+            )}
+          </div>
         </div>
       )}
 
