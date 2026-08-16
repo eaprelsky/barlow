@@ -155,6 +155,9 @@ export interface Track {
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
+  // Мастер-выключатель дорожки: false — молчит во всех сценах, с любым
+  // эскизом. Не путать с мьютом партии (на эскизе).
+  enabled?: boolean;
   // Вставные эффекты: задержка (эхо) и реверб.
   effects?: Effect[];
   // Эскизы дорожки. Какой играет — решает сцена.
@@ -189,7 +192,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 17;
+export const PATCH_VERSION = 18;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -496,6 +499,7 @@ export function normalizePatch(p: Patch): Patch {
         grainPos: clamp(t.grainPos ?? 0.3, 0, 1, 0.3),
         grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
         mono: !!t.mono,
+        enabled: t.enabled === false ? false : undefined,
         effects: normalizeEffects((t as { effects?: unknown }).effects),
         scaleOctUp: octUp,
         scaleOctDown: octDown,

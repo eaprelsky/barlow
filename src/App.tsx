@@ -162,6 +162,7 @@ export default function App() {
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
   const [showAi, setShowAi] = useState(false);
   const [showLib, setShowLib] = useState(false);
+  const [showMix, setShowMix] = useState(false);
   const [fileOpen, setFileOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
@@ -719,6 +720,13 @@ export default function App() {
           сэмплы
         </button>
         <button
+          className={showMix ? 'on' : ''}
+          onClick={() => setShowMix((v) => !v)}
+          title="Микшер-рэк: громкости дорожек и глобальные выключатели — не зависят от сцен и эскизов"
+        >
+          микшер
+        </button>
+        <button
           className={showAi ? 'on' : ''}
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
           title="Настройки: ключ ИИ-генерации"
@@ -740,6 +748,47 @@ export default function App() {
         usedIds={new Set(patch.tracks.map((t) => t.sampleId).filter((v): v is string => !!v))}
         onClose={() => setShowLib(false)}
       />
+
+      {showMix && (
+        <div className="mix-panel">
+          <span className="scenes-label">микшер — громкости и выключатели дорожек</span>
+          <span className="spacer" />
+          <button onClick={() => setShowMix(false)} title="Скрыть панель">скрыть</button>
+          <div className="mix-rack">
+            {patch.tracks.map((t) => (
+              <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
+                <span className="mix-name" title={t.name}>{t.name}</span>
+                <input
+                  type="range" min={0} max={1} step={0.05} value={t.volume}
+                  title="Громкость дорожки — та же ручка, что в карточке трека"
+                  onChange={(e) =>
+                    setPatch((p) => ({
+                      ...p,
+                      tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
+                    }))
+                  }
+                />
+                <span className="mini-info">{Math.round(t.volume * 100)}%</span>
+                <button
+                  className={t.enabled === false ? '' : 'on'}
+                  title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
+                  onClick={() =>
+                    setPatch((p) => ({
+                      ...p,
+                      tracks: p.tracks.map((x) =>
+                        x.id === t.id ? { ...x, enabled: x.enabled === false ? undefined : false } : x,
+                      ),
+                    }))
+                  }
+                >
+                  {t.enabled === false ? 'вкл' : 'выкл'}
+                </button>
+              </div>
+            ))}
+            {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
+          </div>
+        </div>
+      )}
 
       {showAi && (
         <div className="ai-panel">

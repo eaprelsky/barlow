@@ -108,13 +108,14 @@ function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   return ir;
 }
 
-/** Слышимые эскизы сцены: мьют партии глушит, соло сцены (эксклюзивное,
- *  привязано к дорожке — работает с любым эскизом трека) оставляет только
- *  свою дорожку. */
+/** Слышимые эскизы сцены: мастер-выключатель дорожки глушит везде,
+ *  мьют партии — на эскизе, соло сцены (эксклюзивное, привязано к дорожке —
+ *  работает с любым эскизом трека) оставляет только свою дорожку. */
 function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
   const soloTrackId = scene?.soloTrackId;
   const out = new Set<string>();
   for (const t of patch.tracks) {
+    if (t.enabled === false) continue;
     const p = patternInScene(t, scene);
     if (!p || p.muted) continue;
     if (!soloTrackId || t.id === soloTrackId) out.add(p.id);

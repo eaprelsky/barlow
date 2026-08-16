@@ -445,7 +445,14 @@ export const TrackRow = memo(function TrackRow({
 
   if (collapsed) {
     return (
-      <div className={'track collapsed' + (dropSide ? ` drop-${dropSide}` : '')} {...dragProps}>
+      <div
+      className={
+        'track collapsed' +
+        (track.enabled === false ? ' off' : '') +
+        (dropSide ? ` drop-${dropSide}` : '')
+      }
+      {...dragProps}
+    >
       {grip}
         <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
@@ -494,7 +501,14 @@ export const TrackRow = memo(function TrackRow({
   const scaleRows = scaleOf(track);
 
   return (
-    <div className={'track' + (dropSide ? ` drop-${dropSide}` : '')} {...dragProps}>
+    <div
+      className={
+        'track' +
+        (track.enabled === false ? ' off' : '') +
+        (dropSide ? ` drop-${dropSide}` : '')
+      }
+      {...dragProps}
+    >
       {grip}
       <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
