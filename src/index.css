@@ -878,10 +878,10 @@ header button.on {
   position: relative;
 }
 
-.track-del {
+.track-del,
+.track-dup {
   position: absolute;
   top: 10px;
-  right: 12px;
   z-index: 5;
   padding: 5px 7px;
   border: none;
@@ -889,8 +889,21 @@ header button.on {
   color: var(--text-dim);
 }
 
+.track-del {
+  right: 12px;
+}
+
+.track-dup {
+  right: 38px;
+}
+
 .track-del:hover {
   color: #e05555;
+  border: none;
+}
+
+.track-dup:hover {
+  color: var(--accent);
   border: none;
 }
 

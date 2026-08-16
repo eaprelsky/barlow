@@ -70,6 +70,7 @@ interface Props {
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   genBusy: boolean;
 }
@@ -90,6 +91,7 @@ export const TrackRow = memo(function TrackRow({
   onEuclid,
   onMutate,
   onRemove,
+  onDuplicate,
   onGenerateSample,
   genBusy,
 }: Props) {
@@ -402,6 +404,12 @@ export const TrackRow = memo(function TrackRow({
   if (collapsed) {
     return (
       <div className="track collapsed">
+        <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
+          <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
+            <rect x="4.2" y="0.8" width="7" height="9.2" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M8 13H1.6V4.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </button>
         <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
             <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -444,7 +452,13 @@ export const TrackRow = memo(function TrackRow({
 
   return (
     <div className="track">
-      <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
+      <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
+          <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
+            <rect x="4.2" y="0.8" width="7" height="9.2" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M8 13H1.6V4.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
         <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
           <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>

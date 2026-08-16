@@ -293,6 +293,37 @@ export default function App() {
     setSceneId(scene.id);
   }, [engine]);
 
+  /** Дубль трека: тот же звук, эскизы и рисунок — база для подложек и вариаций. */
+  const duplicateTrack = useCallback((id: string) => {
+    setPatch((p) => {
+      const src = p.tracks.find((t) => t.id === id);
+      if (!src) return p;
+      // Эскизы копируются с новыми id; в каждой сцене дубль играет копию
+      // того эскиза, что играл там оригинал.
+      const idMap = new Map<string, string>();
+      const patterns = src.patterns.map((pt) => {
+        const nid = uid('p');
+        idMap.set(pt.id, nid);
+        return {
+          ...pt,
+          id: nid,
+          steps: pt.steps.map((s) => ({ ...s, notes: s.notes.map((n) => ({ ...n })) })),
+        };
+      });
+      const copy: Track = {
+        ...src,
+        id: uid('t'),
+        name: uniqueName(src.name, p.tracks.map((t) => t.name)),
+        patterns,
+      };
+      const scenes = p.scenes.map((s) => {
+        const old = s.slots[src.id];
+        return { ...s, slots: { ...s.slots, [copy.id]: (old && idMap.get(old)) ?? patterns[0].id } };
+      });
+      return { ...p, tracks: [...p.tracks, copy], scenes };
+    });
+  }, [setPatch]);
+
   const removeTrack = useCallback((id: string) => {
     const victim = patch.tracks.find((t) => t.id === id);
     if (!victim) return;
@@ -803,6 +834,7 @@ export default function App() {
             onEuclid={applyEuclid}
             onMutate={mutate}
             onRemove={removeTrack}
+            onDuplicate={duplicateTrack}
             onGenerateSample={generateSample}
             genBusy={!!genBusy[t.id]}
           />
