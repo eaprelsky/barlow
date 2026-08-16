@@ -1425,3 +1425,17 @@ button.danger:hover {
   outline: none;
   border-color: var(--accent);
 }
+
+/* Линия жеста скрэтча */
+.scratch-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.scratch-track button.on {
+  border-color: #e05555;
+  color: #e05555;
+}

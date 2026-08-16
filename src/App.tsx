@@ -1066,6 +1066,7 @@ export default function App() {
             onScratchBegin={(pos) => engine.scratchBegin(t, pos)}
             onScratchMove={(pos) => engine.scratchMove(pos)}
             onScratchEnd={() => engine.scratchEnd()}
+            onScratchPreview={() => engine.previewScratch(t)}
             patternSceneCounts={patternSceneCounts}
             allTracks={trackList}
             onGenerateSample={generateSample}

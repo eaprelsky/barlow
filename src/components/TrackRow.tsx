@@ -1,6 +1,15 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { Effect, Mod, Note, Pattern, Step, Track, Waveform } from '../types';
+import type {
+  Effect,
+  Mod,
+  Note,
+  Pattern,
+  ScratchPoint,
+  Step,
+  Track,
+  Waveform,
+} from '../types';
 import {
   EFFECT_LABELS,
   MOD_TARGET_LABELS,
@@ -89,6 +98,7 @@ interface Props {
   onScratchBegin: (pos: number) => void;
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
+  onScratchPreview: () => void;
   patternSceneCounts: Record<string, number>;
   // Для сайдчейна: все дорожки патча (id + имя).
   allTracks: { id: string; name: string }[];
@@ -120,6 +130,7 @@ export const TrackRow = memo(function TrackRow({
   onScratchBegin,
   onScratchMove,
   onScratchEnd,
+  onScratchPreview,
   patternSceneCounts,
   allTracks,
   onGenerateSample,
@@ -227,6 +238,13 @@ export const TrackRow = memo(function TrackRow({
   const [showPicker, setShowPicker] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
   const scratchRec = useRef<{ t0: number; pts: { dt: number; pos: number }[] } | null>(null);
+  const [scratchRecOn, setScratchRecOn] = useState(false);
+  // Редактирование: во время драга точки/записи живём в локальном состоянии,
+  // в патч пишем на отпускании (один undo-шаг на правку).
+  const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
+  const dragIdx = useRef<number | null>(null);
+  const pendingAdd = useRef<{ t: number; pos: number } | null>(null);
+  const downXY = useRef<{ x: number; y: number } | null>(null);
   // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
   const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
   const dragProps = {
@@ -1471,9 +1489,19 @@ export const TrackRow = memo(function TrackRow({
 
       {track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'scratch' && (
         <div className="scratch-bar">
-          <span className="scenes-label" title="Пэд: зажми и веди — игла читает сэмпл (при играющем транспорте). Отпустил — жест записан и играет на нотах. Точки таскаются, правый клик — удалить">
+          <span className="scenes-label" title="Жест иглы: линия — путь по сэмплу, по горизонтали время ноты, по вертикали позиция">
             скрэтч-жест
           </span>
+          <button
+            className={scratchRecOn ? 'on' : ''}
+            title="Включи и веди по пэду — запишется живой жест (сглаживается до 48 точек). Выключена — клик по пэду добавляет точку, точки таскаются, правый клик по точке — удалить"
+            onClick={() => setScratchRecOn((v) => !v)}
+          >
+            ● запись
+          </button>
+          <button title="Послушать жест одной нотой (нужен играющий транспорт)" onClick={onScratchPreview}>
+            ▶
+          </button>
           <div
             className="scratch-track"
             ref={scratchRef}
@@ -1481,61 +1509,121 @@ export const TrackRow = memo(function TrackRow({
               if (e.button !== 0) return;
               const el = scratchRef.current;
               if (!el) return;
-              e.currentTarget.setPointerCapture(e.pointerId);
               const r = el.getBoundingClientRect();
+              const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
               const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-              scratchRec.current = { t0: performance.now(), pts: [{ dt: 0, pos }] };
-              onScratchBegin(pos);
+              const pts = track.scratchPoints ?? [];
+              const hit = pts.findIndex(
+                (pt) => Math.abs(pt.t - t) < 0.025 && Math.abs(pt.pos - pos) < 0.06,
+              );
+              e.currentTarget.setPointerCapture(e.pointerId);
+              downXY.current = { x: e.clientX, y: e.clientY };
+              if (hit >= 0) {
+                dragIdx.current = hit;
+                setDragPts([...pts]);
+              } else if (scratchRecOn) {
+                scratchRec.current = { t0: performance.now(), pts: [{ dt: 0, pos }] };
+                onScratchBegin(pos);
+              } else {
+                pendingAdd.current = { t, pos };
+              }
             }}
             onPointerMove={(e) => {
-              const rec = scratchRec.current;
               const el = scratchRef.current;
-              if (!rec || !el) return;
+              if (!el) return;
               const r = el.getBoundingClientRect();
+              const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
               const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-              onScratchMove(pos);
-              rec.pts.push({ dt: performance.now() - rec.t0, pos });
+              if (dragIdx.current !== null && dragPts) {
+                setDragPts(dragPts.map((pt, i) => (i === dragIdx.current ? { t, pos } : pt)));
+                return;
+              }
+              const rec = scratchRec.current;
+              if (rec) {
+                onScratchMove(pos);
+                rec.pts.push({ dt: performance.now() - rec.t0, pos });
+                return;
+              }
+              const down = downXY.current;
+              if (down && pendingAdd.current) {
+                // сдвиг больше порога — это не клик, добавление отменяем
+                if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
+                  pendingAdd.current = null;
+                }
+              }
             }}
             onPointerUp={() => {
+              downXY.current = null;
+              if (dragIdx.current !== null && dragPts) {
+                const sorted = [...dragPts].sort((a, b) => a.t - b.t);
+                dragIdx.current = null;
+                setDragPts(null);
+                change({ scratchPoints: sorted });
+                return;
+              }
               const rec = scratchRec.current;
               scratchRec.current = null;
-              onScratchEnd();
-              if (!rec || rec.pts.length < 2) return;
-              const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
-              // Ресемплинг жеста в 48 равномерных по времени точек с
-              // линейной интерполяцией + скользящее среднее: сырые события
-              // мыши несут джиттер, который звучит дробной бузой.
-              const N = 48;
-              const raw = rec.pts;
-              const res: { t: number; pos: number }[] = [];
-              let j = 0;
-              for (let i = 0; i <= N; i++) {
-                const tt = (i / N) * dur;
-                while (j < raw.length - 2 && raw[j + 1].dt < tt) j++;
-                const a1 = raw[j];
-                const a2 = raw[j + 1] ?? a1;
-                const f = a2.dt > a1.dt ? (tt - a1.dt) / (a2.dt - a1.dt) : 0;
-                res.push({ t: i / N, pos: a1.pos + (a2.pos - a1.pos) * Math.max(0, Math.min(1, f)) });
-              }
-              const smooth = res.map((x, i) => {
-                let sum = 0;
-                let c = 0;
-                for (let k = i - 2; k <= i + 2; k++) {
-                  const y = res[Math.min(res.length - 1, Math.max(0, k))];
-                  sum += y.pos;
-                  c++;
+              if (rec) {
+                onScratchEnd();
+                if (rec.pts.length >= 2) {
+                  const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
+                  const N = 48;
+                  const raw = rec.pts;
+                  const res: { t: number; pos: number }[] = [];
+                  let j = 0;
+                  for (let i = 0; i <= N; i++) {
+                    const tt = (i / N) * dur;
+                    while (j < raw.length - 2 && raw[j + 1].dt < tt) j++;
+                    const a1 = raw[j];
+                    const a2 = raw[j + 1] ?? a1;
+                    const f = a2.dt > a1.dt ? (tt - a1.dt) / (a2.dt - a1.dt) : 0;
+                    res.push({
+                      t: i / N,
+                      pos: a1.pos + (a2.pos - a1.pos) * Math.max(0, Math.min(1, f)),
+                    });
+                  }
+                  const smooth = res.map((x, i) => {
+                    let sum = 0;
+                    let c = 0;
+                    for (let k = i - 2; k <= i + 2; k++) {
+                      const y = res[Math.min(res.length - 1, Math.max(0, k))];
+                      sum += y.pos;
+                      c++;
+                    }
+                    return { t: x.t, pos: sum / c };
+                  });
+                  change({ scratchPoints: smooth });
                 }
-                return { t: x.t, pos: sum / c };
-              });
-              change({ scratchPoints: smooth });
+                return;
+              }
+              const pending = pendingAdd.current;
+              pendingAdd.current = null;
+              if (pending) {
+                change({
+                  scratchPoints: [...(track.scratchPoints ?? []), pending].sort(
+                    (a, b) => a.t - b.t,
+                  ),
+                });
+              }
             }}
           >
-            {(track.scratchPoints ?? []).map((pt, i) => (
+            <svg className="scratch-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polyline
+                fill="none"
+                stroke="var(--accent-2)"
+                strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
+                points={(dragPts ?? track.scratchPoints ?? [])
+                  .map((pt) => `${(pt.t * 100).toFixed(2)},${((1 - pt.pos) * 100).toFixed(2)}`)
+                  .join(' ')}
+              />
+            </svg>
+            {(dragPts ?? track.scratchPoints ?? []).map((pt, i) => (
               <span
                 key={i}
                 className="scratch-dot"
                 style={{ left: `${pt.t * 100}%`, top: `${(1 - pt.pos) * 100}%` }}
-                title={`позиция ${Math.round(pt.pos * 100)}% на ${Math.round(pt.t * 100)}% ноты`}
+                title={`позиция ${Math.round(pt.pos * 100)}% на ${Math.round(pt.t * 100)}% ноты · тянуть — правка, правый клик — удалить`}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1543,8 +1631,8 @@ export const TrackRow = memo(function TrackRow({
                 }}
               />
             ))}
-            {(track.scratchPoints ?? []).length === 0 && (
-              <span className="scratch-hint">зажми и веди по пэду — запишешь жест</span>
+            {(track.scratchPoints ?? []).length === 0 && !dragPts && (
+              <span className="scratch-hint">клик — добавить точку · ● запись — рисовать жест мышью</span>
             )}
           </div>
         </div>

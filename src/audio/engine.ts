@@ -1428,6 +1428,42 @@ export class AudioEngine {
       .setTargetAtTime(Math.min(1, Math.max(0, pos)), ctx.currentTime, 0.02);
   }
 
+  /** Прослушать жест одной нотой (нужен играющий транспорт):
+   *  скрэтч-узел с рампами жеста поверх короткой огибающей. */
+  previewScratch(track: Track): void {
+    const ctx = this.ctx;
+    const patch = this.patch;
+    if (!this.playing || !ctx || !patch) return;
+    const chain = this.chains.get(track.id);
+    const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+    if (!chain || !sample) return;
+    const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
+    const len =
+      track.noteSteps && track.noteSteps > 0
+        ? track.noteSteps * stepSec
+        : track.attack + track.decay;
+    const node = makeScratchNode(ctx, sample);
+    const pos = node.parameters.get('position')!;
+    const off = node.parameters.get('off')!;
+    const t0 = ctx.currentTime + 0.02;
+    const points = (track.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
+    if (points.length === 0) {
+      pos.setValueAtTime(0, t0);
+      pos.linearRampToValueAtTime(1, t0 + len);
+    } else {
+      pos.setValueAtTime(points[0].pos, t0);
+      for (const pt of points) pos.linearRampToValueAtTime(pt.pos, t0 + pt.t * len);
+    }
+    off.setValueAtTime(0, t0);
+    off.setValueAtTime(1, t0 + len + 0.1);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    node.connect(amp);
+    amp.connect(chain.hp);
+  }
+
   /** Отпустили: узел завершает себя по расписанию off. */
   scratchEnd(): void {
     const ctx = this.ctx;
