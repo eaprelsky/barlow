@@ -4,7 +4,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SampleMeta } from '../audio/library';
-import { deleteSample, getSampleBlob, listSamples } from '../audio/library';
+import {
+  deleteSample,
+  getSampleBlob,
+  listSamples,
+  revealSamplesDir,
+  samplesDirLabel,
+} from '../audio/library';
+import { isDesktop } from '../platform';
 
 interface Props {
   open: boolean;
@@ -19,6 +26,7 @@ function fmtSize(bytes: number): string {
 
 export function Library({ open, usedIds, onClose }: Props) {
   const [samples, setSamples] = useState<SampleMeta[]>([]);
+  const [dirLabel, setDirLabel] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -28,7 +36,11 @@ export function Library({ open, usedIds, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (open) refresh();
+    if (open) {
+      refresh();
+      if (isDesktop) void samplesDirLabel().then(setDirLabel);
+      else setDirLabel(null);
+    }
   }, [open, refresh]);
 
   // Останавливаем прослушивание при закрытии панели.
@@ -60,9 +72,15 @@ export function Library({ open, usedIds, onClose }: Props) {
   return (
     <div className="lib-panel">
       <span className="scenes-label">
-        сэмплы ({samples.length}) — библиотека этого браузера; при Tauri станет папкой
+        сэмплы ({samples.length}) —{' '}
+        {dirLabel ? `папка: ${dirLabel}` : 'библиотека этого браузера'}
       </span>
       <span className="spacer" />
+      {dirLabel && (
+        <button onClick={() => void revealSamplesDir()} title="Открыть папку сэмпла в проводнике">
+          показать папку
+        </button>
+      )}
       <button onClick={onClose} title="Скрыть панель">скрыть</button>
       {samples.length === 0 && <p className="empty">Пусто: загрузи файл или сгенерируй по описанию в сэмпл-треке.</p>}
       <div className="lib-list">

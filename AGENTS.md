@@ -73,5 +73,6 @@ Launchpad MK3 / VST. Архитектурные решения — docs/DESIGN.m
 - Горячие клавиши букв — по `event.code` (физическая клавиша), не `e.key`:
   на русской раскладке Ctrl+C даёт e.key «с», а code — всегда 'KeyC'.
 - Смена набора модуляций пересобирает цепочку трека (modSig в engine).
-- Сэмплы: контент в IndexedDB (`audio/library.ts`), патч хранит SHA-256 id.
-  При Tauri меняется только library.ts.
+- Сэмплы: контент — в IndexedDB (веб) или файлах <appData>/samples +
+  index.json (десктоп, Rust-команды sample_* в src-tauri); патч хранит
+  SHA-256 id. Ветвление — внутри `audio/library.ts` (isDesktop).
