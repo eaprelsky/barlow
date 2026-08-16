@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "desktop": "bash scripts/desktop.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
