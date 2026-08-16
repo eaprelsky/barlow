@@ -22,6 +22,32 @@ export const CATEGORY_ORDER = [
 
 const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 
+// Поля, которые переносит смена инструмента (applyInstrumentPreset в
+// TrackRow): по ним и опознаём текущий пресет. Ручки вне списка (громкость,
+// ритм, вибрато, сайдчейн) — пользователя, на совпадение не влияют.
+const MATCH_FIELDS: (keyof Track)[] = [
+  'waveform', 'freq', 'scale', 'attack', 'decay', 'pitchDrop', 'pitchTime',
+  'filterLow', 'filterFreq', 'effects', 'mono',
+  'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
+  'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+];
+
+const sameValue = (a: unknown, b: unknown): boolean => {
+  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 1e-6;
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+/** Имя пресета, которому соответствуют параметры трека; иначе «своя». */
+export function instrumentNameOf(track: Track): string {
+  for (const p of INSTRUMENT_PRESETS) {
+    const preset = p.track as Partial<Track>;
+    if (MATCH_FIELDS.every((f) => preset[f] === undefined || sameValue(preset[f], track[f]))) {
+      return p.name;
+    }
+  }
+  return 'своя настройка';
+}
+
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   {
     name: 'бас',

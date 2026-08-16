@@ -11,6 +11,7 @@ import {
   scaleOf,
 } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
+import { instrumentNameOf } from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
 import { NumField } from './NumField';
@@ -932,7 +933,12 @@ export const TrackRow = memo(function TrackRow({
           <div className="group">
             <label title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
               инструмент
-              <button onClick={() => setShowInstruments(true)}>выбрать…</button>
+              <span className="inline">
+                <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
+                  {instrumentNameOf(track)}
+                </span>
+                <button onClick={() => setShowInstruments(true)}>выбрать…</button>
+              </span>
             </label>
             <label title="Форма волны осциллятора — основа тембра">
               волна
