@@ -5,15 +5,27 @@ import type { Track } from '../types';
 
 export interface InstrumentPreset {
   name: string;
+  // Группа в браузере инструментов (порядок категорий — CATEGORY_ORDER).
+  category: string;
   hint: string;
   track: Partial<Track> & { length?: number };
 }
+
+export const CATEGORY_ORDER = [
+  'бас',
+  'тоны и лиды',
+  'перкуссия',
+  'фоны',
+  'сэмплеры',
+  'прочее',
+];
 
 const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   {
     name: 'бас',
+    category: 'бас',
     hint: 'низкий синус с долгим спадом — фундамент',
     track: {
       name: 'бас', waveform: 'sine', freq: 41.2, scale: [1, 6 / 5, 3 / 2, 2],
@@ -23,6 +35,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'лид',
+    category: 'тоны и лиды',
     hint: 'пентатоника, короткие ноты — мелодия сверху',
     track: {
       name: 'лид', waveform: 'triangle', freq: 329.6, scale: PENTATONIC_MINOR,
@@ -32,6 +45,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'пульс',
+    category: 'перкуссия',
     hint: 'бочка: нота стартует высоко и падает вниз — «вумп», опора ритма',
     track: {
       name: 'пульс', waveform: 'sine', freq: 48, scale: [1],
@@ -42,6 +56,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'хэт',
+    category: 'перкуссия',
     hint: 'короткий шум — тики и сыпь между ударами',
     track: {
       name: 'хэт', waveform: 'noise', freq: 440, scale: [1],
@@ -50,6 +65,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'дрон',
+    category: 'фоны',
     hint: 'долгая тянущаяся нота — фон-полотно',
     track: {
       name: 'дрон', waveform: 'sawtooth', freq: 110, scale: [1, 9 / 8],
@@ -59,6 +75,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'сэмплер',
+    category: 'сэмплеры',
     hint: 'играет загруженный сэмпл; строки стана = скорость воспроизведения (питч)',
     track: {
       name: 'сэмпл', waveform: 'sample',
@@ -68,6 +85,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'струна',
+    category: 'тоны и лиды',
     hint: 'Karplus-Strong: щипок струны, выросший из шума — живой и пластинчатый',
     track: {
       name: 'струна', waveform: 'karplus', freq: 110, scale: PENTATONIC_MINOR,
@@ -77,6 +95,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'fm-звон',
+    category: 'тоны и лиды',
     hint: 'частотная модуляция: колокола и металл — крути FM-отношение (√2 ≈ 1.41 — негармоничный звон)',
     track: {
       name: 'звон', waveform: 'fm', freq: 220, scale: PENTATONIC_MINOR,
@@ -87,6 +106,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'супер-пила',
+    category: 'фоны',
     hint: 'расстроенный унисон семи пил — жирная подложка и стены',
     track: {
       name: 'супер-пила', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
@@ -96,6 +116,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'вокал',
+    category: 'тоны и лиды',
     hint: 'пила сквозь форманты — поёт гласные; морф едет А → Э → И → О → У',
     track: {
       name: 'вокал', waveform: 'formant', freq: 220, scale: PENTATONIC_MINOR,
@@ -106,6 +127,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'колокол',
+    category: 'перкуссия',
     hint: 'модальные резонаторы: маримба → колокол, морф — материал и время звона',
     track: {
       name: 'колокол', waveform: 'modal', freq: 220, scale: [1, 6 / 5, 3 / 2, 2, 9 / 5 * 2],
@@ -116,6 +138,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'орган',
+    category: 'тоны и лиды',
     hint: 'регистры 1,2,3,4,6,8 — морф открывает их по одному, от флейты до полного',
     track: {
       name: 'орган', waveform: 'organ', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
@@ -125,6 +148,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'гармоники',
+    category: 'тоны и лиды',
     hint: 'аддитивный: морф = яркость, число гармоник 2–16',
     track: {
       name: 'гармоники', waveform: 'additive', freq: 220, scale: PENTATONIC_MINOR,
@@ -134,6 +158,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'грануляр',
+    category: 'сэмплеры',
     hint: 'нота — облако коротких осколков сэмпла; загрузи сэмпл и двигай позицию облака',
     track: {
       name: 'гранулы', waveform: 'sample', sampleMode: 'grain',
@@ -144,6 +169,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
   {
     name: 'пустой',
+    category: 'прочее',
     hint: 'чистый лист, всё настроишь сам',
     track: { name: 'трек', waveform: 'square', freq: 220, scale: [1], length: 16, rate: 1 },
   },

@@ -11,7 +11,8 @@ import {
   scaleOf,
 } from '../types';
 import { SCALE_PRESETS, presetName } from '../music/scales';
-import { INSTRUMENT_PRESETS } from '../music/instrumentPresets';
+import type { InstrumentPreset } from '../music/instrumentPresets';
+import { InstrumentBrowser } from './InstrumentBrowser';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { alertDialog } from './dialogs';
@@ -114,14 +115,12 @@ export const TrackRow = memo(function TrackRow({
   const [genSeconds, setGenSeconds] = useState(3);
   const [customScale, setCustomScale] = useState('');
   const [etSteps, setEtSteps] = useState(12);
-  const [presetIdx, setPresetIdx] = useState(0);
+  const [showInstruments, setShowInstruments] = useState(false);
 
   /** Сменить инструмент трека: тембр/огибающая/фильтры/эффекты — из пресета,
    *  партии (ноты), громкость и ритм — остаются пользователю. */
-  const applyInstrumentPreset = (idx: number) => {
-    const preset = INSTRUMENT_PRESETS[idx];
+  const applyInstrumentPreset = (preset: InstrumentPreset) => {
     if (!preset) return;
-    setPresetIdx(idx);
     const t = preset.track;
     const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
     change({
@@ -919,11 +918,7 @@ export const TrackRow = memo(function TrackRow({
           <div className="group">
             <label title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
               инструмент
-              <select value={presetIdx} onChange={(e) => applyInstrumentPreset(Number(e.target.value))}>
-                {INSTRUMENT_PRESETS.map((p, i) => (
-                  <option key={p.name} value={i}>{p.name}</option>
-                ))}
-              </select>
+              <button onClick={() => setShowInstruments(true)}>выбрать…</button>
             </label>
             <label title="Форма волны осциллятора — основа тембра">
               волна
@@ -1469,6 +1464,17 @@ export const TrackRow = memo(function TrackRow({
             <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
           )}
         </div>
+      )}
+
+      {showInstruments && (
+        <InstrumentBrowser
+          title="сменить инструмент трека"
+          onPick={(preset) => {
+            applyInstrumentPreset(preset);
+            setShowInstruments(false);
+          }}
+          onClose={() => setShowInstruments(false)}
+        />
       )}
 
       {showPicker && (

@@ -4,7 +4,8 @@ import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
 import { mutatePattern } from './music/mutate';
-import { INSTRUMENT_PRESETS } from './music/instrumentPresets';
+import { InstrumentBrowser } from './components/InstrumentBrowser';
+import type { InstrumentPreset } from './music/instrumentPresets';
 import {
   isPatch,
   makeNote,
@@ -162,7 +163,7 @@ export default function App() {
   }, [undo, redo]);
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
-  const [presetIdx, setPresetIdx] = useState(0);
+  const [showInstruments, setShowInstruments] = useState(false);
   const [ui, setUi] = useState(loadUiState);
   const [sceneId, setSceneId] = useState(() => patch.scenes[0]?.id ?? '');
   const [showChain, setShowChain] = useState(false);
@@ -395,7 +396,7 @@ export default function App() {
     });
   }, [patch.tracks, setPatch]);
 
-  const addTrack = useCallback((preset: (typeof INSTRUMENT_PRESETS)[number]) => {
+  const addTrack = useCallback((preset: InstrumentPreset) => {
     setPatchStep((p) => {
       const track = makeTrack({
         id: uid('t'),
@@ -724,19 +725,11 @@ export default function App() {
           циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}
         </span>
         <span className="spacer" />
-        <label title={INSTRUMENT_PRESETS[presetIdx]?.hint}>
-          инструмент
-          <select value={presetIdx} onChange={(e) => setPresetIdx(Number(e.target.value))}>
-            {INSTRUMENT_PRESETS.map((p, i) => (
-              <option key={p.name} value={i}>{p.name}</option>
-            ))}
-          </select>
-        </label>
         <button
-          onClick={() => addTrack(INSTRUMENT_PRESETS[presetIdx])}
-          title={INSTRUMENT_PRESETS[presetIdx]?.hint}
+          onClick={() => setShowInstruments(true)}
+          title="Браузер инструментов: выбрать тембр и добавить дорожку"
         >
-          добавить трек
+          + трек
         </button>
         <button
           className="undo-btn"
@@ -1004,6 +997,17 @@ export default function App() {
           по эскизу — форк
         </span>
       </footer>
+
+      {showInstruments && (
+        <InstrumentBrowser
+          title="добавить дорожку"
+          onPick={(preset: InstrumentPreset) => {
+            addTrack(preset);
+            setShowInstruments(false);
+          }}
+          onClose={() => setShowInstruments(false)}
+        />
+      )}
 
       <DialogHost />
     </div>

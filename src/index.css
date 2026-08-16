@@ -1283,3 +1283,62 @@ button.danger:hover {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Браузер инструментов */
+.browser-search {
+  width: 100%;
+}
+
+.browser-grid {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
+}
+
+.browser-cat-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.browser-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.inst-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.inst-card:hover {
+  border-color: var(--accent);
+}
+
+.inst-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.inst-wave {
+  font-size: 11px;
+  color: var(--accent-2);
+}
+
+.inst-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
