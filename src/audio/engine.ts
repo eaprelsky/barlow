@@ -1633,6 +1633,9 @@ export class AudioEngine {
     const duration = fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDur, 0) + 1.0;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+    // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
+    // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
+    await ensureScratchModule(ctx);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {

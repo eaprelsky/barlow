@@ -19,7 +19,8 @@ DEST="$LOCALAPPDATA/barlow"
 if [ -d "$DEST" ]; then
   cp src-tauri/target/release/barlow.exe "$DEST/barlow.exe"
   echo "установленная копия обновлена: $DEST"
-  (cd "$DEST" && ./barlow.exe &)
+  # запуск отсоединённо: GUI-процесс наследует stdout npm и держит пайп
+  (cd "$DEST" && ./barlow.exe >/dev/null 2>&1 &)
   echo "запущено"
 else
   echo "установки нет — exe: src-tauri/target/release/barlow.exe"
