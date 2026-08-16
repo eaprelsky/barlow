@@ -142,12 +142,13 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === 'z') {
+      // e.code — физическая клавиша, раскладка не важна (Ctrl+Z на русской
+      // раскладке даёт e.key «я»).
+      if (e.code === 'KeyZ') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
-      } else if (k === 'y') {
+      } else if (e.code === 'KeyY') {
         e.preventDefault();
         redo();
       }
@@ -985,7 +986,8 @@ export default function App() {
           клик по клетке — нота · столбик нот — аккорд · номер шага — громкость
           и вероятность · рамка с пустой клетки — выделение нот · тянуть
           выделенную — перенос · Ctrl+C/V — копипаст (и между треками) ·
-          Delete — стереть · правый клик по эскизу — форк
+          Ctrl+D — дублировать выделение · Delete — стереть · правый клик
+          по эскизу — форк
         </span>
       </footer>
 

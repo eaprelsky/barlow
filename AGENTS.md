@@ -69,7 +69,9 @@ Launchpad MK3 / VST. Архитектурные решения — docs/DESIGN.m
   все сцены); `pattern.muted` — мьют партии; `scene.soloTrackId` —
   эксклюзивное соло сцены, живёт на сцене, НЕ на эскизе (v17).
 - Копипаст нот: буфер `music/clip.ts` + `clip.activeTrackId` (стан, работавший
-  последним, ловит Ctrl+C/V/Delete). Мультиселект — UI-состояние TrackRow.
+  последним, ловит Ctrl+C/V/D/Delete). Мультиселект — UI-состояние TrackRow.
+- Горячие клавиши букв — по `event.code` (физическая клавиша), не `e.key`:
+  на русской раскладке Ctrl+C даёт e.key «с», а code — всегда 'KeyC'.
 - Смена набора модуляций пересобирает цепочку трека (modSig в engine).
 - Сэмплы: контент в IndexedDB (`audio/library.ts`), патч хранит SHA-256 id.
   При Tauri меняется только library.ts.

@@ -520,23 +520,54 @@ export const TrackRow = memo(function TrackRow({
     setSel(added);
   };
 
+  /** Дублировать выделение: копия справа от выделенного блока,
+   *  сдвиг на ширину блока; не влезающие в цикл ноты отбрасываются. */
+  const duplicateSel = () => {
+    if (sel.size === 0) return;
+    const entries = [...sel].map((k) => {
+      const [c, n] = k.split(':').map(Number);
+      return { c, n };
+    });
+    const minC = Math.min(...entries.map((en) => en.c));
+    const maxC = Math.max(...entries.map((en) => en.c));
+    const shift = maxC - minC + 1;
+    const steps = pattern.steps.map((st) => ({ ...st, notes: st.notes.map((nt) => ({ ...nt })) }));
+    const added = new Set<string>();
+    for (const en of entries) {
+      const nt = pattern.steps[en.c]?.notes.find((x) => x.n === en.n);
+      if (!nt) continue;
+      const c = en.c + shift;
+      if (c >= steps.length) continue;
+      if (steps[c].notes.some((x) => x.n === en.n)) continue;
+      steps[c].notes = [...steps[c].notes, { n: en.n, vel: nt.vel, prob: nt.prob }];
+      added.add(`${c}:${en.n}`);
+    }
+    changeSteps(steps);
+    setSel(added);
+  };
+
   // Клавиатура — только у стана, работавшего последним.
+  // e.code (физическая клавиша): буквы не зависят от раскладки —
+  // Ctrl+C работает и на русской (e.key дал бы кириллическую «с»).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (clip.activeTrackId !== track.id) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
       const meta = e.ctrlKey || e.metaKey;
-      if (meta && e.key.toLowerCase() === 'c' && sel.size > 0) {
+      if (meta && e.code === 'KeyC' && sel.size > 0) {
         e.preventDefault();
         clip.notes = [...sel].map((k) => {
           const [c, n] = k.split(':').map(Number);
           const nt = pattern.steps[c]?.notes.find((x) => x.n === n);
           return { col: c, n, vel: nt?.vel ?? 0.8, prob: nt?.prob ?? 1 };
         });
-      } else if (meta && e.key.toLowerCase() === 'v' && clip.notes.length > 0) {
+      } else if (meta && e.code === 'KeyV' && clip.notes.length > 0) {
         e.preventDefault();
         pasteClip();
+      } else if (meta && e.code === 'KeyD' && sel.size > 0) {
+        e.preventDefault();
+        duplicateSel();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
         e.preventDefault();
         changeSteps(
