@@ -132,7 +132,7 @@ export const TrackRow = memo(function TrackRow({
     if (!preset) return;
     const t = preset.track;
     const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
-    change({
+    const upd: Partial<Track> = {
       waveform: t.waveform,
       freq: t.freq ?? track.freq,
       scale,
@@ -156,7 +156,9 @@ export const TrackRow = memo(function TrackRow({
       grainPos: t.grainPos ?? 0.3,
       grainScatter: t.grainScatter ?? 0.15,
       patterns: clampAllNotes(scale.length - 1),
-    });
+    };
+    if (t.mods) upd.mods = t.mods.map((m) => ({ ...m }));
+    change(upd);
   };
 
   /** Парсер своей шкалы: числа и дроби через запятую/пробел.
@@ -1389,6 +1391,26 @@ export const TrackRow = memo(function TrackRow({
                     onChange={(rate) => updateMod(i, { rate })}
                   />
                   <i>Гц</i>
+                  <select
+                    className="sync-select"
+                    value=""
+                    title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
+                    onChange={(e) => {
+                      const k = Number(e.target.value);
+                      if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
+                      e.currentTarget.value = '';
+                    }}
+                  >
+                    <option value="">синхр</option>
+                    <option value="0.25">1/16</option>
+                    <option value="0.375">1/16 точ</option>
+                    <option value="0.5">1/8</option>
+                    <option value="0.75">1/8 точ</option>
+                    <option value="1">1/4</option>
+                    <option value="1.5">1/4 точ</option>
+                    <option value="2">1/2</option>
+                    <option value="4">1/1</option>
+                  </select>
                 </span>
                 <span className="mr" title="Глубина: насколько сильно LFO отклоняет параметр">
                   <input

@@ -60,6 +60,18 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     },
   },
   {
+    name: 'воббл-бас',
+    category: 'бас',
+    hint: 'дабстеп-вобл: квадратный LFO качает фильтр в долю — ву-бубубу-ву',
+    track: {
+      name: 'воббл', waveform: 'supersaw', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
+      voiceMorph: 0.25,
+      length: 16, rate: 4, attack: 0.005, decay: 0.4, filterFreq: 1200,
+      mono: true, volume: 0.75,
+      mods: [{ target: 'filterFreq', shape: 'square', rate: 5.83, depth: 1 }],
+    },
+  },
+  {
     name: 'лид',
     category: 'тоны и лиды',
     hint: 'пентатоника, короткие ноты — мелодия сверху',

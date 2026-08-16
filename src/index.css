@@ -1342,3 +1342,10 @@ button.danger:hover {
   color: var(--text-dim);
   line-height: 1.35;
 }
+
+/* Синхронизация LFO с темпом */
+.sync-select {
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-left: 4px;
+}

@@ -138,14 +138,16 @@ export function effectiveParams(track: Track, pattern: Pattern | undefined) {
   };
 }
 
-function modScale(target: string, depth: number): number {
+/** Масштаб глубины модуляции. Фильтр качается октавно (×2.5 от базы,
+ *  не меньше ±1800 Гц) — вобблеру нужен размах от глухого до звонкого. */
+function modScale(target: string, depth: number, filterBase = 1000): number {
   switch (target) {
     case 'pan':
       return depth; // ±1 максимум
     case 'volume':
       return depth * 0.5;
     case 'filterFreq':
-      return depth * 1800;
+      return depth * Math.max(1800, filterBase * 2.5);
     case 'fxTime':
       return depth * 0.12; // до ±120 мс — даб-варп времени эха
     case 'fxFeedback':
@@ -484,7 +486,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   const mods: ModNodes[] = track.mods.map((m) => {
     const src = makeModSource(ctx, m);
     const depth = ctx.createGain();
-    depth.gain.value = modScale(m.target, m.depth);
+    depth.gain.value = modScale(m.target, m.depth, filter.frequency.value);
     src.connect(depth);
     let param: AudioParam | null = null;
     if (m.target === 'pan') param = panner.pan;
@@ -1172,7 +1174,11 @@ export class AudioEngine {
       if (!nodes) return;
       const freqParam = (nodes.src as OscillatorNode).frequency;
       if (freqParam) freqParam.setTargetAtTime(m.rate, t0, 0.05);
-      nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
+      nodes.depth.gain.setTargetAtTime(
+        modScale(m.target, m.depth, chain.filter.frequency.value),
+        t0,
+        0.05,
+      );
     });
     (track.effects ?? []).forEach((e, i) => {
       const n = chain.fx[i];
