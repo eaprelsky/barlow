@@ -73,6 +73,9 @@ Launchpad MK3 / VST. Архитектурные решения — docs/DESIGN.m
 - Горячие клавиши букв — по `event.code` (физическая клавиша), не `e.key`:
   на русской раскладке Ctrl+C даёт e.key «с», а code — всегда 'KeyC'.
 - Смена набора модуляций пересобирает цепочку трека (modSig в engine).
-- Сэмплы: контент — в IndexedDB (веб) или файлах <appData>/samples +
-  index.json (десктоп, Rust-команды sample_* в src-tauri); патч хранит
-  SHA-256 id. Ветвление — внутри `audio/library.ts` (isDesktop).
+- Сэмплы: контент — в IndexedDB (веб) или файлах (десктоп: Rust-команды
+  sample_* в src-tauri); патч хранит SHA-256 id. Папка десктоп-библиотеки
+  настраивается («сменить…» в панели сэмплов): путь в <appData>/settings.json,
+  дефолт — <appData>/samples; при смене файлы переезжают, новая папка с
+  готовым index.json подхватывается как есть. Ветвление — внутри
+  `audio/library.ts` (isDesktop).

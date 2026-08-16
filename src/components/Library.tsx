@@ -10,6 +10,7 @@ import {
   listSamples,
   revealSamplesDir,
   samplesDirLabel,
+  samplesDirPick,
 } from '../audio/library';
 import { isDesktop } from '../platform';
 
@@ -79,6 +80,21 @@ export function Library({ open, usedIds, onClose }: Props) {
       {dirLabel && (
         <button onClick={() => void revealSamplesDir()} title="Открыть папку сэмпла в проводнике">
           показать папку
+        </button>
+      )}
+      {isDesktop && (
+        <button
+          title="Выбрать другую папку: сэмплы переедут туда. Если в новой папке уже лежит библиотека (index.json) — будет использована она"
+          onClick={() => {
+            void samplesDirPick().then((p) => {
+              if (p) {
+                setDirLabel(p);
+                refresh();
+              }
+            });
+          }}
+        >
+          сменить…
         </button>
       )}
       <button onClick={onClose} title="Скрыть панель">скрыть</button>

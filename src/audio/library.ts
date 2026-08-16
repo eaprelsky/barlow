@@ -96,6 +96,14 @@ export async function revealSamplesDir(): Promise<void> {
   await invoke('reveal_samples_dir');
 }
 
+/** Сменить папку библиотеки: нативный диалог. Существующие сэмплы
+ *  переносятся; если в новой папке уже есть своя библиотека — используется
+ *  она. Возвращает новый путь или null (отмена / веб). */
+export async function samplesDirPick(): Promise<string | null> {
+  if (!isDesktop) return null;
+  return invoke<string | null>('samples_dir_pick');
+}
+
 export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
   const buf = await blob.arrayBuffer();
   const id = await sha256Hex(buf);
