@@ -1492,6 +1492,36 @@ export class AudioEngine {
     this.scratchNode = null;
   }
 
+  private peaksCache = new Map<string, number[]>();
+
+  /** Пики волны сэмпла (64 сегмента, нормированы в 0..1) — для мини-карты
+   *  скрэтч-пэда: видно, где в сэмпле удары, где тишина. */
+  async getSamplePeaks(id: string | undefined): Promise<number[] | null> {
+    if (!id) return null;
+    const cached = this.peaksCache.get(id);
+    if (cached) return cached;
+    const patch = this.patch;
+    if (!patch) return null;
+    await this.ensureSamples(patch);
+    const buf = this.sampleCache.get(id);
+    if (!buf) return null;
+    const N = 64;
+    const data = buf.getChannelData(0);
+    const seg = Math.max(1, Math.floor(data.length / N));
+    const step = Math.max(1, Math.floor(seg / 64));
+    const peaks: number[] = [];
+    for (let i = 0; i < N; i++) {
+      let m = 0;
+      for (let j = i * seg; j < (i + 1) * seg && j < data.length; j += step) {
+        const v = Math.abs(data[j]);
+        if (v > m) m = v;
+      }
+      peaks.push(m);
+    }
+    this.peaksCache.set(id, peaks);
+    return peaks;
+  }
+
   /** Ручное переключение сцены: применяется на ближайшей границе такта. */
   setScene(id: string): void {
     if (!this.playing || !this.ctx || !this.patch) return;

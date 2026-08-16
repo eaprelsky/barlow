@@ -99,6 +99,7 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
+  onScratchPeaks: () => Promise<number[] | null>;
   patternSceneCounts: Record<string, number>;
   // Для сайдчейна: все дорожки патча (id + имя).
   allTracks: { id: string; name: string }[];
@@ -131,6 +132,7 @@ export const TrackRow = memo(function TrackRow({
   onScratchMove,
   onScratchEnd,
   onScratchPreview,
+  onScratchPeaks,
   patternSceneCounts,
   allTracks,
   onGenerateSample,
@@ -238,7 +240,10 @@ export const TrackRow = memo(function TrackRow({
   const [showPicker, setShowPicker] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
   const scratchRec = useRef<{ t0: number; pts: { dt: number; pos: number }[] } | null>(null);
-  const [scratchRecOn, setScratchRecOn] = useState(false);
+  const [scratchArmed, setScratchArmed] = useState(false);
+  const [scratchLive, setScratchLive] = useState(false);
+  const [scratchPlaying, setScratchPlaying] = useState(false);
+  const [scratchPeaks, setScratchPeaks] = useState<number[] | null>(null);
   // Редактирование: во время драга точки/записи живём в локальном состоянии,
   // в патч пишем на отпускании (один undo-шаг на правку).
   const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
@@ -409,6 +414,18 @@ export const TrackRow = memo(function TrackRow({
   useEffect(() => {
     setSel(new Set());
   }, [pattern.id]);
+
+  // Мини-карта волны сэмпла для скрэтч-пэда.
+  useEffect(() => {
+    if (track.waveform !== 'sample' || (track.sampleMode ?? 'plain') !== 'scratch') return;
+    let alive = true;
+    void onScratchPeaks().then((p) => {
+      if (alive) setScratchPeaks(p ?? []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [track.waveform, track.sampleMode, track.sampleId, onScratchPeaks]);
 
   const cellFromPoint = (x: number, y: number): { col: number; row: number } | null => {
     const el = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest?.('.cell') as HTMLElement | null;
@@ -1493,15 +1510,40 @@ export const TrackRow = memo(function TrackRow({
             скрэтч-жест
           </span>
           <button
-            className={scratchRecOn ? 'on' : ''}
-            title="Включи и веди по пэду — запишется живой жест (сглаживается до 48 точек). Выключена — клик по пэду добавляет точку, точки таскаются, правый клик по точке — удалить"
-            onClick={() => setScratchRecOn((v) => !v)}
+            className={scratchArmed || scratchLive ? 'on' : ''}
+            title="Вооружить запись: следующее ведение по пэду запишется живым жестом и кнопка погаснет. Без записи клик по пэду добавляет точку, точки таскаются, правый клик — удалить"
+            onClick={() => setScratchArmed((v) => !v)}
           >
             ● запись
           </button>
-          <button title="Послушать жест одной нотой (нужен играющий транспорт)" onClick={onScratchPreview}>
+          <button
+            className={scratchPlaying ? 'on' : ''}
+            title="Послушать жест одной нотой"
+            onClick={() => {
+              onScratchPreview();
+              const len =
+                track.noteSteps && track.noteSteps > 0
+                  ? track.noteSteps * track.rate * tickDuration(bpm)
+                  : Math.max(track.attack, 0.0005) + track.decay;
+              setScratchPlaying(true);
+              window.setTimeout(() => setScratchPlaying(false), (len + 0.15) * 1000);
+            }}
+          >
             ▶
           </button>
+          <div className="scratch-side" title="Позиция иглы в сэмпле: низ — начало, верх — конец. Полоски — громкость сэмпла в этом месте">
+            <svg className="scratch-map" viewBox="0 0 10 100" preserveAspectRatio="none">
+              {(scratchPeaks ?? []).map((pk, i) => {
+                // peaks[0] — начало сэмпла: рисуем снизу вверх
+                const y = 100 - ((i + 0.5) * 100) / 64;
+                const h = pk * 100;
+                return (
+                  <rect key={i} x={1} y={y - h / 2} width={8} height={Math.max(0.4, h)} fill="var(--text-dim)" opacity={0.55} />
+                );
+              })}
+            </svg>
+          </div>
+          <div className="scratch-main">
           <div
             className="scratch-track"
             ref={scratchRef}
@@ -1521,7 +1563,8 @@ export const TrackRow = memo(function TrackRow({
               if (hit >= 0) {
                 dragIdx.current = hit;
                 setDragPts([...pts]);
-              } else if (scratchRecOn) {
+              } else if (scratchArmed) {
+                setScratchLive(true);
                 scratchRec.current = { t0: performance.now(), pts: [{ dt: 0, pos }] };
                 onScratchBegin(pos);
               } else {
@@ -1565,6 +1608,8 @@ export const TrackRow = memo(function TrackRow({
               scratchRec.current = null;
               if (rec) {
                 onScratchEnd();
+                setScratchLive(false);
+                setScratchArmed(false);
                 if (rec.pts.length >= 2) {
                   const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
                   const N = 48;
@@ -1635,6 +1680,20 @@ export const TrackRow = memo(function TrackRow({
               <span className="scratch-hint">клик — добавить точку · ● запись — рисовать жест мышью</span>
             )}
           </div>
+          <span className="scratch-axis">← время ноты · вертикаль — позиция иглы: низ начало сэмпла, верх конец →</span>
+          </div>
+          <span
+            className="mini-info scratch-len"
+            title="Длительность жеста = длина ноты: вкладка «огибающая» — «длина ноты, шагов» (привязка к сетке) или атака+спад. Гейт ноты растягивает жест"
+          >
+            жест ≈{' '}
+            {(
+              (track.noteSteps && track.noteSteps > 0
+                ? track.noteSteps * track.rate * tickDuration(bpm)
+                : Math.max(track.attack, 0.0005) + track.decay)
+            ).toFixed(2)}
+            с
+          </span>
         </div>
       )}
 

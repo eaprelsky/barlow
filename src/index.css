@@ -1439,3 +1439,33 @@ button.danger:hover {
   border-color: #e05555;
   color: #e05555;
 }
+
+/* Мини-карта волны сэмпла и оси скрэтч-пэда */
+.scratch-side {
+  width: 16px;
+  align-self: stretch;
+  display: flex;
+}
+
+.scratch-map {
+  width: 100%;
+  height: 96px;
+}
+
+.scratch-axis {
+  align-self: flex-end;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.scratch-len {
+  align-self: flex-start;
+}
+
+.scratch-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
