@@ -13,6 +13,11 @@ export type Waveform =
   | 'noise'
   | 'fm'
   | 'karplus'
+  | 'supersaw'
+  | 'additive'
+  | 'formant'
+  | 'modal'
+  | 'organ'
   | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
@@ -23,7 +28,21 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
   noise: 'шум',
   fm: 'FM',
   karplus: 'струна',
+  supersaw: 'супер-пила',
+  additive: 'гармоники',
+  formant: 'вокал',
+  modal: 'колокол',
+  organ: 'орган',
   sample: 'сэмпл',
+};
+
+// Модели голоса (порт идей Plaits): у каждой — свой смысл ручки «морф».
+export const MORPH_LABELS: Partial<Record<Waveform, string>> = {
+  supersaw: 'расстройка голосов',
+  additive: 'яркость (число гармоник)',
+  formant: 'гласная А → У',
+  modal: 'материал: маримба → колокол',
+  organ: 'регистры: микс верхних',
 };
 
 /** Как сэмплер играет буфер: напрямую или облаком гранул. */
@@ -140,6 +159,8 @@ export interface Track {
   fmRatio?: number;
   // FM: индекс модуляции (девиация = индекс × частота модулятора).
   fmIndex?: number;
+  // Модели голоса: морф 0..1, смысл зависит от волны (см. MORPH_LABELS).
+  voiceMorph?: number;
   // Karplus-Strong: время собственного затухания струны, с (T60).
   ksLife?: number;
   // Режим сэмплера: прямой или гранулярный (нота = облако осколков).
@@ -192,7 +213,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 18;
+export const PATCH_VERSION = 19;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -239,6 +260,7 @@ export function makeTrack(
     sampleName: partial.sampleName,
     fmRatio: partial.fmRatio,
     fmIndex: partial.fmIndex,
+    voiceMorph: partial.voiceMorph,
     ksLife: partial.ksLife,
     sampleMode: partial.sampleMode,
     grainSizeMs: partial.grainSizeMs,
@@ -492,6 +514,7 @@ export function normalizePatch(p: Patch): Patch {
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
         fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
         fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
+        voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
         ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
         sampleMode: t.sampleMode === 'grain' ? 'grain' : 'plain',
         grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),

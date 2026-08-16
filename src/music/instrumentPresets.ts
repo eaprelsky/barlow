@@ -86,6 +86,53 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     },
   },
   {
+    name: 'супер-пила',
+    hint: 'расстроенный унисон семи пил — жирная подложка и стены',
+    track: {
+      name: 'супер-пила', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      voiceMorph: 0.55,
+      length: 16, rate: 4, attack: 0.01, decay: 0.5, filterFreq: 5500, volume: 0.55,
+    },
+  },
+  {
+    name: 'вокал',
+    hint: 'пила сквозь форманты — поёт гласные; морф едет А → Э → И → О → У',
+    track: {
+      name: 'вокал', waveform: 'formant', freq: 220, scale: PENTATONIC_MINOR,
+      voiceMorph: 0.35,
+      length: 13, rate: 2, attack: 0.06, decay: 0.7, filterFreq: 8000, volume: 0.7,
+      effects: [{ type: 'reverb', sizeSec: 2.2, mix: 0.3 }],
+    },
+  },
+  {
+    name: 'колокол',
+    hint: 'модальные резонаторы: маримба → колокол, морф — материал и время звона',
+    track: {
+      name: 'колокол', waveform: 'modal', freq: 220, scale: [1, 6 / 5, 3 / 2, 2, 9 / 5 * 2],
+      voiceMorph: 0.8,
+      length: 9, rate: 2, attack: 0.001, decay: 1.2, filterFreq: 12000, volume: 0.7,
+      effects: [{ type: 'reverb', sizeSec: 3, mix: 0.35 }],
+    },
+  },
+  {
+    name: 'орган',
+    hint: 'регистры 1,2,3,4,6,8 — морф открывает их по одному, от флейты до полного',
+    track: {
+      name: 'орган', waveform: 'organ', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      voiceMorph: 0.6,
+      length: 16, rate: 2, attack: 0.02, decay: 0.6, filterFreq: 7000, volume: 0.6,
+    },
+  },
+  {
+    name: 'гармоники',
+    hint: 'аддитивный: морф = яркость, число гармоник 2–16',
+    track: {
+      name: 'гармоники', waveform: 'additive', freq: 220, scale: PENTATONIC_MINOR,
+      voiceMorph: 0.4,
+      length: 12, rate: 2, attack: 0.01, decay: 0.5, filterFreq: 8000, volume: 0.65,
+    },
+  },
+  {
     name: 'грануляр',
     hint: 'нота — облако коротких осколков сэмпла; загрузи сэмпл и двигай позицию облака',
     track: {

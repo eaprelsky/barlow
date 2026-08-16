@@ -4,6 +4,7 @@ import type { Effect, Mod, Pattern, Step, Track, Waveform } from '../types';
 import {
   EFFECT_LABELS,
   MOD_TARGET_LABELS,
+  MORPH_LABELS,
   WAVEFORM_LABELS,
   makeNote,
   makeStep,
@@ -139,6 +140,7 @@ export const TrackRow = memo(function TrackRow({
       mono: t.mono,
       fmRatio: t.fmRatio ?? 2,
       fmIndex: t.fmIndex ?? 3,
+      voiceMorph: t.voiceMorph ?? 0.5,
       ksLife: t.ksLife ?? 2.5,
       sampleMode: t.sampleMode ?? 'plain',
       grainSizeMs: t.grainSizeMs ?? 120,
@@ -942,6 +944,18 @@ export const TrackRow = memo(function TrackRow({
                   <NumField value={track.fmIndex ?? 3} min={0} max={16} step={0.1} onChange={(fmIndex) => change({ fmIndex })} />
                 </label>
               </>
+            )}
+            {MORPH_LABELS[track.waveform] && (
+              <label
+                title={`Морф модели «${WAVEFORM_LABELS[track.waveform]}»: ${MORPH_LABELS[track.waveform]}`}
+              >
+                морф
+                <NumField
+                  value={Math.round((track.voiceMorph ?? 0.5) * 100)}
+                  min={0} max={100} step={5}
+                  onChange={(v) => change({ voiceMorph: v / 100 })}
+                />
+              </label>
             )}
             {track.waveform === 'karplus' && (
               <label title="Сколько секунд струна звенит до полной тишины — собственное затухание струны, поверх обычной огибающей ноты">

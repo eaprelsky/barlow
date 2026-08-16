@@ -224,6 +224,45 @@ function karplusBuffer(
   return buf;
 }
 
+// Аддитивные модели (гармоники, орган): массив амплитуд гармоник →
+// PeriodicWave с кэшем (морф квантуется в ступени — попаданий много).
+const waveCache = new Map<string, PeriodicWave>();
+function harmonicWave(ctx: BaseAudioContext, amps: number[]): PeriodicWave {
+  const key = `${ctx.sampleRate}:${amps.map((a) => a.toFixed(4)).join(',')}`;
+  let w = waveCache.get(key);
+  if (!w) {
+    const imag = new Float32Array(amps.length + 1);
+    for (let i = 0; i < amps.length; i++) imag[i + 1] = amps[i];
+    w = ctx.createPeriodicWave(new Float32Array(amps.length + 1), imag, {
+      disableNormalization: false,
+    });
+    if (waveCache.size > 128) waveCache.clear();
+    waveCache.set(key, w);
+  }
+  return w;
+}
+
+// Вокальные форманты: пять гласных (F1, F2, F3), морф их интерполирует.
+const VOWELS: [number, number, number][] = [
+  [800, 1150, 2800], // А
+  [500, 1900, 2550], // Э
+  [280, 2250, 2890], // И
+  [550, 950, 2400], // О
+  [350, 800, 2300], // У
+];
+function vowelOf(m: number): [number, number, number] {
+  const pos = Math.min(0.9999, Math.max(0, m)) * (VOWELS.length - 1);
+  const i = Math.floor(pos);
+  const frac = pos - i;
+  const a = VOWELS[i];
+  const b = VOWELS[i + 1];
+  return [0, 1, 2].map((k) => a[k] + (b[k] - a[k]) * frac) as [number, number, number];
+}
+
+// Модальные партиалы: маримба → колокол, морф их интерполирует.
+const PARTIALS_A = [1, 3.9, 9.2, 13.4];
+const PARTIALS_B = [1, 2.32, 4.25, 6.63];
+
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -550,6 +589,133 @@ function triggerVoice(
       mod.stop(stopAt);
       carrier.stop(stopAt);
       sources.push(carrier, mod);
+    }
+  } else if (track.waveform === 'supersaw') {
+    // Супер-пила: расстроенный унисон из семи пил, морф = ширина расстройки.
+    const detune = 4 + (track.voiceMorph ?? 0.5) * 36; // центов на крайнем голосе
+    const voices = [
+      { det: 0, gain: 1 },
+      { det: -detune * 0.33, gain: 0.7 },
+      { det: detune * 0.33, gain: 0.7 },
+      { det: -detune * 0.66, gain: 0.5 },
+      { det: detune * 0.66, gain: 0.5 },
+      { det: -detune, gain: 0.32 },
+      { det: detune, gain: 0.32 },
+    ];
+    const norm = voices.reduce((sum, v) => sum + v.gain, 0);
+    for (const f of freqs) {
+      for (const v of voices) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.detune.value = v.det;
+        if (track.pitchDrop > 1 && track.pitchTime > 0) {
+          osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+          osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+        } else {
+          osc.frequency.setValueAtTime(f, time);
+        }
+        const g = ctx.createGain();
+        g.gain.value = v.gain / norm;
+        osc.connect(g);
+        g.connect(amp);
+        osc.start(time);
+        osc.stop(stopAt);
+        sources.push(osc);
+      }
+    }
+  } else if (track.waveform === 'additive' || track.waveform === 'organ') {
+    // Гармоники: морф = число гармоник (2..16, спад k^-1.5).
+    // Орган: регистры-унисоны 1,2,3,4,6,8; морф открывает их по одному.
+    const m = track.voiceMorph ?? 0.5;
+    let amps: number[];
+    if (track.waveform === 'organ') {
+      const regs = [1, 2, 3, 4, 6, 8];
+      const full = new Array<number>(regs[regs.length - 1] + 1).fill(0);
+      regs.forEach((r, i) => {
+        full[r] = Math.max(0.15, Math.min(1, m * regs.length * 1.15 - i));
+      });
+      amps = full.slice(1);
+    } else {
+      const n = 2 + Math.round(m * 14);
+      amps = Array.from({ length: n }, (_, i) => Math.pow(i + 1, -1.5));
+    }
+    const wave = harmonicWave(ctx, amps);
+    for (const f of freqs) {
+      const osc = ctx.createOscillator();
+      osc.setPeriodicWave(wave);
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+        osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+      } else {
+        osc.frequency.setValueAtTime(f, time);
+      }
+      osc.connect(amp);
+      osc.start(time);
+      osc.stop(stopAt);
+      sources.push(osc);
+    }
+  } else if (track.waveform === 'formant') {
+    // Вокал: пила сквозь три формантных полосовых фильтра — гласная
+    // не зависит от высоты ноты, морф едет А → Э → И → О → У.
+    const [f1, f2, f3] = vowelOf(track.voiceMorph ?? 0.5);
+    for (const f of freqs) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+        osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+      } else {
+        osc.frequency.setValueAtTime(f, time);
+      }
+      // Немного сухой пилы — тело голоса под формантами.
+      const dry = ctx.createGain();
+      dry.gain.value = 0.12;
+      osc.connect(dry);
+      dry.connect(amp);
+      (
+        [
+          [f1, 10, 1],
+          [f2, 12, 0.55],
+          [f3, 14, 0.3],
+        ] as [number, number, number][]
+      ).forEach(([ff, q, level]) => {
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = ff;
+        bp.Q.value = q;
+        const g = ctx.createGain();
+        g.gain.value = level;
+        osc.connect(bp);
+        bp.connect(g);
+        g.connect(amp);
+      });
+      osc.start(time);
+      osc.stop(stopAt);
+      sources.push(osc);
+    }
+  } else if (track.waveform === 'modal') {
+    // Колокол/маримба: шумовой щелчок в банк параллельных резонаторов.
+    // Морф = материал (частоты партиалов) и время звона (Q).
+    const m = track.voiceMorph ?? 0.5;
+    const q0 = 30 + m * 130;
+    for (const f of freqs) {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      PARTIALS_A.forEach((pa, i) => {
+        const ratio = pa + (PARTIALS_B[i] - pa) * m;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = Math.min(f * ratio, 17000);
+        bp.Q.value = q0 / (1 + i * 0.55);
+        const g = ctx.createGain();
+        g.gain.value = 0.9 / (i + 1);
+        src.connect(bp);
+        bp.connect(g);
+        g.connect(amp);
+      });
+      src.start(time, Math.random() * 1.5, 0.004);
+      src.stop(time + 0.02);
+      sources.push(src);
     }
   } else {
     // Аккорд: по осциллятору на ноту, огибающая общая.
