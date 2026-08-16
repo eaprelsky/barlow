@@ -59,7 +59,7 @@ interface TrackClock {
 }
 
 interface ModNodes {
-  lfo: OscillatorNode;
+  src: AudioScheduledSourceNode;
   depth: GainNode;
 }
 
@@ -82,7 +82,8 @@ interface TrackChain {
   modSig: string;
 }
 
-const modsSigOf = (mods: Mod[]) => mods.map((m) => `${m.target}:${m.shape}`).join(',');
+const modsSigOf = (mods: Mod[]) =>
+  mods.map((m) => `${m.target}:${m.source ?? 'lfo'}:${m.shape}`).join(',');
 const fxSigOf = (fx: Effect[]) => fx.map((e) => e.type).join(',');
 // equal-power кроссфейд dry/wet — без провала громкости посередине.
 const dryGain = (mix: number) => Math.cos((mix * Math.PI) / 2);
@@ -263,6 +264,73 @@ function vowelOf(m: number): [number, number, number] {
 const PARTIALS_A = [1, 3.9, 9.2, 13.4];
 const PARTIALS_B = [1, 2.32, 4.25, 6.63];
 
+// S&H: кусочно-постоянные случайные значения, шаг = 1/rate. Луп бесшовный:
+// периодов целое число, стык значений не важен (скачок и есть суть S&H).
+const sahCache = new Map<string, AudioBuffer>();
+function makeSahBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
+  const key = `${ctx.sampleRate}:${rate.toFixed(3)}`;
+  let buf = sahCache.get(key);
+  if (buf) return buf;
+  if (sahCache.size > 64) sahCache.clear();
+  const steps = 16;
+  const len = Math.floor((steps / rate) * ctx.sampleRate);
+  buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const period = len / steps;
+  for (let i = 0; i < steps; i++) {
+    const v = Math.random() * 2 - 1;
+    const from = Math.floor(i * period);
+    const to = Math.floor((i + 1) * period);
+    for (let j = from; j < to; j++) d[j] = v;
+  }
+  sahCache.set(key, buf);
+  return buf;
+}
+
+// Перлин (1D value noise): плавные холмы между случайными точками,
+// косинусная интерполяция; последняя точка равна первой — луп бесшовный.
+const perlinCache = new Map<string, AudioBuffer>();
+function makePerlinBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
+  const key = `${ctx.sampleRate}:${rate.toFixed(3)}`;
+  let buf = perlinCache.get(key);
+  if (buf) return buf;
+  if (perlinCache.size > 64) perlinCache.clear();
+  const steps = 16;
+  const len = Math.floor((steps / rate) * ctx.sampleRate);
+  buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const points = Array.from({ length: steps + 1 }, () => Math.random() * 2 - 1);
+  points[steps] = points[0];
+  const period = len / steps;
+  for (let i = 0; i < len; i++) {
+    const pos = i / period;
+    const i0 = Math.floor(pos);
+    const frac = pos - i0;
+    const a = points[i0];
+    const b = points[i0 + 1];
+    const t = 0.5 - 0.5 * Math.cos(frac * Math.PI);
+    d[i] = a + (b - a) * t;
+  }
+  perlinCache.set(key, buf);
+  return buf;
+}
+
+/** Узел источника модуляции по её виду. */
+function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode {
+  const source = m.source ?? 'lfo';
+  if (source === 'sah' || source === 'perlin') {
+    const src = ctx.createBufferSource();
+    src.buffer = source === 'sah' ? makeSahBuffer(ctx, m.rate) : makePerlinBuffer(ctx, m.rate);
+    src.loop = true;
+    src.playbackRate.value = 1;
+    return src;
+  }
+  const osc = ctx.createOscillator();
+  osc.type = m.shape;
+  osc.frequency.value = m.rate;
+  return osc;
+}
+
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -314,12 +382,10 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   }
   node.connect(panner);
   const mods: ModNodes[] = track.mods.map((m) => {
-    const lfo = ctx.createOscillator();
-    lfo.type = m.shape;
-    lfo.frequency.value = m.rate;
+    const src = makeModSource(ctx, m);
     const depth = ctx.createGain();
     depth.gain.value = modScale(m.target, m.depth);
-    lfo.connect(depth);
+    src.connect(depth);
     let param: AudioParam | null = null;
     if (m.target === 'pan') param = panner.pan;
     else if (m.target === 'volume') param = gain.gain;
@@ -328,8 +394,8 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     else if (m.target === 'fxTime') param = fx[0]?.delay?.delayTime ?? null;
     else if (m.target === 'fxFeedback') param = fx[0]?.feedback?.gain ?? null;
     if (param) depth.connect(param);
-    lfo.start(0);
-    return { lfo, depth };
+    src.start(0);
+    return { src, depth };
   });
   return {
     hp,
@@ -345,11 +411,11 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
 function disposeChain(chain: TrackChain): void {
   for (const m of chain.mods) {
     try {
-      m.lfo.stop();
+      m.src.stop();
     } catch {
       /* уже остановлен */
     }
-    m.lfo.disconnect();
+    m.src.disconnect();
     m.depth.disconnect();
   }
   for (const f of chain.fx) {
@@ -434,6 +500,18 @@ function scheduleGrainCloud(
   const grainAmp = (peak * 1.4) / Math.sqrt(total);
   const max = rows.length - 1;
   let lastEnd = time;
+  // Вибрато на скорости зёрен: один LFO на всё облако.
+  let vibLfo: OscillatorNode | null = null;
+  let vibG: GainNode | null = null;
+  if ((track.vibratoDepth ?? 0) > 0) {
+    vibLfo = ctx.createOscillator();
+    vibLfo.frequency.value = track.vibratoRate ?? 5;
+    vibG = ctx.createGain();
+    vibG.gain.value = (track.vibratoDepth ?? 0) / 1200;
+    vibLfo.connect(vibG);
+    vibLfo.start(time);
+    sources.push(vibLfo);
+  }
   for (let g = 0; g < per; g++) {
     const t0 = time + g * stepT;
     // Небольшой джиттер стартов: чисто периодическая россыпь даёт слышимый
@@ -458,6 +536,7 @@ function scheduleGrainCloud(
       gAmp.gain.setValueAtTime(0, at);
       gAmp.gain.linearRampToValueAtTime(grainAmp * nt.vel, at + sizeSec / 2);
       gAmp.gain.linearRampToValueAtTime(0, at + sizeSec);
+      if (vibG) vibG.connect(src.playbackRate);
       src.connect(gAmp);
       gAmp.connect(amp);
       src.start(at, offset, sizeSec * ratio + 0.02);
@@ -472,6 +551,8 @@ function scheduleGrainCloud(
   amp.gain.linearRampToValueAtTime(peak, time + Math.min(0.02, dur * 0.2));
   amp.gain.setValueAtTime(peak, time + dur);
   amp.gain.exponentialRampToValueAtTime(0.0001, lastEnd + 0.01);
+  // Вибрато-LFO облака останавливается вместе с последним зерном.
+  if (vibLfo) vibLfo.stop(lastEnd + 0.06);
   return lastEnd + 0.05;
 }
 
@@ -499,6 +580,27 @@ function triggerVoice(
   const amp = ctx.createGain();
   amp.connect(chain.hp);
   const sources: AudioScheduledSourceNode[] = [];
+
+  // Вибрато: один LFO на голос, ветки с нужным масштабом (центы — на
+  // detune осцилляторов; доли скорости — на playbackRate сэмплов).
+  const vibDepth = track.vibratoDepth ?? 0;
+  let vibOut: GainNode | null = null;
+  const vibBus = (scale: number): GainNode | null => {
+    if (vibDepth <= 0 || scale === 0) return null;
+    if (!vibOut) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = track.vibratoRate ?? 5;
+      vibOut = ctx.createGain();
+      lfo.connect(vibOut);
+      lfo.start(time);
+      lfo.stop(stopAt);
+      sources.push(lfo);
+    }
+    const g = ctx.createGain();
+    g.gain.value = vibDepth * scale;
+    vibOut.connect(g);
+    return g;
+  };
 
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
@@ -540,6 +642,8 @@ function triggerVoice(
       } else {
         src.playbackRate.value = ratio;
       }
+      const vbS = vibBus(1 / 1200);
+      if (vbS) vbS.connect(src.playbackRate);
       src.connect(amp);
       src.start(time);
       src.stop(stopAt);
@@ -583,6 +687,8 @@ function triggerVoice(
         carrier.frequency.setValueAtTime(f, time);
         mod.frequency.setValueAtTime(f * ratio, time);
       }
+      const vbF = vibBus(1);
+      if (vbF) vbF.connect(carrier.detune);
       carrier.connect(amp);
       mod.start(time);
       carrier.start(time);
@@ -616,6 +722,8 @@ function triggerVoice(
         }
         const g = ctx.createGain();
         g.gain.value = v.gain / norm;
+        const vbSS = vibBus(1);
+        if (vbSS) vbSS.connect(osc.detune);
         osc.connect(g);
         g.connect(amp);
         osc.start(time);
@@ -649,6 +757,8 @@ function triggerVoice(
       } else {
         osc.frequency.setValueAtTime(f, time);
       }
+      const vbA = vibBus(1);
+      if (vbA) vbA.connect(osc.detune);
       osc.connect(amp);
       osc.start(time);
       osc.stop(stopAt);
@@ -667,6 +777,8 @@ function triggerVoice(
       } else {
         osc.frequency.setValueAtTime(f, time);
       }
+      const vbV = vibBus(1);
+      if (vbV) vbV.connect(osc.detune);
       // Немного сухой пилы — тело голоса под формантами.
       const dry = ctx.createGain();
       dry.gain.value = 0.12;
@@ -730,6 +842,8 @@ function triggerVoice(
       } else {
         osc.frequency.setValueAtTime(f, time);
       }
+      const vbO = vibBus(1);
+      if (vbO) vbO.connect(osc.detune);
       osc.connect(amp);
       osc.start(time);
       osc.stop(stopAt);
@@ -873,7 +987,8 @@ export class AudioEngine {
     eff.mods.forEach((m, i) => {
       const nodes = chain.mods[i];
       if (!nodes) return;
-      nodes.lfo.frequency.setTargetAtTime(m.rate, t0, 0.05);
+      const freqParam = (nodes.src as OscillatorNode).frequency;
+      if (freqParam) freqParam.setTargetAtTime(m.rate, t0, 0.05);
       nodes.depth.gain.setTargetAtTime(modScale(m.target, m.depth), t0, 0.05);
     });
     (track.effects ?? []).forEach((e, i) => {

@@ -108,9 +108,15 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
   reverb: 'реверб (пространство)',
 };
 
-/** Источник модуляции: LFO с формой, скоростью (Гц) и глубиной (0..1). */
+/** Источник модуляции: LFO с формой / ступени S&H / плавный перлин-шум.
+ *  Скорость в Гц, глубина 0..1. */
+export type ModSource = 'lfo' | 'sah' | 'perlin';
+
 export interface Mod {
   target: string;
+  // Вид источника; отсутствует (старые патчи) = LFO.
+  source?: ModSource;
+  // Форма — только для LFO.
   shape: 'sine' | 'triangle' | 'square' | 'sawtooth';
   rate: number;
   depth: number;
@@ -161,6 +167,10 @@ export interface Track {
   fmIndex?: number;
   // Модели голоса: морф 0..1, смысл зависит от волны (см. MORPH_LABELS).
   voiceMorph?: number;
+  // Вибрато: частота (Гц) и глубина (в центах) на голосах осцилляторов
+  // и скорости сэмпла.
+  vibratoRate?: number;
+  vibratoDepth?: number;
   // Karplus-Strong: время собственного затухания струны, с (T60).
   ksLife?: number;
   // Режим сэмплера: прямой или гранулярный (нота = облако осколков).
@@ -213,7 +223,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 19;
+export const PATCH_VERSION = 20;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -261,6 +271,8 @@ export function makeTrack(
     fmRatio: partial.fmRatio,
     fmIndex: partial.fmIndex,
     voiceMorph: partial.voiceMorph,
+    vibratoRate: partial.vibratoRate,
+    vibratoDepth: partial.vibratoDepth,
     ksLife: partial.ksLife,
     sampleMode: partial.sampleMode,
     grainSizeMs: partial.grainSizeMs,
@@ -352,6 +364,8 @@ function normalizeEffects(raw: unknown): Effect[] {
   return out;
 }
 
+const MOD_SOURCES = ['lfo', 'sah', 'perlin'] as const;
+
 function normalizeMods(raw: unknown): Mod[] {
   if (!Array.isArray(raw)) return [];
   const out: Mod[] = [];
@@ -364,8 +378,12 @@ function normalizeMods(raw: unknown): Mod[] {
       ? (m.shape as Mod['shape'])
       : null;
     if (!target || !shape) continue;
+    const source = (MOD_SOURCES as readonly string[]).includes(String(m.source))
+      ? (m.source as Mod['source'])
+      : undefined;
     out.push({
       target,
+      source,
       shape,
       rate: clamp(m.rate ?? 0.2, 0.01, 40, 0.2),
       depth: clamp(m.depth ?? 0.5, 0, 1, 0.5),
@@ -515,6 +533,8 @@ export function normalizePatch(p: Patch): Patch {
         fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
         fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
         voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
+        vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 12, 5),
+        vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 100, 0),
         ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
         sampleMode: t.sampleMode === 'grain' ? 'grain' : 'plain',
         grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),

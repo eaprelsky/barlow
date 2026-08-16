@@ -23,6 +23,11 @@ import { clip } from '../music/clip';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
+const MOD_SOURCE_LABELS: Record<string, string> = {
+  lfo: 'LFO',
+  sah: 'ступени (S&H)',
+  perlin: 'перлин',
+};
 
 // Длительность шага в 1/16: осмысленные значения, «точёные» дают
 // полиметрический дрейф (1/8. = 1.5 шестнадцатых).
@@ -1129,6 +1134,20 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(filterFreq) => change({ filterFreq })}
               />
             </label>
+            <label title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое">
+              вибрато, Гц
+              <NumField
+                value={track.vibratoRate ?? 5} min={0.1} max={12} step={0.1}
+                onChange={(vibratoRate) => change({ vibratoRate })}
+              />
+            </label>
+            <label title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 центов — заметное; 100 — широкий ук">
+              вибрато, центы
+              <NumField
+                value={track.vibratoDepth ?? 0} min={0} max={100} step={1}
+                onChange={(vibratoDepth) => change({ vibratoDepth })}
+              />
+            </label>
           </div>
           <div className="group">
             <label title="Эскиз = партия: свои ручки, пока он играет (в этой и других сценах, где он звучит)">
@@ -1249,6 +1268,15 @@ export const TrackRow = memo(function TrackRow({
             {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i}>
                 <select
+                  value={m.source ?? 'lfo'}
+                  title="Источник: LFO — периодическая волна; ступени (S&H) — случайные значения с заданным темпом; перлин — плавные случайные холмы"
+                  onChange={(e) => updateMod(i, { source: e.target.value as Mod['source'] })}
+                >
+                  {Object.entries(MOD_SOURCE_LABELS).map(([id, title]) => (
+                    <option key={id} value={id}>{title}</option>
+                  ))}
+                </select>
+                <select
                   value={m.target}
                   title="Какой параметр качает LFO. Цели эффектов — на первый эффект в списке"
                   onChange={(e) => updateMod(i, { target: e.target.value as string })}
@@ -1259,6 +1287,7 @@ export const TrackRow = memo(function TrackRow({
                     </option>
                   ))}
                 </select>
+                {(m.source ?? 'lfo') === 'lfo' && (
                 <select
                   value={m.shape}
                   title="Форма колебания"
@@ -1268,6 +1297,7 @@ export const TrackRow = memo(function TrackRow({
                     <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
                   ))}
                 </select>
+                )}
                 <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
                   <NumField
                     value={m.rate} min={0.01} max={40} step={0.05}
