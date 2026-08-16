@@ -86,6 +86,8 @@ interface Props {
   soloActive: boolean;
   onSolo: (trackId: string) => void;
   patternSceneCounts: Record<string, number>;
+  // Для сайдчейна: все дорожки патча (id + имя).
+  allTracks: { id: string; name: string }[];
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   genBusy: boolean;
 }
@@ -112,6 +114,7 @@ export const TrackRow = memo(function TrackRow({
   soloActive,
   onSolo,
   patternSceneCounts,
+  allTracks,
   onGenerateSample,
   genBusy,
 }: Props) {
@@ -1154,6 +1157,50 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(vibratoDepth) => change({ vibratoDepth })}
               />
             </label>
+            <label title="Сайдчейн: ноты выбранной дорожки приглушают эту («бас качается под бочку»). Дак живёт поверх громкости эскиза">
+              качается от
+              <select
+                value={track.sidechain?.sourceId ?? ''}
+                onChange={(e) =>
+                  change({
+                    sidechain: e.target.value
+                      ? {
+                          sourceId: e.target.value,
+                          amount: track.sidechain?.amount ?? 0.5,
+                          releaseSec: track.sidechain?.releaseSec ?? 0.25,
+                        }
+                      : undefined,
+                  })
+                }
+              >
+                <option value="">—</option>
+                {allTracks.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+            {track.sidechain && (
+              <>
+                <label title="Глубина приглушения при ударе источника">
+                  сайдчейн, %
+                  <NumField
+                    value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
+                    onChange={(v) =>
+                      change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
+                    }
+                  />
+                </label>
+                <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
+                  восстановление, с
+                  <NumField
+                    value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
+                    onChange={(v) =>
+                      change({ sidechain: { ...track.sidechain!, releaseSec: v } })
+                    }
+                  />
+                </label>
+              </>
+            )}
           </div>
           <div className="group">
             <label title="Эскиз = партия: свои ручки, пока он играет (в этой и других сценах, где он звучит)">

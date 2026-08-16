@@ -78,6 +78,9 @@ interface TrackChain {
   filter: BiquadFilterNode;
   panner: StereoPannerNode;
   gain: GainNode;
+  // Гейт сайдчейна: живёт отдельно от gain, чтобы качаться поверх
+  // эффективной громкости эскиза.
+  duck: GainNode;
   mods: ModNodes[];
   fx: FxNodes[];
   // Сигнатура набора модуляций и эффектов: изменилась — цепочка пересобирается.
@@ -152,6 +155,16 @@ function modScale(target: string, depth: number): number {
     default:
       return depth;
   }
+}
+
+/** Дак сайдчейна: приглушить к удару источника и отпустить обратно. */
+function duckSidechain(
+  duck: GainNode,
+  at: number,
+  sc: { amount: number; releaseSec: number },
+): void {
+  duck.gain.setTargetAtTime(1 - sc.amount, at, 0.006);
+  duck.gain.setTargetAtTime(1, at + 0.05, Math.max(0.02, sc.releaseSec / 3));
 }
 
 /** Ноты, сработавшие в этом проходе (вероятность — у каждой ноты своя). */
@@ -371,8 +384,10 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   panner.pan.value = track.pan * 2 - 1;
   const gain = ctx.createGain();
   gain.gain.value = track.volume;
+  const duck = ctx.createGain(); // сайдчейн-гейт, обычно открыт (1)
   panner.connect(gain);
-  gain.connect(dest);
+  gain.connect(duck);
+  duck.connect(dest);
 
   // Эффекты: фильтры → (dry|wet каждого эффекта) → панорама.
   const fx: FxNodes[] = [];
@@ -449,6 +464,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     filter,
     panner,
     gain,
+    duck,
     mods,
     fx,
     modSig: `${modsSigOf(track.mods)}|${fxSigOf(track.effects ?? [])}`,
@@ -485,6 +501,7 @@ function disposeChain(chain: TrackChain): void {
   chain.filter.disconnect();
   chain.panner.disconnect();
   chain.gain.disconnect();
+  chain.duck.disconnect();
 }
 
 function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
@@ -1241,6 +1258,13 @@ export class AudioEngine {
           if (track.mono) this.duckLastVoice(track.id, at);
           const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at);
           if (track.mono) this.lastVoices.set(track.id, voice);
+          // Сайдчейн: ноты этой дорожки качают приглушаемых.
+          for (const rt of patch.tracks) {
+            const sc = rt.sidechain;
+            if (!sc || sc.sourceId !== track.id) continue;
+            const rc = this.chains.get(rt.id);
+            if (rc) duckSidechain(rc.duck, at, sc);
+          }
         }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
@@ -1264,6 +1288,22 @@ export class AudioEngine {
     const master = connectMaster(ctx, patch.masterVolume);
     const noise = makeNoiseBuffer(ctx);
 
+    // Цепочки создаются заранее (ключ трек:сцена): сайдчейн-дак должен
+    // находить цепочки приёмников независимо от порядка обхода треков.
+    const chainsByKey = new Map<string, TrackChain>();
+    for (const track of patch.tracks) {
+      for (const item of fixedItems) {
+        const scene = patch.scenes.find((sc) => sc.id === item.sceneId);
+        const pattern = patternInScene(track, scene);
+        if (!pattern) continue;
+        const eff = effectiveParams(track, pattern);
+        chainsByKey.set(
+          `${track.id}:${item.sceneId}`,
+          makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master),
+        );
+      }
+    }
+
     for (const track of patch.tracks) {
       let t = 0.05;
       let prevVoice: Voice | null = null;
@@ -1274,10 +1314,8 @@ export class AudioEngine {
         const audible = audibleSet(patch, scene).has(pattern.id);
         // Шаг — свой у каждого эскиза (override или шаг трека).
         const stepDur = stepDuration(track, patch.bpm, pattern);
-        // Цепочка на каждую сцену: эскиз может нести свои ручки и модуляции.
         // Не dispose-им: запланированные ноты привязаны к узлам.
-        const eff = effectiveParams(track, pattern);
-        const chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master);
+        const chain = chainsByKey.get(`${track.id}:${item.sceneId}`)!;
         const itemDur = item.bars * BAR_TICKS * tickDur;
         let idx = startStepIndex(track, pattern);
         const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;
@@ -1288,6 +1326,13 @@ export class AudioEngine {
             if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
             const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt);
             if (track.mono) prevVoice = voice;
+            // Сайдчейн: ноты этой дорожки качают приглушаемых.
+            for (const rt of patch.tracks) {
+              const sc = rt.sidechain;
+              if (!sc || sc.sourceId !== track.id) continue;
+              const rc = chainsByKey.get(`${rt.id}:${item.sceneId}`);
+              if (rc) duckSidechain(rc.duck, tt, sc);
+            }
           }
           idx = (idx + 1) % pattern.length;
         }

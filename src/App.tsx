@@ -205,6 +205,12 @@ export default function App() {
   // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
   // меняет все сцены, где он играет». Стабильная ссылка — треки не
   // перерисовываются лишний раз.
+  // Стабильный список дорожек для сайдчейн-селектов.
+  const trackList = useMemo(
+    () => patch.tracks.map((t) => ({ id: t.id, name: t.name })),
+    [patch.tracks],
+  );
+
   const patternSceneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const sc of patch.scenes) {
@@ -981,6 +987,7 @@ export default function App() {
             soloActive={currentScene?.soloTrackId === t.id}
             onSolo={toggleSceneSolo}
             patternSceneCounts={patternSceneCounts}
+            allTracks={trackList}
             onGenerateSample={generateSample}
             genBusy={!!genBusy[t.id]}
           />

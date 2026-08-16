@@ -197,6 +197,15 @@ export interface Track {
   enabled?: boolean;
   // Вставные эффекты: задержка (эхо) и реверб.
   effects?: Effect[];
+  // Сайдчейн: ноты дорожки-источника приглушают эту дорожку
+  // («бас качается под бочку»).
+  sidechain?: {
+    sourceId: string;
+    // Глубина приглушения 0..1.
+    amount: number;
+    // Время восстановления, с.
+    releaseSec: number;
+  };
   // Эскизы дорожки. Какой играет — решает сцена.
   patterns: Pattern[];
 }
@@ -229,7 +238,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 21;
+export const PATCH_VERSION = 22;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -576,6 +585,15 @@ export function normalizePatch(p: Patch): Patch {
         grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
         mono: !!t.mono,
         enabled: t.enabled === false ? false : undefined,
+        sidechain: (() => {
+          const sc = t.sidechain;
+          if (!sc || typeof sc.sourceId !== 'string') return undefined;
+          return {
+            sourceId: sc.sourceId,
+            amount: clamp(sc.amount ?? 0.5, 0, 1, 0.5),
+            releaseSec: clamp(sc.releaseSec ?? 0.25, 0.05, 2, 0.25),
+          };
+        })(),
         effects: normalizeEffects((t as { effects?: unknown }).effects),
         scaleOctUp: octUp,
         scaleOctDown: octDown,
