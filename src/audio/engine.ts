@@ -370,6 +370,44 @@ function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode 
   return osc;
 }
 
+// Мастер-шумы: длинные лупы, чтобы период не слушался.
+const masterNoiseCache = new Map<string, AudioBuffer>();
+function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink'): AudioBuffer {
+  const key = `${ctx.sampleRate}:${kind}`;
+  let buf = masterNoiseCache.get(key);
+  if (buf) return buf;
+  const len = Math.floor(ctx.sampleRate * 10);
+  buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  if (kind === 'white') {
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  } else {
+    // Розовый: фильтр Пола Келлета — равномерный спад -3 дБ/октаву.
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + w * 0.0555179;
+      b1 = 0.99332 * b1 + w * 0.0750759;
+      b2 = 0.969 * b2 + w * 0.153852;
+      b3 = 0.8665 * b3 + w * 0.3104856;
+      b4 = 0.55 * b4 + w * 0.5329522;
+      b5 = -0.7616 * b5 - w * 0.016898;
+      d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+      b6 = w * 0.115926;
+    }
+  }
+  masterNoiseCache.set(key, buf);
+  return buf;
+}
+
+interface MasterNodes {
+  input: GainNode;
+  comp: DynamicsCompressorNode;
+  makeup: GainNode;
+  setVolume: (v: number, at: number) => void;
+  setComp: (v: number, at: number) => void;
+}
+
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -504,7 +542,10 @@ function disposeChain(chain: TrackChain): void {
   chain.duck.disconnect();
 }
 
-function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
+/** Мастер: громкость → компрессия (плотность 0..1) → мягкий tanh-лимитер.
+ *  Компрессор с нейтральными настройками при 0 — цепь стабильна,
+ *  переключение без щелчков перестройки. */
+function connectMaster(ctx: BaseAudioContext, masterVolume: number, compAmount = 0): MasterNodes {
   const master = ctx.createGain();
   master.gain.value = 0.75 * masterVolume;
   // Мягкий лимитер: до 0.8 сигнал идеально линеен (ноль искажений),
@@ -523,9 +564,46 @@ function connectMaster(ctx: BaseAudioContext, masterVolume: number): GainNode {
     curve[i] = Math.sign(x) * y;
   }
   shaper.curve = curve;
-  master.connect(shaper);
+  const comp = ctx.createDynamicsCompressor();
+  const makeup = ctx.createGain();
+  master.connect(comp);
+  comp.connect(makeup);
+  makeup.connect(shaper);
   shaper.connect(ctx.destination);
-  return master;
+  const nodes: MasterNodes = {
+    input: master,
+    comp,
+    makeup,
+    setVolume: (v, at) => master.gain.setTargetAtTime(0.75 * v, at, 0.05),
+    setComp: (v, at) => {
+      const d = Math.min(1, Math.max(0, v));
+      comp.threshold.setTargetAtTime(d <= 0 ? 0 : -8 - 22 * d, at, 0.05);
+      comp.ratio.setTargetAtTime(d <= 0 ? 1 : 2 + 8 * d, at, 0.05);
+      comp.knee.setValueAtTime(24, at);
+      comp.attack.setValueAtTime(0.006, at);
+      comp.release.setValueAtTime(0.16, at);
+      makeup.gain.setTargetAtTime(1 + 0.9 * d, at, 0.05);
+    },
+  };
+  nodes.setComp(compAmount, 0);
+  return nodes;
+}
+
+/** Слой мастер-шума: после лимитера, чтобы компрессия его не качала. */
+function connectMasterNoise(
+  ctx: BaseAudioContext,
+  kind: 'white' | 'pink',
+  level: number,
+): GainNode {
+  const src = ctx.createBufferSource();
+  src.buffer = masterNoiseBuffer(ctx, kind);
+  src.loop = true;
+  const gain = ctx.createGain();
+  gain.gain.value = Math.max(0, level) * 0.3;
+  src.connect(gain);
+  gain.connect(ctx.destination);
+  src.start(0);
+  return gain;
 }
 
 interface Voice {
@@ -933,7 +1011,10 @@ function validSceneId(patch: Patch | null, want: string): string {
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
+  private master: MasterNodes | null = null;
+  // Слой мастер-шума (после лимитера) и его текущий вид.
+  private noiseGain: GainNode | null = null;
+  private noiseKind = '';
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
   private clocks = new Map<string, TrackClock>();
@@ -981,7 +1062,7 @@ export class AudioEngine {
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
       this.ctx = new AudioContext();
-      this.master = connectMaster(this.ctx, 1);
+      this.master = connectMaster(this.ctx, 1, this.patch?.masterComp ?? 0);
       this.noiseBuffer = makeNoiseBuffer(this.ctx);
     }
     return this.ctx;
@@ -989,7 +1070,35 @@ export class AudioEngine {
 
   private applyMasterVolume(v: number): void {
     if (this.ctx && this.master) {
-      this.master.gain.setTargetAtTime(0.75 * v, this.ctx.currentTime, 0.05);
+      this.master.setVolume(v, this.ctx.currentTime);
+    }
+  }
+
+  /** Слой мастер-шума и компрессия следуют за патчем (без перестроения). */
+  private applyMasterFx(patch: Patch): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    this.master.setComp(patch.masterComp ?? 0, ctx.currentTime);
+    const kind = patch.masterNoise ?? 'off';
+    if (kind === this.noiseKind) {
+      if (this.noiseGain) {
+        this.noiseGain.gain.setTargetAtTime(
+          Math.max(0, patch.masterNoiseLevel ?? 0.03) * 0.3,
+          ctx.currentTime,
+          0.1,
+        );
+      }
+      return;
+    }
+    if (this.noiseGain) {
+      // смена вида: источник держит буфер — пересоздаём слой
+      for (const node of [this.noiseGain]) node.disconnect();
+      this.noiseGain = null;
+    }
+    this.noiseKind = '';
+    if (kind !== 'off') {
+      this.noiseGain = connectMasterNoise(ctx, kind, patch.masterNoiseLevel ?? 0.03);
+      this.noiseKind = kind;
     }
   }
 
@@ -1016,6 +1125,7 @@ export class AudioEngine {
   setPatch(patch: Patch): void {
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
+    this.applyMasterFx(patch);
     if (!this.ctx) return;
     const alive = new Set(patch.tracks.map((t) => t.id));
     for (const [id, chain] of this.chains) {
@@ -1049,7 +1159,7 @@ export class AudioEngine {
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       disposeChain(chain);
-      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master);
+      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
       this.chains.set(trackId, fresh);
       return fresh;
     }
@@ -1243,7 +1353,7 @@ export class AudioEngine {
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
       if (!chain && this.master) {
-        chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master);
+        chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
         this.chains.set(track.id, chain);
       }
       if (!chain) continue;
@@ -1285,7 +1395,10 @@ export class AudioEngine {
     const duration = fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDur, 0) + 1.0;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
-    const master = connectMaster(ctx, patch.masterVolume);
+    const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
+    if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
+      connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03);
+    }
     const noise = makeNoiseBuffer(ctx);
 
     // Цепочки создаются заранее (ключ трек:сцена): сайдчейн-дак должен
@@ -1299,7 +1412,7 @@ export class AudioEngine {
         const eff = effectiveParams(track, pattern);
         chainsByKey.set(
           `${track.id}:${item.sceneId}`,
-          makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master),
+          makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input),
         );
       }
     }

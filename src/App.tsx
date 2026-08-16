@@ -724,6 +724,42 @@ export default function App() {
           />
           {Math.round(patch.masterVolume * 100)}%
         </label>
+        <label
+          title="Фоновый шум мастера: лента и воздух поверх всего. Розовый — мягче (спад -3 дБ/октаву), белый — свежее шипение. Идёт после лимитера — компрессия его не качает"
+        >
+          шум
+          <select
+            value={patch.masterNoise ?? 'off'}
+            onChange={(e) =>
+              setPatch((pp) => ({ ...pp, masterNoise: e.target.value as Patch['masterNoise'] }))
+            }
+          >
+            <option value="off">—</option>
+            <option value="white">белый</option>
+            <option value="pink">розовый</option>
+          </select>
+        </label>
+        {(patch.masterNoise ?? 'off') !== 'off' && (
+          <label title="Уровень шума: 1–3% — лёгкий воздух, 5–10% — винил и плёнка">
+            <NumField
+              value={Math.round((patch.masterNoiseLevel ?? 0.03) * 100)}
+              min={0} max={15} step={1}
+              onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
+            />
+            %
+          </label>
+        )}
+        <label
+          title="Мастер-компрессия «сбито»: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Пikes перестают выпрыгивать, звук собирается в кулак"
+        >
+          сбито
+          <NumField
+            value={Math.round((patch.masterComp ?? 0) * 100)}
+            min={0} max={100} step={5}
+            onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
+          />
+          %
+        </label>
         <span
           className="cycle-info"
           title="Длины циклов дорожек в этой сцене, в шагах. Разные длины = полиритмия: узоры сдвигаются друг относительно друга и не повторяются"

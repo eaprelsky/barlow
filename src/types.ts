@@ -225,12 +225,21 @@ export interface ChainItem {
   bars: number;
 }
 
+export type MasterNoise = 'off' | 'white' | 'pink';
+
 export interface Patch {
   version: number;
   bpm: number;
   // Общая громкость 0..2. Выше 1 — tanh-лимитер мягко пережимает,
   // звук плотнеет (мастер-сатурация) без клиппинга.
   masterVolume: number;
+  // Фоновый шум мастера (после лимитера — не качается компрессией):
+  // естественность ленты/воздуха. Уровень 0..1.
+  masterNoise?: MasterNoise;
+  masterNoiseLevel?: number;
+  // Мастер-компрессия 0..1: 0 — выключена, дальше плотнее и сочнее
+  // (порог ниже,_ratio выше, компенсация громкости больше).
+  masterComp?: number;
   // Играть сцены по цепочке (арранжмент) или держать текущую сцену.
   followChain: boolean;
   scenes: Scene[];
@@ -238,7 +247,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 22;
+export const PATCH_VERSION = 23;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -648,6 +657,13 @@ export function normalizePatch(p: Patch): Patch {
     version: PATCH_VERSION,
     bpm: Math.round(clamp(p.bpm, 30, 300, 120)),
     masterVolume: clamp((p as { masterVolume?: number }).masterVolume ?? 1, 0, 2, 1),
+    masterNoise:
+      (p as { masterNoise?: unknown }).masterNoise === 'white' ||
+      (p as { masterNoise?: unknown }).masterNoise === 'pink'
+        ? ((p as { masterNoise?: MasterNoise }).masterNoise!)
+        : 'off',
+    masterNoiseLevel: clamp((p as { masterNoiseLevel?: number }).masterNoiseLevel ?? 0.03, 0, 0.15, 0.03),
+    masterComp: clamp((p as { masterComp?: number }).masterComp ?? 0, 0, 1, 0),
     followChain: !!p.followChain,
     scenes,
     chain,
