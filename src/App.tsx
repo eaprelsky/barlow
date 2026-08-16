@@ -24,6 +24,7 @@ import { PROVIDERS } from './ai/providers';
 import { putSample } from './audio/library';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
+import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { Library } from './components/Library';
 
 const UI_KEY = 'barlow.ui.v1';
@@ -608,12 +609,7 @@ export default function App() {
   // ---- Файлы ----
 
   const exportPatch = () => {
-    const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'barlow-patch.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    void saveBlob(new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }), 'barlow-patch.json');
   };
 
   // Импорт: zip-проект (сэмплы укладываются в библиотеку, хеши совпадают
@@ -646,11 +642,7 @@ export default function App() {
 
   const exportZip = async () => {
     const blob = await exportProject(patch);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `barlow-${new Date().toISOString().slice(0, 10)}.zip`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    await saveBlob(blob, `barlow-${new Date().toISOString().slice(0, 10)}.zip`);
   };
 
   const resetPatch = () => {
@@ -668,11 +660,7 @@ export default function App() {
     setRendering(true);
     try {
       const blob = await engine.renderToWav(patch, sceneId, WAV_BARS);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'barlow.wav';
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlob(blob, 'barlow.wav');
     } finally {
       setRendering(false);
     }
@@ -759,7 +747,16 @@ export default function App() {
               </button>
               <button onClick={() => { exportPatch(); setFileOpen(false); }} title="Только патч JSON, без сэмплов — лёгкий обмен">экспорт патча (json)</button>
               <button onClick={() => { void exportZip(); setFileOpen(false); }} title="Патч + все сэмплы одним zip — переезд на другую машину или в десктоп">экспорт проекта (zip)</button>
-              <button onClick={() => { fileRef.current?.click(); setFileOpen(false); }} title="Zip-проект или json патча">импорт проекта…</button>
+              <button
+                onClick={() => {
+                  setFileOpen(false);
+                  if (isDesktop) void pickProjectFile().then((f) => { if (f) importFile(f); });
+                  else fileRef.current?.click();
+                }}
+                title="Zip-проект или json патча"
+              >
+                импорт проекта…
+              </button>
               <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс к демо</button>
               <button
                 onClick={() => { clearAll(); setFileOpen(false); }}

@@ -9,6 +9,12 @@
 ## Команды
 - `npm run dev` — dev-сервер (Vite), `npm run build` — прод-сборка + tsc.
 - Линтер — Oxlint (в конфиге Vite-шаблона).
+- Десктоп: `npx tauri build` (exe + msi + nsis в `src-tauri/target/release`),
+  быстрый прогон — `cargo check` в `src-tauri`. Rust-тулчейн ставится rustup;
+  если сеть до static.rust-lang.org рвётся — прокси `HTTPS_PROXY` (локальный).
+- Платформенные ветвления — только в `src/platform.ts` (isDesktop,
+  saveBlob, pickProjectFile → invoke Rust-команд save_project/open_project
+  в `src-tauri/src/lib.rs`, нативные диалоги через tauri-plugin-dialog).
 
 ## Принципы проекта
 1. Патч = сериализуемый JSON (`src/types.ts`). UI, движок, ИИ-агент работают
