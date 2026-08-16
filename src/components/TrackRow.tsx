@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { DragEvent as ReactDragEvent } from 'react';
+import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Effect, Mod, Pattern, Step, Track, Waveform } from '../types';
 import {
   EFFECT_LABELS,
@@ -17,6 +17,7 @@ import { alertDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration } from '../audio/engine';
+import { clip } from '../music/clip';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -330,10 +331,209 @@ export const TrackRow = memo(function TrackRow({
     changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
 
+  // ---- Мультиселект нот: рамка, перенос группы, копипаст, удаление ----
+
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [box, setBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(null);
+  const [ghost, setGhost] = useState<{ dc: number; dr: number } | null>(null);
+  const dragRef = useRef<null | {
+    mode: 'pending' | 'box' | 'move';
+    col: number;
+    row: number;
+    pointerId: number;
+  }>(null);
+
+  // Смена эскиза — прежнее выделение не про эти ноты.
+  useEffect(() => {
+    setSel(new Set());
+  }, [pattern.id]);
+
+  const cellFromPoint = (x: number, y: number): { col: number; row: number } | null => {
+    const el = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest?.('.cell') as HTMLElement | null;
+    if (!el || !rollRef.current?.contains(el)) return null;
+    const col = Number(el.dataset.col);
+    const row = Number(el.dataset.row);
+    return Number.isFinite(col) && Number.isFinite(row) ? { col, row } : null;
+  };
+
+  const cellDown = (e: ReactPointerEvent<HTMLButtonElement>, col: number, row: number, onNote: boolean) => {
+    if (e.button !== 0) return;
+    clip.activeTrackId = track.id;
+    if (e.shiftKey) {
+      // Shift-клик: по ноте — toggle её, по пустой клетке — toggle колонки.
+      const key = `${col}:${row}`;
+      setSel((prev) => {
+        const next = new Set(prev);
+        if (onNote) {
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+        } else {
+          const notes = pattern.steps[col]?.notes ?? [];
+          const allSel = notes.length > 0 && notes.every((nt) => next.has(`${col}:${nt.n}`));
+          for (const nt of notes) {
+            const k = `${col}:${nt.n}`;
+            if (allSel) next.delete(k);
+            else next.add(k);
+          }
+        }
+        return next;
+      });
+      return;
+    }
+    dragRef.current = { mode: 'pending', col, row, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const cellMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const cell = cellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+    if (d.mode === 'pending') {
+      if (cell.col === d.col && cell.row === d.row) return;
+      const onNote = pattern.steps[d.col]?.notes.some((x) => x.n === d.row) ?? false;
+      if (sel.has(`${d.col}:${d.row}`)) d.mode = 'move';
+      else if (!onNote) d.mode = 'box';
+      else return; // нота вне выделения — обычный клик
+    }
+    if (d.mode === 'box') setBox({ c0: d.col, r0: d.row, c1: cell.col, r1: cell.row });
+    else setGhost({ dc: cell.col - d.col, dr: cell.row - d.row });
+  };
+
+  const cellUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (d.mode === 'pending') {
+      // Клик без движения: по выделенной ноте (или в пустоту при активном
+      // выделении) — снять выделение; иначе — нота туда/обратно, как всегда.
+      const onNote = pattern.steps[d.col]?.notes.some((x) => x.n === d.row) ?? false;
+      if ((onNote && sel.has(`${d.col}:${d.row}`)) || (!onNote && sel.size > 0)) {
+        setSel(new Set());
+        return;
+      }
+      if (onNote) removeNoteAt(d.col, d.row);
+      else clickCell(d.col, d.row);
+      return;
+    }
+    if (d.mode === 'box') {
+      const b = box;
+      setBox(null);
+      if (!b) return;
+      const [c0, c1] = b.c0 <= b.c1 ? [b.c0, b.c1] : [b.c1, b.c0];
+      const [r0, r1] = b.r0 <= b.r1 ? [b.r0, b.r1] : [b.r1, b.r0];
+      const next = new Set<string>();
+      for (let c = c0; c <= c1; c++) {
+        for (const nt of pattern.steps[c]?.notes ?? []) {
+          if (nt.n >= r0 && nt.n <= r1) next.add(`${c}:${nt.n}`);
+        }
+      }
+      setSel(next);
+      return;
+    }
+    const g = ghost;
+    setGhost(null);
+    if (g) applyMove(g.dc, g.dr);
+  };
+
+  /** Перенос выделенной группы: общий сдвиг клампится краями стана и цикла. */
+  const applyMove = (dc: number, dr: number) => {
+    const entries = [...sel].map((k) => {
+      const [c, n] = k.split(':').map(Number);
+      return { c, n };
+    });
+    if (entries.length === 0 || (!dc && !dr)) return;
+    const rowsN = scaleOf(track).length;
+    const minC = Math.min(...entries.map((en) => en.c));
+    const maxC = Math.max(...entries.map((en) => en.c));
+    const minN = Math.min(...entries.map((en) => en.n));
+    const maxN = Math.max(...entries.map((en) => en.n));
+    const steps = pattern.steps;
+    const ddc = Math.max(-minC, Math.min(steps.length - 1 - maxC, dc));
+    const ddr = Math.max(-minN, Math.min(rowsN - 1 - maxN, dr));
+    if (!ddc && !ddr) return;
+    const taken: { c: number; n: number; vel: number; prob: number }[] = [];
+    const out = steps.map((st, c) => ({
+      ...st,
+      notes: st.notes.filter((nt) => {
+        if (sel.has(`${c}:${nt.n}`)) {
+          taken.push({ c, n: nt.n, vel: nt.vel, prob: nt.prob });
+          return false;
+        }
+        return true;
+      }),
+    }));
+    const moved = new Set<string>();
+    for (const t of taken) {
+      const nc = t.c + ddc;
+      const nn = t.n + ddr;
+      if (out[nc].notes.some((x) => x.n === nn)) continue;
+      out[nc].notes = [...out[nc].notes, { n: nn, vel: t.vel, prob: t.prob }];
+      moved.add(`${nc}:${nn}`);
+    }
+    changeSteps(out);
+    setSel(moved);
+  };
+
+  /** Вставка буфера в выделенную колонку (или в первый шаг); высоты
+   *  клампятся под стан получателя — копипаст работает и между треками. */
+  const pasteClip = () => {
+    if (clip.notes.length === 0) return;
+    const minCol = Math.min(...clip.notes.map((cn) => cn.col));
+    const target = selectedCol ?? 0;
+    const maxN = scaleOf(track).length - 1;
+    const steps = pattern.steps.map((st) => ({ ...st, notes: st.notes.map((nt) => ({ ...nt })) }));
+    const added = new Set<string>();
+    for (const cn of clip.notes) {
+      const c = cn.col - minCol + target;
+      if (c < 0 || c >= steps.length) continue;
+      const n = Math.min(Math.max(cn.n, 0), maxN);
+      if (steps[c].notes.some((x) => x.n === n)) continue;
+      steps[c].notes = [...steps[c].notes, { n, vel: cn.vel, prob: cn.prob }];
+      added.add(`${c}:${n}`);
+    }
+    changeSteps(steps);
+    setSel(added);
+  };
+
+  // Клавиатура — только у стана, работавшего последним.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (clip.activeTrackId !== track.id) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (meta && e.key.toLowerCase() === 'c' && sel.size > 0) {
+        e.preventDefault();
+        clip.notes = [...sel].map((k) => {
+          const [c, n] = k.split(':').map(Number);
+          const nt = pattern.steps[c]?.notes.find((x) => x.n === n);
+          return { col: c, n, vel: nt?.vel ?? 0.8, prob: nt?.prob ?? 1 };
+        });
+      } else if (meta && e.key.toLowerCase() === 'v' && clip.notes.length > 0) {
+        e.preventDefault();
+        pasteClip();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size > 0) {
+        e.preventDefault();
+        changeSteps(
+          pattern.steps.map((st, c) => ({
+            ...st,
+            notes: st.notes.filter((nt) => !sel.has(`${c}:${nt.n}`)),
+          })),
+        );
+        setSel(new Set());
+      } else if (e.key === 'Escape' && sel.size > 0) {
+        setSel(new Set());
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // Колесо над нотой — шорткат громкости/вероятности (как в панели шага).
   // Нативный слушатель с passive:false — React-овый onWheel пассивный.
-  const stateRef = useRef({ track, pattern, onPatternChange });
-  stateRef.current = { track, pattern, onPatternChange };
+  const stateRef = useRef({ track, pattern, onPatternChange, sel });
+  stateRef.current = { track, pattern, onPatternChange, sel };
   useEffect(() => {
     const el = rollRef.current;
     if (!el) return;
@@ -342,12 +542,27 @@ export const TrackRow = memo(function TrackRow({
       if (!cell) return;
       const col = Number(cell.dataset.col);
       const row = Number(cell.dataset.row);
-      const { pattern: pt, onPatternChange: changeOne } = stateRef.current;
+      const { pattern: pt, onPatternChange: changeOne, sel: selSet } = stateRef.current;
       const s = pt.steps[col];
       const nt = s?.notes.find((x) => x.n === row);
       if (!nt) return;
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.05 : -0.05;
+      // Колесо над выделенной нотой крутит поле сразу у всей группы.
+      if (selSet.has(`${col}:${row}`)) {
+        changeOne(stateRef.current.track.id, pt.id, {
+          steps: pt.steps.map((st, j) => ({
+            ...st,
+            notes: st.notes.map((x) => {
+              if (!selSet.has(`${j}:${x.n}`)) return x;
+              return e.shiftKey
+                ? { ...x, prob: Math.min(1, Math.max(0, x.prob + delta)) }
+                : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + delta)) };
+            }),
+          })),
+        });
+        return;
+      }
       changeOne(stateRef.current.track.id, pt.id, {
         steps: pt.steps.map((st, j) =>
           j !== col
@@ -1091,6 +1306,13 @@ export const TrackRow = memo(function TrackRow({
                         on ? 'on' : '',
                         ratio === 1 ? 'tonic-row' : '',
                         col === activeStep ? 'ph' : '',
+                        sel.has(`${col}:${i}`) ? 'sel' : '',
+                        box &&
+                        col >= Math.min(box.c0, box.c1) && col <= Math.max(box.c0, box.c1) &&
+                        i >= Math.min(box.r0, box.r1) && i <= Math.max(box.r0, box.r1)
+                          ? 'boxsel'
+                          : '',
+                        ghost && sel.has(`${col - ghost.dc}:${i - ghost.dr}`) ? 'ghost' : '',
                       ].join(' ')}
                       style={on ? { opacity: String(0.55 + 0.45 * nt!.vel) } : undefined}
                       title={
@@ -1098,7 +1320,14 @@ export const TrackRow = memo(function TrackRow({
                           ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
                           : `${(track.freq * ratio).toFixed(1)} Гц — поставить ноту`
                       }
-                      onClick={() => clickCell(col, i)}
+                      onPointerDown={(e) => cellDown(e, col, i, on)}
+                      onPointerMove={cellMove}
+                      onPointerUp={cellUp}
+                      onPointerCancel={() => {
+                        dragRef.current = null;
+                        setBox(null);
+                        setGhost(null);
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         if (on) removeNoteAt(col, i);

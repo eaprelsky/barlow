@@ -1237,3 +1237,20 @@ button.danger:hover {
 .chip.on .scene-cnt {
   color: var(--accent-2);
 }
+
+/* Мультиселект нот */
+.cell {
+  touch-action: none;
+}
+
+.cell.sel {
+  box-shadow: inset 0 0 0 2px var(--accent-2);
+}
+
+.cell.boxsel {
+  background: rgba(126, 200, 255, 0.12);
+}
+
+.cell.ghost {
+  box-shadow: inset 0 0 0 2px rgba(255, 180, 84, 0.85);
+}
