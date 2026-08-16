@@ -22,9 +22,10 @@ import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
 import { PROVIDERS } from './ai/providers';
 import { putSample } from './audio/library';
+import { exportProject, importProject, looksLikeZip } from './audio/project';
+import { loadAutosave, saveAutosave } from './storage';
 import { Library } from './components/Library';
 
-const STORAGE_KEY = 'barlow.patch.v12';
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
 const WAV_BARS = 8;
@@ -63,16 +64,8 @@ function loadUiState(): { collapsed: Record<string, boolean> } {
 }
 
 function loadPatch(): Patch {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (isPatch(parsed)) return normalizePatch(parsed);
-    }
-  } catch {
-    /* повреждённый автосейв — начинаем с дефолта */
-  }
-  return defaultPatch();
+  const saved = loadAutosave();
+  return saved ? normalizePatch(saved) : defaultPatch();
 }
 
 function uniqueName(base: string, used: string[]): string {
@@ -182,7 +175,7 @@ export default function App() {
   // Движок всегда видит актуальный патч — редактирование без остановки.
   useEffect(() => {
     engine.setPatch(patch);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(patch));
+    saveAutosave(patch);
   }, [patch, engine]);
 
   useEffect(() => {
@@ -623,19 +616,41 @@ export default function App() {
     URL.revokeObjectURL(a.href);
   };
 
-  const importPatch = (file: File) => {
-    void file.text().then((text) => {
+  // Импорт: zip-проект (сэмплы укладываются в библиотеку, хеши совпадают
+  // со ссылками патча) или голый json патча.
+  const importFile = (file: File) => {
+    void (async () => {
       try {
-        const parsed: unknown = JSON.parse(text);
+        if (await looksLikeZip(file)) {
+          const imported = await importProject(file);
+          if (!imported) {
+            void alertDialog('В архиве нет патча barlow', 'импорт проекта');
+            return;
+          }
+          const norm = normalizePatch(imported);
+          setPatchStep(norm);
+          setSceneId(norm.scenes[0].id);
+          return;
+        }
+        const parsed: unknown = JSON.parse(await file.text());
         if (isPatch(parsed)) {
           const norm = normalizePatch(parsed);
-          setPatch(norm);
+          setPatchStep(norm);
           setSceneId(norm.scenes[0].id);
         } else void alertDialog('Файл не похож на патч barlow', 'импорт');
       } catch {
-        void alertDialog('Не удалось прочитать JSON', 'импорт');
+        void alertDialog('Не удалось прочитать файл', 'импорт');
       }
-    });
+    })();
+  };
+
+  const exportZip = async () => {
+    const blob = await exportProject(patch);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `barlow-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const resetPatch = () => {
@@ -742,8 +757,9 @@ export default function App() {
               <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering}>
                 {rendering ? 'рендер…' : 'записать wav'}
               </button>
-              <button onClick={() => { exportPatch(); setFileOpen(false); }}>экспорт патча</button>
-              <button onClick={() => { fileRef.current?.click(); setFileOpen(false); }}>импорт патча</button>
+              <button onClick={() => { exportPatch(); setFileOpen(false); }} title="Только патч JSON, без сэмплов — лёгкий обмен">экспорт патча (json)</button>
+              <button onClick={() => { void exportZip(); setFileOpen(false); }} title="Патч + все сэмплы одним zip — переезд на другую машину или в десктоп">экспорт проекта (zip)</button>
+              <button onClick={() => { fileRef.current?.click(); setFileOpen(false); }} title="Zip-проект или json патча">импорт проекта…</button>
               <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс к демо</button>
               <button
                 onClick={() => { clearAll(); setFileOpen(false); }}
@@ -776,10 +792,10 @@ export default function App() {
           настройки
         </button>
         <input
-          ref={fileRef} type="file" accept=".json,application/json" hidden
+          ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) importPatch(f);
+            if (f) importFile(f);
             e.target.value = '';
           }}
         />
