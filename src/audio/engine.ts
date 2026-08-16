@@ -1424,7 +1424,8 @@ export class AudioEngine {
     if (!ctx || !this.scratchNode) return;
     this.scratchNode.parameters
       .get('position')!
-      .setTargetAtTime(Math.min(1, Math.max(0, pos)), ctx.currentTime, 0.008);
+      // tau побольше: мышиные события ~8 мс, резкие цели дают дробность
+      .setTargetAtTime(Math.min(1, Math.max(0, pos)), ctx.currentTime, 0.02);
   }
 
   /** Отпустили: узел завершает себя по расписанию off. */

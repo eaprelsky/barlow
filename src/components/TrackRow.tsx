@@ -1502,12 +1502,32 @@ export const TrackRow = memo(function TrackRow({
               onScratchEnd();
               if (!rec || rec.pts.length < 2) return;
               const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
-              // прореживаем до ~64 точек, нормализуем время к 0..1
-              const stride = Math.max(1, Math.floor(rec.pts.length / 64));
-              const pts = rec.pts
-                .filter((_, i) => i % stride === 0 || i === rec.pts.length - 1)
-                .map((x) => ({ t: Math.min(1, x.dt / dur), pos: x.pos }));
-              change({ scratchPoints: pts });
+              // Ресемплинг жеста в 48 равномерных по времени точек с
+              // линейной интерполяцией + скользящее среднее: сырые события
+              // мыши несут джиттер, который звучит дробной бузой.
+              const N = 48;
+              const raw = rec.pts;
+              const res: { t: number; pos: number }[] = [];
+              let j = 0;
+              for (let i = 0; i <= N; i++) {
+                const tt = (i / N) * dur;
+                while (j < raw.length - 2 && raw[j + 1].dt < tt) j++;
+                const a1 = raw[j];
+                const a2 = raw[j + 1] ?? a1;
+                const f = a2.dt > a1.dt ? (tt - a1.dt) / (a2.dt - a1.dt) : 0;
+                res.push({ t: i / N, pos: a1.pos + (a2.pos - a1.pos) * Math.max(0, Math.min(1, f)) });
+              }
+              const smooth = res.map((x, i) => {
+                let sum = 0;
+                let c = 0;
+                for (let k = i - 2; k <= i + 2; k++) {
+                  const y = res[Math.min(res.length - 1, Math.max(0, k))];
+                  sum += y.pos;
+                  c++;
+                }
+                return { t: x.t, pos: sum / c };
+              });
+              change({ scratchPoints: smooth });
             }}
           >
             {(track.scratchPoints ?? []).map((pt, i) => (
