@@ -69,6 +69,10 @@ function loadPatch(): Patch {
   return saved ? normalizePatch(saved) : defaultPatch();
 }
 
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function uniqueName(base: string, used: string[]): string {
   if (!used.includes(base)) return base;
   for (let i = 2; ; i++) {
@@ -610,7 +614,8 @@ export default function App() {
   // ---- Файлы ----
 
   const exportPatch = () => {
-    void saveBlob(new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }), 'barlow-patch.json');
+    void saveBlob(new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }), 'barlow-patch.json')
+      .catch((e) => void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт'));
   };
 
   // Импорт: zip-проект (сэмплы укладываются в библиотеку, хеши совпадают
@@ -642,8 +647,12 @@ export default function App() {
   };
 
   const exportZip = async () => {
-    const blob = await exportProject(patch);
-    await saveBlob(blob, `barlow-${new Date().toISOString().slice(0, 10)}.zip`);
+    try {
+      const blob = await exportProject(patch);
+      await saveBlob(blob, `barlow-${new Date().toISOString().slice(0, 10)}.zip`);
+    } catch (e) {
+      void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт');
+    }
   };
 
   const resetPatch = () => {
@@ -662,6 +671,8 @@ export default function App() {
     try {
       const blob = await engine.renderToWav(patch, sceneId, WAV_BARS);
       await saveBlob(blob, 'barlow.wav');
+    } catch (e) {
+      void alertDialog(`Рендер не удался: ${errText(e)}`, 'запись wav');
     } finally {
       setRendering(false);
     }
@@ -751,7 +762,10 @@ export default function App() {
               <button
                 onClick={() => {
                   setFileOpen(false);
-                  if (isDesktop) void pickProjectFile().then((f) => { if (f) importFile(f); });
+                  if (isDesktop)
+                    void pickProjectFile()
+                      .then((f) => { if (f) importFile(f); })
+                      .catch((e) => void alertDialog(`Открытие не удалось: ${errText(e)}`, 'импорт'));
                   else fileRef.current?.click();
                 }}
                 title="Zip-проект или json патча"

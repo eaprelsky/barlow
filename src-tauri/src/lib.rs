@@ -150,9 +150,17 @@ fn save_project(app: AppHandle, name: String, data: Vec<u8>) -> Result<Option<St
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Открытый файл: структура (кортеж сериализовался бы в JSON-массив,
+/// а фронт ждёт объект с полями).
+#[derive(serde::Serialize)]
+struct OpenedFile {
+    name: String,
+    data: Vec<u8>,
+}
+
 /// Нативный «открыть проект»: диалог + чтение. None — отмена.
 #[tauri::command]
-fn open_project(app: AppHandle) -> Result<Option<(String, Vec<u8>)>, String> {
+fn open_project(app: AppHandle) -> Result<Option<OpenedFile>, String> {
     let Some(file) = app
         .dialog()
         .file()
@@ -167,7 +175,7 @@ fn open_project(app: AppHandle) -> Result<Option<(String, Vec<u8>)>, String> {
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "project".into());
-    Ok(Some((name, data)))
+    Ok(Some(OpenedFile { name, data }))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
