@@ -1455,8 +1455,8 @@ export const TrackRow = memo(function TrackRow({
               onClick={() => removeOctave('up')}
             >−</button>
           </div>
-          {rows.map(({ ratio }) => (
-            <div key={ratio} className="scale-cell" title={`отношение ${fmtRatio(ratio)} к тонике`}>
+          {rows.map(({ ratio, i }) => (
+            <div key={i} className="scale-cell" title={`отношение ${fmtRatio(ratio)} к тонике`}>
               ×{fmtRatio(ratio)}
             </div>
           ))}

@@ -316,16 +316,25 @@ export function patternInScene(track: Track, scene: Scene | undefined): Pattern 
   return track.patterns.find((p) => p.id === wanted) ?? track.patterns[0];
 }
 
-/** Строки нотного стана: базовая шкала + добавленные октавы. */
+/** Строки нотного стана: базовая шкала + добавленные октавы. Шкала
+ *  может уже содержать свою октаву (пентатоника с 2) — пересечения с
+ *  добавленными октавами схлопываются в одну строку, итог сортирован. */
 export function scaleOf(track: Track): number[] {
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
+  const seen = new Set<number>();
   const rows: number[] = [];
   for (let o = -down; o <= up; o++) {
     const k = 2 ** o;
-    for (const r of track.scale) rows.push(r * k);
+    for (const r of track.scale) {
+      const v = +(r * k).toFixed(9);
+      if (!seen.has(v)) {
+        seen.add(v);
+        rows.push(v);
+      }
+    }
   }
-  return rows;
+  return rows.sort((a, b) => a - b);
 }
 
 /** Частоты всех нот шага (аккорда), Гц. Пусто — пауза. */
