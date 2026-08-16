@@ -293,6 +293,19 @@ export default function App() {
     setSceneId(scene.id);
   }, [engine]);
 
+  /** Переставить трек: порядок карточек = порядок массива tracks. */
+  const reorderTrack = useCallback((fromId: string, toId: string, place: 'before' | 'after') => {
+    setPatch((p) => {
+      const moved = p.tracks.find((t) => t.id === fromId);
+      if (!moved || fromId === toId) return p;
+      const rest = p.tracks.filter((t) => t.id !== fromId);
+      let to = rest.findIndex((t) => t.id === toId);
+      if (to < 0) return p;
+      if (place === 'after') to++;
+      return { ...p, tracks: [...rest.slice(0, to), moved, ...rest.slice(to)] };
+    });
+  }, [setPatch]);
+
   /** Дубль трека: тот же звук, эскизы и рисунок — база для подложек и вариаций. */
   const duplicateTrack = useCallback((id: string) => {
     setPatch((p) => {
@@ -835,6 +848,7 @@ export default function App() {
             onMutate={mutate}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
+            onReorder={reorderTrack}
             onGenerateSample={generateSample}
             genBusy={!!genBusy[t.id]}
           />

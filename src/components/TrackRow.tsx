@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import type { DragEvent as ReactDragEvent } from 'react';
 import type { Effect, Mod, Pattern, Step, Track, Waveform } from '../types';
 import {
   EFFECT_LABELS,
@@ -71,6 +72,7 @@ interface Props {
   onMutate: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   genBusy: boolean;
 }
@@ -92,6 +94,7 @@ export const TrackRow = memo(function TrackRow({
   onMutate,
   onRemove,
   onDuplicate,
+  onReorder,
   onGenerateSample,
   genBusy,
 }: Props) {
@@ -179,6 +182,41 @@ export const TrackRow = memo(function TrackRow({
   const [more, setMore] = useState(false);
   const [showRoll, setShowRoll] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
+  // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
+  const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
+  const dragProps = {
+    onDragOver: (e: ReactDragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes('text/plain')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = e.currentTarget.getBoundingClientRect();
+      setDropSide(e.clientY - r.top < r.height / 2 ? 'above' : 'below');
+    },
+    onDragLeave: (e: ReactDragEvent<HTMLDivElement>) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDropSide(null);
+    },
+    onDrop: (e: ReactDragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDropSide(null);
+      const fromId = e.dataTransfer.getData('text/plain');
+      if (!fromId || fromId === track.id) return;
+      onReorder(fromId, track.id, dropSide === 'below' ? 'after' : 'before');
+    },
+  };
+  const grip = (
+    <span
+      className="track-grip"
+      title="Перетащи вверх или вниз — треки поменяются местами"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', track.id);
+      }}
+    >
+      ⠿
+    </span>
+  );
   const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx' | 'mods'>('snd');
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
@@ -403,7 +441,8 @@ export const TrackRow = memo(function TrackRow({
 
   if (collapsed) {
     return (
-      <div className="track collapsed">
+      <div className={'track collapsed' + (dropSide ? ` drop-${dropSide}` : '')} {...dragProps}>
+      {grip}
         <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
             <rect x="4.2" y="0.8" width="7" height="9.2" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
@@ -451,7 +490,8 @@ export const TrackRow = memo(function TrackRow({
   const scaleRows = scaleOf(track);
 
   return (
-    <div className="track">
+    <div className={'track' + (dropSide ? ` drop-${dropSide}` : '')} {...dragProps}>
+      {grip}
       <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
             <rect x="4.2" y="0.8" width="7" height="9.2" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />

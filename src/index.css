@@ -1134,3 +1134,39 @@ button.danger:hover {
 .track-head .ms-btns {
   align-self: center;
 }
+
+/* Ручка перетаскивания трека (слева на карточке) */
+
+.track-grip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+  opacity: 0.45;
+  z-index: 6;
+}
+
+.track-grip:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.track-grip:active {
+  cursor: grabbing;
+}
+
+.track.drop-above {
+  box-shadow: 0 -2px 0 0 var(--accent-2);
+}
+
+.track.drop-below {
+  box-shadow: 0 2px 0 0 var(--accent-2);
+}
