@@ -6,6 +6,13 @@
 ## Общение
 - На «ты».
 
+## Публикация
+- Веб: `npm run deploy-web` — сборка + заливка на barlow.eaprelsky.ru
+  (nocturna, nginx статика /var/www/barlow; серт Let's Encrypt, renew
+  как у соседей). rsync на винтовой машине нет — tar-пайпом по ssh.
+- Десктоп: `npm run desktop` — автозакрытие окна, tauri build, обновление
+  установленной копии в %LOCALAPPDATA%/barlow и запуск.
+
 ## Команды
 - `npm run dev` — dev-сервер (Vite), `npm run build` — прод-сборка + tsc.
 - Линтер — Oxlint (в конфиге Vite-шаблона).

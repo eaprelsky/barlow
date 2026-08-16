@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "tauri": "tauri",
-    "desktop": "bash scripts/desktop.sh"
+    "desktop": "bash scripts/desktop.sh",
+    "deploy-web": "bash scripts/deploy-web.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
