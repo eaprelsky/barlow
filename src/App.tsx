@@ -677,6 +677,12 @@ export default function App() {
           />
           {Math.round(patch.masterVolume * 100)}%
         </label>
+        <span
+          className="cycle-info"
+          title="Длины циклов дорожек в этой сцене, в шагах. Разные длины = полиритмия: узоры сдвигаются друг относительно друга и не повторяются"
+        >
+          циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}
+        </span>
         <span className="spacer" />
         <label title={INSTRUMENT_PRESETS[presetIdx]?.hint}>
           инструмент
@@ -942,7 +948,6 @@ export default function App() {
           выделенную — перенос · Ctrl+C/V — копипаст (и между треками) ·
           Delete — стереть · правый клик по эскизу — форк
         </span>
-        <span>независимые циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ')}</span>
       </footer>
 
       <DialogHost />

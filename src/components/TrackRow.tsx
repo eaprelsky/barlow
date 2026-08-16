@@ -109,6 +109,7 @@ export const TrackRow = memo(function TrackRow({
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
   const [customScale, setCustomScale] = useState('');
+  const [etSteps, setEtSteps] = useState(12);
   const [presetIdx, setPresetIdx] = useState(0);
 
   /** Сменить инструмент трека: тембр/огибающая/фильтры/эффекты — из пресета,
@@ -178,6 +179,20 @@ export const TrackRow = memo(function TrackRow({
       );
       return;
     }
+    change({
+      scale: ratios,
+      scaleOctUp: 0,
+      scaleOctDown: 0,
+      patterns: clampAllNotes(ratios.length - 1),
+    });
+  };
+
+  /** Равномерная темперация: N равных ступеней в октаве. 12 — полутоны,
+   *  24 — четвертитоны, 5 — слендро-подобная, 17/19/22/31 — микрохроматика. */
+  const applyEqualTemperament = () => {
+    const n = Math.round(etSteps);
+    if (n < 2 || n > 48) return;
+    const ratios = Array.from({ length: n + 1 }, (_, k) => +(2 ** (k / n)).toFixed(6));
     change({
       scale: ratios,
       scaleOctUp: 0,
@@ -789,7 +804,7 @@ export const TrackRow = memo(function TrackRow({
             title={
               track.waveform === 'sample'
                 ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-                : 'Набор высот нотного стана: пентатоники, чистые интервалы, четвертитоны. Октавы — кнопками у стана'
+                : 'Набор высот нотного стана: пентатоники, семь ладов, чистые интервалы, слендро и пелог, равные ступени. Октавы — кнопками у стана'
             }
           >
             шкала
@@ -973,6 +988,16 @@ export const TrackRow = memo(function TrackRow({
                       }}
                     />
                     <button onClick={applyCustomScale} title="Применить (Enter тоже)">применить</button>
+                  </span>
+                </label>
+                <label
+                  className="custom-scale-label"
+                  title="Равномерно темперированная шкала: N равных ступеней в октаве. 12 — обычные полутоны, 24 — четвертитоны, 5 — как слендро, 17/19/22/31 — микрохроматика"
+                >
+                  равных ступеней
+                  <span className="inline">
+                    <NumField value={etSteps} min={2} max={48} onChange={(v) => setEtSteps(Math.round(v))} />
+                    <button onClick={applyEqualTemperament} title="Построить шкалу из N равных ступеней">построить</button>
                   </span>
                 </label>
                 
@@ -1314,7 +1339,11 @@ export const TrackRow = memo(function TrackRow({
                           : '',
                         ghost && sel.has(`${col - ghost.dc}:${i - ghost.dr}`) ? 'ghost' : '',
                       ].join(' ')}
-                      style={on ? { opacity: String(0.55 + 0.45 * nt!.vel) } : undefined}
+                      style={
+                        on
+                          ? { opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel) }
+                          : undefined
+                      }
                       title={
                         on
                           ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
