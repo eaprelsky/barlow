@@ -668,14 +668,20 @@ export const TrackRow = memo(function TrackRow({
     change({ effects: effects.map((e, j) => (j === i && e.type === 'delay' ? { ...e, ...upd } : e)) });
   const updateReverb = (i: number, upd: Partial<Extract<Effect, { type: 'reverb' }>>) =>
     change({ effects: effects.map((e, j) => (j === i && e.type === 'reverb' ? { ...e, ...upd } : e)) });
+  const updateEffect = <T extends Effect['type']>(i: number, type: T, upd: Partial<Extract<Effect, { type: T }>>) =>
+    change({
+      effects: effects.map((e, j) => (j === i && e.type === type ? ({ ...e, ...upd } as Effect) : e)),
+    });
   const setEffectType = (i: number, type: Effect['type']) =>
     change({
       effects: effects.map((e, j) => {
         if (j !== i) return e;
         const mix = e.mix;
-        return type === 'delay'
-          ? { type: 'delay', timeSec: 0.28, feedback: 0.35, mix }
-          : { type: 'reverb', sizeSec: 1.8, mix };
+        if (type === 'delay') return { type: 'delay', timeSec: 0.28, feedback: 0.35, mix };
+        if (type === 'reverb') return { type: 'reverb', sizeSec: 1.8, mix };
+        if (type === 'dist') return { type: 'dist', drive: 6, mix };
+        if (type === 'chorus') return { type: 'chorus', rate: 0.6, mix };
+        return { type: 'lofi', bits: 6, mix };
       }),
     });
   const removeEffect = (i: number) => change({ effects: effects.filter((_, j) => j !== i) });
@@ -1237,13 +1243,36 @@ export const TrackRow = memo(function TrackRow({
                       <i>{Math.round(fx.feedback * 100)}%</i>
                     </span>
                   </>
-                ) : (
+                ) : fx.type === 'reverb' ? (
                   <span className="mr" title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
                     <NumField
                       value={fx.sizeSec} min={0.2} max={8} step={0.1}
                       onChange={(sizeSec) => updateReverb(i, { sizeSec })}
                     />
                     <i>с</i>
+                  </span>
+                ) : fx.type === 'dist' ? (
+                  <span className="mr" title="Сила перегруза: 2 — тёплое насыщение, 10 — рваная шерсть, 30 — стена">
+                    <NumField
+                      value={fx.drive} min={1} max={40} step={0.5}
+                      onChange={(drive) => updateEffect(i, 'dist', { drive })}
+                    />
+                  </span>
+                ) : fx.type === 'chorus' ? (
+                  <span className="mr" title="Скорость разжижения: 0.2–0.8 Гц — мягкое течение, выше 3 — рыскающий">
+                    <NumField
+                      value={fx.rate} min={0.05} max={8} step={0.05}
+                      onChange={(rate) => updateEffect(i, 'chorus', { rate })}
+                    />
+                    <i>Гц</i>
+                  </span>
+                ) : (
+                  <span className="mr" title="Битовая глубина: 2–4 — развалившийся цифровой хлам, 6–8 — ретро-семплер, 12 — едва заметно">
+                    <NumField
+                      value={fx.bits} min={2} max={12} step={1}
+                      onChange={(bits) => updateEffect(i, 'lofi', { bits: Math.round(bits) })}
+                    />
+                    <i>бит</i>
                   </span>
                 )}
                 <span className="mr" title="Сколько эффекта подмешать к чистому звуку">
@@ -1252,7 +1281,10 @@ export const TrackRow = memo(function TrackRow({
                     onChange={(e) => {
                       const mix = Number(e.target.value);
                       if (fx.type === 'delay') updateDelay(i, { mix });
-                      else updateReverb(i, { mix });
+                      else if (fx.type === 'reverb') updateReverb(i, { mix });
+                      else if (fx.type === 'dist') updateEffect(i, 'dist', { mix });
+                      else if (fx.type === 'chorus') updateEffect(i, 'chorus', { mix });
+                      else updateEffect(i, 'lofi', { mix });
                     }}
                   />
                   <i>{Math.round(fx.mix * 100)}%</i>

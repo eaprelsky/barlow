@@ -69,6 +69,8 @@ interface FxNodes {
   delay?: DelayNode;
   feedback?: GainNode;
   convolver?: ConvolverNode;
+  shaper?: WaveShaperNode;
+  lfo?: OscillatorNode;
 }
 
 interface TrackChain {
@@ -315,6 +317,30 @@ function makePerlinBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
   return buf;
 }
 
+/** Кривая перегруза: tanh(drive·x)/tanh(drive) — мягкое насыщение. */
+function distCurve(drive: number): Float32Array<ArrayBuffer> {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  const norm = Math.tanh(drive);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(drive * x) / norm;
+  }
+  return curve;
+}
+
+/** Кривая ло-фая: квантование на 2^bits уровней — ступеньки и хруст. */
+function lofiCurve(bits: number): Float32Array<ArrayBuffer> {
+  const n = 4096;
+  const curve = new Float32Array(n);
+  const levels = Math.pow(2, bits) - 1;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.round(((x + 1) / 2) * levels) / levels * 2 - 1;
+  }
+  return curve;
+}
+
 /** Узел источника модуляции по её виду. */
 function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode {
   const source = m.source ?? 'lfo';
@@ -371,6 +397,27 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
       delay.connect(feedback);
       feedback.connect(delay);
       fx.push({ dry, wet, delay, feedback });
+    } else if (e.type === 'dist' || e.type === 'lofi') {
+      const shaper = ctx.createWaveShaper();
+      shaper.oversample = '2x';
+      shaper.curve = e.type === 'dist' ? distCurve(e.drive) : lofiCurve(e.bits);
+      wet.connect(shaper);
+      shaper.connect(sum);
+      fx.push({ dry, wet, shaper });
+    } else if (e.type === 'chorus') {
+      // Короткая задержка, качаемая LFO: размножение тембра в разжижение.
+      const delay = ctx.createDelay(0.1);
+      delay.delayTime.value = 0.026;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = e.rate;
+      const sway = ctx.createGain();
+      sway.gain.value = 0.005; // ±5 мс
+      lfo.connect(sway);
+      sway.connect(delay.delayTime);
+      wet.connect(delay);
+      delay.connect(sum);
+      lfo.start(0);
+      fx.push({ dry, wet, delay, lfo });
     } else {
       const conv = ctx.createConvolver();
       conv.buffer = getImpulse(ctx, e.sizeSec);
@@ -424,6 +471,15 @@ function disposeChain(chain: TrackChain): void {
     f.delay?.disconnect();
     f.feedback?.disconnect();
     f.convolver?.disconnect();
+    f.shaper?.disconnect();
+    if (f.lfo) {
+      try {
+        f.lfo.stop();
+      } catch {
+        /* уже остановлен */
+      }
+      f.lfo.disconnect();
+    }
   }
   chain.hp.disconnect();
   chain.filter.disconnect();
@@ -999,9 +1055,15 @@ export class AudioEngine {
       if (e.type === 'delay') {
         n.delay?.delayTime.setTargetAtTime(e.timeSec, t0, 0.05);
         n.feedback?.gain.setTargetAtTime(e.feedback, t0, 0.05);
-      } else if (n.convolver) {
+      } else if (e.type === 'reverb' && n.convolver) {
         const ir = getImpulse(ctx, e.sizeSec);
         if (n.convolver.buffer !== ir) n.convolver.buffer = ir;
+      } else if (e.type === 'dist' && n.shaper) {
+        n.shaper.curve = distCurve(e.drive);
+      } else if (e.type === 'lofi' && n.shaper) {
+        n.shaper.curve = lofiCurve(e.bits);
+      } else if (e.type === 'chorus') {
+        n.lfo?.frequency.setTargetAtTime(e.rate, t0, 0.05);
       }
     });
     return chain;

@@ -101,11 +101,17 @@ export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
 /** Вставной эффект трека (после фильтра, до панорамы). */
 export type Effect =
   | { type: 'delay'; timeSec: number; feedback: number; mix: number }
-  | { type: 'reverb'; sizeSec: number; mix: number };
+  | { type: 'reverb'; sizeSec: number; mix: number }
+  | { type: 'dist'; drive: number; mix: number }
+  | { type: 'chorus'; rate: number; mix: number }
+  | { type: 'lofi'; bits: number; mix: number };
 
 export const EFFECT_LABELS: Record<Effect['type'], string> = {
   delay: 'задержка (эхо)',
   reverb: 'реверб (пространство)',
+  dist: 'перегруз',
+  chorus: 'хорус',
+  lofi: 'ло-фай (ступеньки)',
 };
 
 /** Источник модуляции: LFO с формой / ступени S&H / плавный перлин-шум.
@@ -223,7 +229,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 20;
+export const PATCH_VERSION = 21;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -344,7 +350,16 @@ function normalizeEffects(raw: unknown): Effect[] {
   if (!Array.isArray(raw)) return [];
   const out: Effect[] = [];
   for (const item of raw) {
-    const e = item as { type?: unknown; timeSec?: unknown; feedback?: unknown; mix?: unknown; sizeSec?: unknown };
+    const e = item as {
+      type?: unknown;
+      timeSec?: unknown;
+      feedback?: unknown;
+      mix?: unknown;
+      sizeSec?: unknown;
+      drive?: unknown;
+      rate?: unknown;
+      bits?: unknown;
+    };
     if (!e || typeof e !== 'object') continue;
     if (e.type === 'delay') {
       out.push({
@@ -358,6 +373,24 @@ function normalizeEffects(raw: unknown): Effect[] {
         type: 'reverb',
         sizeSec: clamp(typeof e.sizeSec === 'number' ? e.sizeSec : 1.8, 0.2, 8, 1.8),
         mix: clamp(typeof e.mix === 'number' ? e.mix : 0.25, 0, 1, 0.25),
+      });
+    } else if (e.type === 'dist') {
+      out.push({
+        type: 'dist',
+        drive: clamp(typeof e.drive === 'number' ? e.drive : 6, 1, 40, 6),
+        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.5, 0, 1, 0.5),
+      });
+    } else if (e.type === 'chorus') {
+      out.push({
+        type: 'chorus',
+        rate: clamp(typeof e.rate === 'number' ? e.rate : 0.6, 0.05, 8, 0.6),
+        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.5, 0, 1, 0.5),
+      });
+    } else if (e.type === 'lofi') {
+      out.push({
+        type: 'lofi',
+        bits: Math.round(clamp(typeof e.bits === 'number' ? e.bits : 6, 2, 12, 6)),
+        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.7, 0, 1, 0.7),
       });
     }
   }
