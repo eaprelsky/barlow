@@ -755,10 +755,10 @@ export default function App() {
           </select>
         </label>
         {(patch.masterNoise ?? 'off') !== 'off' && (
-          <label title="Уровень шума: 1–3% — лёгкий воздух, 5–10% — винил и плёнка">
+          <label title="Уровень шума, в процентах с десятыми: 0.2–0.5% — дышащий воздух, 1–3% — лёгкая лента, дальше — винил и плёнка">
             <NumField
-              value={Math.round((patch.masterNoiseLevel ?? 0.03) * 100)}
-              min={0} max={15} step={1}
+              value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
+              min={0} max={15} step={0.1}
               onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
             />
             %

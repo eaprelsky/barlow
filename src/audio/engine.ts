@@ -600,16 +600,16 @@ function connectMasterNoise(
   ctx: BaseAudioContext,
   kind: 'white' | 'pink',
   level: number,
-): GainNode {
+): { src: AudioBufferSourceNode; gain: GainNode } {
   const src = ctx.createBufferSource();
   src.buffer = masterNoiseBuffer(ctx, kind);
   src.loop = true;
   const gain = ctx.createGain();
-  gain.gain.value = Math.max(0, level) * 0.3;
+  gain.gain.value = Math.max(0, level) * 0.12;
   src.connect(gain);
   gain.connect(ctx.destination);
   src.start(0);
-  return gain;
+  return { src, gain };
 }
 
 interface Voice {
@@ -1038,8 +1038,9 @@ function validSceneId(patch: Patch | null, want: string): string {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: MasterNodes | null = null;
-  // Слой мастер-шума (после лимитера) и его текущий вид.
-  private noiseGain: GainNode | null = null;
+  // Слой мастер-шума (после лимитера) и его текущий вид. Живёт только
+  // пока движок играет — на стопе глушится.
+  private noiseLayer: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private noiseKind = '';
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
@@ -1100,33 +1101,46 @@ export class AudioEngine {
     }
   }
 
-  /** Слой мастер-шума и компрессия следуют за патчем (без перестроения). */
+  private stopNoiseLayer(): void {
+    if (!this.noiseLayer) return;
+    try {
+      this.noiseLayer.src.stop();
+    } catch {
+      /* уже остановлен */
+    }
+    this.noiseLayer.src.disconnect();
+    this.noiseLayer.gain.disconnect();
+    this.noiseLayer = null;
+    this.noiseKind = '';
+  }
+
+  /** Слой мастер-шума и компрессия следуют за патчем (без перестроения).
+   *  Шум звучит только пока играем: на стопе слой глушится. */
   private applyMasterFx(patch: Patch): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     this.master.setComp(patch.masterComp ?? 0, ctx.currentTime);
     this.master.setPan(patch.masterPan ?? 0.5, ctx.currentTime);
     const kind = patch.masterNoise ?? 'off';
-    if (kind === this.noiseKind) {
-      if (this.noiseGain) {
-        this.noiseGain.gain.setTargetAtTime(
-          Math.max(0, patch.masterNoiseLevel ?? 0.03) * 0.3,
-          ctx.currentTime,
-          0.1,
-        );
-      }
+    if (kind === 'off') {
+      this.stopNoiseLayer();
       return;
     }
-    if (this.noiseGain) {
-      // смена вида: источник держит буфер — пересоздаём слой
-      for (const node of [this.noiseGain]) node.disconnect();
-      this.noiseGain = null;
+    if (!this.playing) {
+      this.stopNoiseLayer();
+      return;
     }
-    this.noiseKind = '';
-    if (kind !== 'off') {
-      this.noiseGain = connectMasterNoise(ctx, kind, patch.masterNoiseLevel ?? 0.03);
-      this.noiseKind = kind;
+    if (kind === this.noiseKind && this.noiseLayer) {
+      this.noiseLayer.gain.gain.setTargetAtTime(
+        Math.max(0, patch.masterNoiseLevel ?? 0.03) * 0.12,
+        ctx.currentTime,
+        0.1,
+      );
+      return;
     }
+    this.stopNoiseLayer();
+    this.noiseLayer = connectMasterNoise(ctx, kind, patch.masterNoiseLevel ?? 0.03);
+    this.noiseKind = kind;
   }
 
   /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
@@ -1303,6 +1317,7 @@ export class AudioEngine {
     } else {
       this.sceneAdvanceTime = null;
     }
+    this.applyMasterFx(patch);
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
     this.scheduler();
   }
@@ -1312,6 +1327,7 @@ export class AudioEngine {
       window.clearInterval(this.timer);
       this.timer = null;
     }
+    this.stopNoiseLayer();
     this.clocks.clear();
     this.lastVoices.clear();
     this.pendingSceneId = '';
