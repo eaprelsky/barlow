@@ -725,6 +725,21 @@ export default function App() {
           {Math.round(patch.masterVolume * 100)}%
         </label>
         <label
+          className="master-vol"
+          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля"
+        >
+          пан
+          <input
+            type="range" min={0} max={1} step={0.05} value={patch.masterPan ?? 0.5}
+            onChange={(e) => setPatch((pp) => ({ ...pp, masterPan: Number(e.target.value) }))}
+          />
+          {(patch.masterPan ?? 0.5) < 0.49
+            ? `L${Math.round((0.5 - (patch.masterPan ?? 0.5)) * 200)}`
+            : (patch.masterPan ?? 0.5) > 0.51
+              ? `R${Math.round(((patch.masterPan ?? 0.5) - 0.5) * 200)}`
+              : 'центр'}
+        </label>
+        <label
           title="Фоновый шум мастера: лента и воздух поверх всего. Розовый — мягче (спад -3 дБ/октаву), белый — свежее шипение. Идёт после лимитера — компрессия его не качает"
         >
           шум

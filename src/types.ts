@@ -233,6 +233,9 @@ export interface Patch {
   // Общая громкость 0..2. Выше 1 — tanh-лимитер мягко пережимает,
   // звук плотнеет (мастер-сатурация) без клиппинга.
   masterVolume: number;
+  // Панорама всего микса 0..1 (0.5 — центр): сдвигает стерео поле целиком,
+  // трековые паны и их модуляции остаются как есть.
+  masterPan?: number;
   // Фоновый шум мастера (после лимитера — не качается компрессией):
   // естественность ленты/воздуха. Уровень 0..1.
   masterNoise?: MasterNoise;
@@ -247,7 +250,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 23;
+export const PATCH_VERSION = 24;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -663,6 +666,7 @@ export function normalizePatch(p: Patch): Patch {
         ? ((p as { masterNoise?: MasterNoise }).masterNoise!)
         : 'off',
     masterNoiseLevel: clamp((p as { masterNoiseLevel?: number }).masterNoiseLevel ?? 0.03, 0, 0.15, 0.03),
+    masterPan: clamp((p as { masterPan?: number }).masterPan ?? 0.5, 0, 1, 0.5),
     masterComp: clamp((p as { masterComp?: number }).masterComp ?? 0, 0, 1, 0),
     followChain: !!p.followChain,
     scenes,

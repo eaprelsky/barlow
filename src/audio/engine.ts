@@ -408,6 +408,7 @@ interface MasterNodes {
   makeup: GainNode;
   setVolume: (v: number, at: number) => void;
   setComp: (v: number, at: number) => void;
+  setPan: (v: number, at: number) => void;
 }
 
 function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
@@ -571,12 +572,15 @@ function connectMaster(ctx: BaseAudioContext, masterVolume: number, compAmount =
   master.connect(comp);
   comp.connect(makeup);
   makeup.connect(shaper);
-  shaper.connect(ctx.destination);
+  const masterPan = ctx.createStereoPanner();
+  shaper.connect(masterPan);
+  masterPan.connect(ctx.destination);
   const nodes: MasterNodes = {
     input: master,
     comp,
     makeup,
     setVolume: (v, at) => master.gain.setTargetAtTime(0.75 * v, at, 0.05),
+    setPan: (v, at) => masterPan.pan.setTargetAtTime(v * 2 - 1, at, 0.05),
     setComp: (v, at) => {
       const d = Math.min(1, Math.max(0, v));
       comp.threshold.setTargetAtTime(d <= 0 ? 0 : -8 - 22 * d, at, 0.05);
@@ -1081,6 +1085,7 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     this.master.setComp(patch.masterComp ?? 0, ctx.currentTime);
+    this.master.setPan(patch.masterPan ?? 0.5, ctx.currentTime);
     const kind = patch.masterNoise ?? 'off';
     if (kind === this.noiseKind) {
       if (this.noiseGain) {
@@ -1402,6 +1407,7 @@ export class AudioEngine {
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
+    master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
       connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03);
     }
