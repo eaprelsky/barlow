@@ -675,10 +675,11 @@ function scheduleGrainCloud(
   time: number,
   peak: number,
   sources: (AudioScheduledSourceNode | AudioWorkletNode)[],
+  baseLenSec: number,
 ): number {
   // Гейт в облаке общий: облако тянется по самой длинной ноте шага.
   const gMax = Math.max(1, ...notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4)));
-  const dur = Math.max(0.05, (track.attack + track.decay) * gMax);
+  const dur = Math.max(0.05, baseLenSec * gMax);
   const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
   const pos = clampNum(track.grainPos ?? 0.3, 0, 1);
   const scatter = clampNum(track.grainScatter ?? 0.15, 0, 1);
@@ -755,6 +756,7 @@ function triggerVoice(
   track: Track,
   notes: Note[],
   time: number,
+  stepSec: number,
 ): Voice {
   if (notes.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
   const rows = scaleOf(track);
@@ -795,7 +797,9 @@ function triggerVoice(
 
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
-    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources);
+    const baseLenG =
+      track.noteSteps && track.noteSteps > 0 ? track.noteSteps * stepSec : track.attack + track.decay;
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, baseLenG);
     return { amp, sources, stopAt: lastEnd };
   }
 
@@ -805,16 +809,20 @@ function triggerVoice(
   const lowestPeriod = 1 / Math.min(...freqs);
   const attack = Math.max(track.attack, Math.min(0.25 * lowestPeriod, 0.012));
 
-  // Длина ноты (Note.gate): множитель 0.1–4× от огибающей трека.
-  // Огибающая голоса тянется по самой длинной ноте шага, короткие ноты
-  // получают личный гейн с экспоненциальным обрезом.
+  // Длина ноты: по умолчанию — огибающая трека (атака + спад); при
+  // noteSteps — привязка к сетке инструмента (шаг эскиза × темп), тогда
+  // тягучесть не едет при смене темпа. Гейт ноты умножает сверху.
   const gates = notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4));
   const maxGate = Math.max(1, ...gates);
-  const voiceLen = (attack + track.decay) * maxGate;
+  const baseLen =
+    track.noteSteps && track.noteSteps > 0
+      ? track.noteSteps * stepSec
+      : attack + track.decay;
+  const voiceLen = baseLen * maxGate;
   const noteGainOf = (i: number): GainNode | null => {
     if (gates[i] >= maxGate - 1e-9) return null;
     const ng = ctx.createGain();
-    const end = Math.max(time + 0.03, time + (attack + track.decay) * gates[i]);
+    const end = Math.max(time + 0.03, time + baseLen * gates[i]);
     ng.gain.setValueAtTime(1, time);
     ng.gain.exponentialRampToValueAtTime(0.0001, end);
     ng.connect(amp);
@@ -883,7 +891,7 @@ function triggerVoice(
   } else if (track.waveform === 'karplus') {
     // Струна: каждая нота — свой буфер (кэш по частоте и затуханию).
     freqs.forEach((f, fi) => {
-      const len = Math.min(4, attack + track.decay + 0.05);
+      const len = Math.min(4, voiceLen + 0.05);
       const src = ctx.createBufferSource();
       src.buffer = karplusBuffer(ctx, f, track.ksLife ?? 2.5, len);
       src.connect(noteDest(fi));
@@ -1506,7 +1514,7 @@ export class AudioEngine {
         if (notes.length > 0 && audible.has(pattern.id)) {
           const at = clock.nextStepTime;
           if (track.mono) this.duckLastVoice(track.id, at);
-          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at);
+          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at, stepDur);
           if (track.mono) this.lastVoices.set(track.id, voice);
           // Сайдчейн: ноты этой дорожки качают приглушаемых.
           for (const rt of patch.tracks) {
@@ -1578,7 +1586,7 @@ export class AudioEngine {
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {
             if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
-            const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt);
+            const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt, stepDur);
             if (track.mono) prevVoice = voice;
             // Сайдчейн: ноты этой дорожки качают приглушаемых.
             for (const rt of patch.tracks) {

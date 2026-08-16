@@ -1108,8 +1108,9 @@ export const TrackRow = memo(function TrackRow({
             <div className="env-block">
               <EnvGraph attack={track.attack} decay={track.decay} gridSec={tickDuration(bpm)} />
               <span className="env-info">
-                нота ≈ {(Math.max(track.attack, 0.0005) + track.decay).toFixed(2)} с ·{' '}
-                {((Math.max(track.attack, 0.0005) + track.decay) / tickDuration(bpm)).toFixed(1)} шестнадцатых
+                {track.noteSteps && track.noteSteps > 0
+                  ? `нота ≈ ${(track.noteSteps * track.rate * tickDuration(bpm)).toFixed(2)} с · ${track.noteSteps} шаг(ов) — по сетке`
+                  : `нота ≈ ${(Math.max(track.attack, 0.0005) + track.decay).toFixed(2)} с · ${((Math.max(track.attack, 0.0005) + track.decay) / tickDuration(bpm)).toFixed(1)} шестнадцатых`}
               </span>
             </div>
             <div className="env-block">
@@ -1149,6 +1150,19 @@ export const TrackRow = memo(function TrackRow({
                 <NumField
                   value={track.pitchTime} min={0} max={2} step={0.01}
                   onChange={(pitchTime) => change({ pitchTime })}
+                />
+              </label>
+              <label
+                title={
+                  track.noteSteps && track.noteSteps > 0
+                    ? 'Длина ноты в шагах — привязана к сетке инструмента (шаг эскиза × темп): меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
+                    : '0 — длина по огибающей (атака + спад). Задай число шагов — и длина привяжется к сетке инструмента: при смене темпа и шага тягучесть не поедет'
+                }
+              >
+                длина ноты, шагов
+                <NumField
+                  value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
+                  onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
                 />
               </label>
             </div>
