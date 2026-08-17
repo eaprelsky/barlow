@@ -88,3 +88,22 @@ export function scatterHeights(pattern: Pattern, rows: number): Pattern {
     }),
   };
 }
+
+/** Разложить высоты нот ровной лестницей по строкам шкалы (слева направо,
+ *  от низа к верху): пара к «высоты случайно» в равномерном режиме. */
+export function spreadHeights(pattern: Pattern, rows: number): Pattern {
+  if (rows <= 1) return pattern;
+  const total = pattern.steps.reduce((acc, s) => acc + s.notes.length, 0);
+  if (total === 0) return pattern;
+  let k = 0;
+  return {
+    ...pattern,
+    steps: pattern.steps.map((s) => ({
+      ...s,
+      notes: s.notes.map((nt) => ({
+        ...nt,
+        n: Math.min(rows - 1, Math.round((k++ * (rows - 1)) / Math.max(total - 1, 1))),
+      })),
+    })),
+  };
+}

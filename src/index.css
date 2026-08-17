@@ -408,9 +408,10 @@ header .master-vol input[type='range'] {
   color: #e05555;
 }
 
-.mut:hover {
-  border-color: var(--accent-2);
-  color: var(--accent-2);
+/* Иконочная кнопка в тулбарах: без текста, компактная */
+.ib {
+  padding: 3px 6px;
+  line-height: 0;
 }
 
 /* Мини-нотный стан: колонки — шаги цикла, строки — высоты шкалы.

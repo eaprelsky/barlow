@@ -15,3 +15,16 @@ export function euclid(steps: number, pulses: number): boolean[] {
   }
   return out;
 }
+
+/** Случайная раскладка: k нот по случайным (различным) шагам цикла —
+    то же количество, что у евклида, но без равномерности. */
+export function randomMask(steps: number, pulses: number): boolean[] {
+  const n = Math.max(0, Math.min(Math.round(pulses), steps));
+  const idx = Array.from({ length: steps }, (_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  const on = new Set(idx.slice(0, n));
+  return Array.from({ length: steps }, (_, i) => on.has(i));
+}

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine, stepIndexAt } from './audio/engine';
-import { euclid } from './music/euclid';
+import { euclid, randomMask } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
-import { mutatePattern, scatterHeights, type MutateModes } from './music/mutate';
+import { mutatePattern, scatterHeights, spreadHeights, type MutateModes } from './music/mutate';
 import { InstrumentBrowser } from './components/InstrumentBrowser';
 import type { InstrumentPreset } from './music/instrumentPresets';
 import {
@@ -529,28 +529,44 @@ export default function App() {
     });
   }, []);
 
-  const applyEuclid = useCallback(
-    (trackId: string, pulses: number) => {
+  /** Заполнение стана по включённым осям: время — N нот по шагам
+   *  (равномерно-евклид или случайно), высота — лестница или случайные
+   *  строки. Оси складываются: время задаёт рисунок, высота — тона. */
+  const applyFill = useCallback(
+    (
+      trackId: string,
+      o: { time: boolean; height: boolean; mode: 'even' | 'random'; pulses: number },
+    ) => {
       setPatchStep((p) => ({
         ...p,
         tracks: p.tracks.map((t) => {
           if (t.id !== trackId) return t;
           const scene = p.scenes.find((s) => s.id === sceneId);
           const pattern = patternInScene(t, scene);
-          const mask = euclid(pattern.length, pulses);
+          const rows = scaleOf(t).length;
+          let next = pattern;
+          if (o.time) {
+            const mask =
+              o.mode === 'even'
+                ? euclid(pattern.length, o.pulses)
+                : randomMask(pattern.length, o.pulses);
+            next = {
+              ...next,
+              steps: next.steps.map((s, i) => ({
+                ...s,
+                // одна нота на колонку: «раскидать N нот» даёт ровно N
+                // (аккорды в занятых колонках подрезаются)
+                notes: mask[i] ? [s.notes[0] ?? makeNote(0)] : [],
+              })),
+            };
+          }
+          if (o.height) {
+            next = o.mode === 'even' ? spreadHeights(next, rows) : scatterHeights(next, rows);
+          }
+          if (next === pattern) return t;
           return {
             ...t,
-            patterns: t.patterns.map((pt) =>
-              pt.id === pattern.id
-                ? {
-                    ...pt,
-                    steps: pattern.steps.map((s, i) => ({
-                      ...s,
-                      notes: mask[i] ? (s.notes.length ? s.notes : [makeNote(0)]) : [],
-                    })),
-                  }
-                : pt,
-            ),
+            patterns: t.patterns.map((pt) => (pt.id === pattern.id ? next : pt)),
           };
         }),
       }));
@@ -570,26 +586,6 @@ export default function App() {
             ...t,
             patterns: t.patterns.map((pt) =>
               pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length, 3, modes) : pt,
-            ),
-          };
-        }),
-      }));
-    },
-    [sceneId],
-  );
-
-  const applyScatterHeights = useCallback(
-    (trackId: string) => {
-      setPatchStep((p) => ({
-        ...p,
-        tracks: p.tracks.map((t) => {
-          if (t.id !== trackId) return t;
-          const scene = p.scenes.find((s) => s.id === sceneId);
-          const pattern = patternInScene(t, scene);
-          return {
-            ...t,
-            patterns: t.patterns.map((pt) =>
-              pt.id === pattern.id ? scatterHeights(pt, scaleOf(t).length) : pt,
             ),
           };
         }),
@@ -1098,9 +1094,8 @@ export default function App() {
             onAddPattern={addPattern}
             onForkPattern={forkPattern}
             onRemovePattern={removePattern}
-            onEuclid={applyEuclid}
+            onFill={applyFill}
             onMutate={mutate}
-            onScatterHeights={applyScatterHeights}
             getLevel={getTrackLevel}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
