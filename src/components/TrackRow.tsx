@@ -1873,12 +1873,14 @@ export const TrackRow = memo(function TrackRow({
                                   opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
                                 }}
                               />
-                              <span
-                                className="pbar"
-                                style={{
-                                  width: `max(3px, calc(${shown.toFixed(2)} * var(--pitch, 27px) * ${nt!.prob} - 7px))`,
-                                }}
-                              />
+                              {nt!.prob < 0.995 && (
+                                <span
+                                  className="pbar"
+                                  style={{
+                                    width: `max(3px, calc(${shown.toFixed(2)} * var(--pitch, 27px) * ${nt!.prob} - 7px))`,
+                                  }}
+                                />
+                              )}
                               {nt!.prob < 0.995 && (
                                 <span className="pnum">{Math.round(nt!.prob * 100)}</span>
                               )}
