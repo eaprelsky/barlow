@@ -276,6 +276,17 @@ header .master-vol input[type='range'] {
   border-style: dashed;
 }
 
+/* Мьют-чип — первый в ряду эскизов: «не играть» как альтернатива выбору партии */
+.chip.mute {
+  font-weight: 700;
+}
+
+.chip.mute.on-m {
+  color: #e05555;
+  border-color: #e05555;
+  background: rgba(224, 85, 85, 0.08);
+}
+
 .pan-label {
   font-size: 11px;
   color: var(--text-dim);
@@ -376,14 +387,14 @@ header .master-vol input[type='range'] {
   font-size: 12px;
 }
 
-/* «Ноты»/«звук» — первые в шапке: самые частые переключатели трека */
+/* «Ноты»/«звук» — первые в шапке: самые частые переключатели трека.
+   По центру строки — на одном уровне с названием трека. */
 .group.ops {
   align-items: center;
 }
 
 .group.ops > button {
-  align-self: flex-end;
-  margin-bottom: 1px;
+  align-self: center;
   padding: 3px 6px;
   line-height: 0;
 }
@@ -626,13 +637,16 @@ footer {
   display: inline-block;
 }
 
-/* Липкая шапка: транспорт и сцены всегда на виду */
-
+/* Липкая шапка: транспорт и сцены всегда на виду.
+   Фон — сплошной с чёткой нижней кромкой: градиентная вуаль без границы
+   выглядела чёрным наложением, «съедающим» нотный стан при прокрутке. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: linear-gradient(var(--bg) 82%, transparent);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
   padding-top: 4px;
 }
 
@@ -1052,12 +1066,6 @@ header button.on {
   border: 1px solid var(--border);
 }
 
-.ms.on-m {
-  color: #e05555;
-  border-color: #e05555;
-  background: rgba(224, 85, 85, 0.08);
-}
-
 .ms.on-s {
   color: #ffd166;
   border-color: #ffd166;
@@ -1168,8 +1176,8 @@ button.danger:hover {
   border-color: #e05555;
 }
 
-/* M/S вровень с названием трека: голова трека тянет детей по высоте
-   (stretch — для групп ручек), кнопким нужен центр, как track-name и fold */
+/* Соло-кнопка вровень с названием трека: голова трека тянет детей по высоте
+   (stretch — для групп ручек), кнопке нужен центр, как track-name и fold */
 .track-head .ms-btns {
   align-self: center;
 }
@@ -1511,6 +1519,14 @@ button.danger:hover {
 .roll-tools .rt-label {
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* Шкала в тулбаре стана: длинные имена пресетов обрезаются многоточием */
+.rt-scale .scale-btn {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .roll-tools .rt-sep {

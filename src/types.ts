@@ -306,7 +306,9 @@ export function makeTrack(
     scale: partial.scale && partial.scale.length > 0 ? partial.scale : [1],
     freq: partial.freq ?? 220,
     pitchDrop: partial.pitchDrop ?? 1,
-    noteSteps: partial.noteSteps,
+    // Новый трек — ноты ровно в клетку (1 шаг); «авто» по огибающей —
+    // только если пользователь явно обнулил поле «нота».
+    noteSteps: partial.noteSteps ?? 1,
     pitchTime: partial.pitchTime ?? 0.08,
     filterLow: partial.filterLow ?? 20,
     filterFreq: partial.filterFreq ?? 8000,

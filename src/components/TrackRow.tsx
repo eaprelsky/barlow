@@ -701,6 +701,15 @@ export const TrackRow = memo(function TrackRow({
 
   const patternChips = (
     <div className="pattern-chips">
+      {/* Мьют — «отрицательный эскиз»: вместо выбора партии трек молчит,
+          пока выбран этот эскиз (во всех сценах, где он играет). */}
+      <button
+        className={pattern.muted ? 'chip mute on-m' : 'chip mute'}
+        title="Мьют вместо эскиза: трек молчит, пока играет этот эскиз (во всех сценах, где он выбран). Часы идут — сняв мьют, войдёшь в фазе"
+        onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
+      >
+        M
+      </button>
       {track.patterns.map((pt) => {
         const scenes = patternSceneCounts[pt.id] ?? 0;
         return (
@@ -766,11 +775,6 @@ export const TrackRow = memo(function TrackRow({
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
           <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
           <span className="ms-btns">
-            <button
-              className={pattern.muted ? 'ms on-m' : 'ms'}
-              title="Мьют этой партии (эскиз молчит во всех сценах, где играет)"
-              onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
-            >M</button>
             <button
               className={soloActive ? 'ms on-s' : 'ms'}
               title="Соло в этой сцене: слышна только эта дорожка. Повторный клик — снять"
@@ -844,11 +848,6 @@ export const TrackRow = memo(function TrackRow({
         <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
         <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
         <span className="ms-btns">
-          <button
-            className={pattern.muted ? 'ms on-m' : 'ms'}
-            title="Мьют этой партии: эскиз молчит во всех сценах, где играет. Часы идут — сняв мьют, войдёшь в фазе"
-            onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
-          >M</button>
           <button
             className={soloActive ? 'ms on-s' : 'ms'}
             title="Соло в этой сцене: слышна только эта дорожка (любой её эскиз). С других сцен не переносится. Повторный клик — снять"
@@ -924,22 +923,6 @@ export const TrackRow = memo(function TrackRow({
                 <option value="custom">своя ×{track.rate}</option>
               )}
             </select>
-          </label>
-          <label
-            title={
-              track.waveform === 'sample'
-                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
-            }
-          >
-            шкала
-            <button
-              className="scale-btn"
-              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
-              onClick={() => setShowScales(true)}
-            >
-              {presetName(track.scale)}
-            </button>
           </label>
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
@@ -1771,6 +1754,24 @@ export const TrackRow = memo(function TrackRow({
           >
             мутировать
           </button>
+          <span className="rt-sep" />
+          <label
+            className="rt-scale"
+            title={
+              track.waveform === 'sample'
+                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
+                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
+            }
+          >
+            шкала
+            <button
+              className="scale-btn"
+              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
+              onClick={() => setShowScales(true)}
+            >
+              {presetName(track.scale)}
+            </button>
+          </label>
         </div>
       )}
       {showRoll && (
