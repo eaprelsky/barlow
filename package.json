@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop": "bash scripts/desktop.sh",
-    "deploy-web": "bash scripts/deploy-web.sh"
+    "deploy-web": "bash scripts/deploy-web.sh",
+    "golden": "node scripts/golden.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright-core": "^1.62.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

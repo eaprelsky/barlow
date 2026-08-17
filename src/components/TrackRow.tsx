@@ -19,19 +19,20 @@ import {
   makeStep,
   scaleOf,
 } from '../types';
-import { presetName } from '../music/scales';
 import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
 import { ScalePicker } from './ScalePicker';
+import { PatternChips } from './PatternChips';
+import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { alertDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
-import { tickDuration } from '../audio/engine';
+import { tickDuration } from '../audio/timing';
 import { clip } from '../music/clip';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
@@ -152,12 +153,7 @@ export const TrackRow = memo(function TrackRow({
   onGenerateSample,
   genBusy,
 }: Props) {
-  const [pulses, setPulses] = useState(3);
-  const [showFill, setShowFill] = useState(false);
-  // Мутация: что правит (оси) и сколько правок за клик (уровень).
-  const [mutTime, setMutTime] = useState(true);
-  const [mutPitch, setMutPitch] = useState(true);
-  const [mutEdits, setMutEdits] = useState(3);
+  // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
@@ -736,56 +732,16 @@ export const TrackRow = memo(function TrackRow({
   if (effects.some((e) => e.type === 'delay')) modTargets.push('fxTime', 'fxFeedback');
 
   const patternChips = (
-    <div className="pattern-chips">
-      {/* Мьют — «отрицательный эскиз»: вместо выбора партии трек молчит,
-          пока выбран этот эскиз (во всех сценах, где он играет). */}
-      <button
-        className={pattern.muted ? 'chip mute on-m' : 'chip mute'}
-        title="Мьют вместо эскиза: трек молчит, пока играет этот эскиз (во всех сценах, где он выбран). Часы идут — сняв мьют, войдёшь в фазе"
-        onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
-      >
-        M
-      </button>
-      {track.patterns.map((pt) => {
-        const scenes = patternSceneCounts[pt.id] ?? 0;
-        return (
-          <button
-            key={pt.id}
-            className={
-              'chip' +
-              (pt.id === pattern.id ? ' on' : '') +
-              (pattern.muted ? ' dim' : '')
-            }
-            title={
-              (pt.forkedFrom
-                ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
-                : 'эскиз дорожки — общий для всех сцен, где играет. Клик — играть, правый клик — независимая копия (форк)') +
-              (scenes > 1 ? `. Играет в ${scenes} сценах — правка эскиза меняет его во всех них` : '')
-            }
-            onClick={() => onSelectPattern(track.id, pt.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onForkPattern(track.id, pt.id);
-            }}
-          >
-            {pt.name}
-            {scenes > 1 && <sup className="scene-cnt">{scenes}</sup>}
-          </button>
-        );
-      })}
-      <button className="chip add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
-        +
-      </button>
-      {track.patterns.length > 1 && (
-        <button
-          className="chip del"
-          title={`Удалить эскиз «${pattern.name}» — сцены, где он играл, перейдут на первый оставшийся`}
-          onClick={() => onRemovePattern(track.id, pattern.id)}
-        >
-          ×
-        </button>
-      )}
-    </div>
+    <PatternChips
+      track={track}
+      pattern={pattern}
+      patternSceneCounts={patternSceneCounts}
+      onPatternChange={onPatternChange}
+      onSelectPattern={onSelectPattern}
+      onAddPattern={onAddPattern}
+      onForkPattern={onForkPattern}
+      onRemovePattern={onRemovePattern}
+    />
   );
 
   if (collapsed) {
@@ -1805,137 +1761,16 @@ export const TrackRow = memo(function TrackRow({
       )}
 
       {showRoll && (
-        <div className="roll-tools">
-          <label
-            className="rt-scale"
-            title={
-              track.waveform === 'sample'
-                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
-            }
-            onMouseEnter={() =>
-              onHint('мировые строи — в пресетах выбора шкалы: гамелан, 22 шрути, макам · октавы — кнопками у стана')
-            }
-            onMouseLeave={() => onHint(hintedRef.current && sel.size > 0 ? selHint(sel.size) : null)}
-          >
-            шкала
-            <button
-              className="scale-btn"
-              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
-              onClick={() => setShowScales(true)}
-            >
-              {presetName(track.scale)}
-            </button>
-          </label>
-          <span className="rt-sep" />
-          {/* Генерация стана за одной кнопкой. Оси независимы: клик по
-              кнопке оси применяет только её — время и тон компонуются. */}
-          <button
-            className={showFill ? 'on' : ''}
-            title="Заполнение стана: время и тон по кнопкам, мутация с уровнем, очистка"
-            onClick={() => setShowFill((v) => !v)}
-          >
-            заполнить
-          </button>
-          {showFill && (
-            <span className="fill-tools">
-              <span className="rt-label" title="Сколько нот раскидает заполнение по времени">
-                нот
-              </span>
-              <NumField
-                narrow
-                value={pulses} min={0} max={pattern.length}
-                onChange={(n) => setPulses(Math.round(n))}
-              />
-              <span className="fill-axis">
-                <span className="rt-label" title="Клик сразу применяет ось времени">время</span>
-                <button
-                  title="Евклидово раскладывание N нот: максимально равномерно, 3 по 8 — тресильо"
-                  onClick={() => onFillAxis(track.id, 'time', 'even', pulses)}
-                >
-                  равномерно
-                </button>
-                <button
-                  title="N нот по случайным шагам цикла — то же количество, без равномерности"
-                  onClick={() => onFillAxis(track.id, 'time', 'random', pulses)}
-                >
-                  случайно
-                </button>
-              </span>
-              <span className="fill-axis">
-                <span className="rt-label" title="Клик сразу применяет ось тона к текущим нотам">тон</span>
-                <button
-                  title="Ровная лестница по строкам шкалы: слева направо, от низа к верху"
-                  onClick={() => onFillAxis(track.id, 'height', 'ladder', pulses)}
-                >
-                  лестница
-                </button>
-                <button
-                  title="Случайные строки шкалы: ритм, громкости и длины не трогаются"
-                  onClick={() => onFillAxis(track.id, 'height', 'random', pulses)}
-                >
-                  случайно
-                </button>
-                <button
-                  title="Все ноты на одну высоту ×1 (тоника шкалы) — сплошная полоска, как у баса или бочки"
-                  onClick={() => onFillAxis(track.id, 'height', 'one', pulses)}
-                >
-                  ×1
-                </button>
-              </span>
-              <span className="rt-sep" />
-              <span className="fill-axis">
-                <span className="rt-label" title="Что мутирует: щепотка случайных правок по включённым осям">мутировать</span>
-                <span className="rt-sw" title="Мутация времени: вкл/выкл нот, вероятность, громкость">
-                  <button
-                    className={'sw' + (mutTime ? ' on' : '')}
-                    role="switch"
-                    aria-checked={mutTime}
-                    onClick={() => setMutTime((v) => !v)}
-                  >
-                    <span className="sw-knob" />
-                  </button>
-                  <span className="rt-label">время</span>
-                </span>
-                <span className="rt-sw" title="Мутация тона: высота отдельной ноты">
-                  <button
-                    className={'sw' + (mutPitch ? ' on' : '')}
-                    role="switch"
-                    aria-checked={mutPitch}
-                    onClick={() => setMutPitch((v) => !v)}
-                  >
-                    <span className="sw-knob" />
-                  </button>
-                  <span className="rt-label">тон</span>
-                </span>
-                <span className="rt-label" title="Сколько случайных правок за один клик — уровень мутации">правок</span>
-                <NumField
-                  narrow
-                  value={mutEdits} min={1} max={32}
-                  onChange={(n) => setMutEdits(Math.round(n))}
-                />
-                <button
-                  disabled={!mutTime && !mutPitch}
-                  title="Случайные правки по включённым осям: слушай — мутируй — оставляй или снова мутируй"
-                  onClick={() => onMutate(track.id, { time: mutTime, pitch: mutPitch }, mutEdits)}
-                >
-                  мутировать
-                </button>
-              </span>
-              <span className="rt-sep" />
-              <button
-                title="Очистить стан этого эскиза: убрать все ноты (undo вернёт)"
-                onClick={() =>
-                  onPatternCommand(track.id, pattern.id, {
-                    steps: pattern.steps.map((s) => ({ ...s, notes: [] })),
-                  })
-                }
-              >
-                очистить
-              </button>
-            </span>
-          )}
-        </div>
+        <RollTools
+          track={track}
+          pattern={pattern}
+          selHint={sel.size > 0 ? selHint(sel.size) : null}
+          onHint={onHint}
+          onFillAxis={onFillAxis}
+          onMutate={onMutate}
+          onPatternCommand={onPatternCommand}
+          onPickScale={() => setShowScales(true)}
+        />
       )}
       {showRoll && (
       <div className="roll" ref={rollRef}>

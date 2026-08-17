@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { AudioEngine, stepIndexAt } from './audio/engine';
+import { AudioEngine } from './audio/engine';
+import { stepIndexAt } from './audio/timing';
+import type { AudioBackend } from './audio/backend';
 import { euclid, randomMask } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
 import { mutatePattern, scatterHeights, spreadHeights, type MutateModes } from './music/mutate';
@@ -203,7 +205,7 @@ export default function App() {
   const [fileOpen, setFileOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
-  const engineRef = useRef<AudioEngine | null>(null);
+  const engineRef = useRef<AudioBackend | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const engine = (engineRef.current ??= new AudioEngine());
