@@ -1852,7 +1852,9 @@ export const TrackRow = memo(function TrackRow({
                               />
                               <span
                                 className="pbar"
-                                style={{ width: `${Math.max(6, Math.round(shown * nt!.prob * 100))}%` }}
+                                style={{
+                                  width: `max(3px, calc(${Math.max(8, Math.round(shown * nt!.prob * 100))}% - 3px))`,
+                                }}
                               />
                               {nt!.prob < 0.995 && (
                                 <span className="pnum">{Math.round(nt!.prob * 100)}</span>

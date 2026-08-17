@@ -530,7 +530,7 @@ header .master-vol input[type='range'] {
 
 .pbar {
   position: absolute;
-  left: 0;
+  left: 3px;
   bottom: 1px;
   height: 3px;
   max-width: none;
