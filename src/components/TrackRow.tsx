@@ -1837,21 +1837,29 @@ export const TrackRow = memo(function TrackRow({
                           // Нота — это бар: растянут на истинную длительность
                           // (сетка/огибающая × гейт), поверх сетки. Ретриггер
                           // рисуется позже по DOM — виден поверх хвоста.
+                          // Линия вероятности и цифра масштабируются к длине
+                          // бара: 100% — вся нота, без цифры.
                           const cells = noteCellsBase * (nt!.gate ?? 1);
                           const shown = Math.max(0.12, Math.min(cells, pattern.length - col));
                           return (
-                            <span
-                              className="note-bar"
-                              style={{
-                                width: `${Math.round(shown * 100)}%`,
-                                opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
-                              }}
-                            />
+                            <>
+                              <span
+                                className="note-bar"
+                                style={{
+                                  width: `${Math.round(shown * 100)}%`,
+                                  opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
+                                }}
+                              />
+                              <span
+                                className="pbar"
+                                style={{ width: `${Math.max(6, Math.round(shown * nt!.prob * 100))}%` }}
+                              />
+                              {nt!.prob < 0.995 && (
+                                <span className="pnum">{Math.round(nt!.prob * 100)}</span>
+                              )}
+                            </>
                           );
                         })()}
-                      {on && nt!.prob < 1 && (
-                        <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
-                      )}
                     </button>
                   );
                 })}
