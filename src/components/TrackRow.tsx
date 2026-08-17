@@ -855,6 +855,33 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => onSolo(track.id)}
           >S</button>
         </span>
+        <div className="group ops">
+          <button
+            className={showRoll ? 'on' : ''}
+            onClick={() => setShowRoll((v) => !v)}
+            title={showRoll ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
+            aria-label="нотный стан"
+          >
+            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
+              <rect x="1.5" y="2" width="11.5" height="2.4" rx="1.2" fill="currentColor" />
+              <rect x="1.5" y="5.8" width="7" height="2.4" rx="1.2" fill="currentColor" />
+              <rect x="1.5" y="9.6" width="9.5" height="2.4" rx="1.2" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            className={more ? 'on' : ''}
+            onClick={() => setMore((m) => !m)}
+            title="Звук дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
+            aria-label="звук дорожки"
+          >
+            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
+              <rect x="1.5" y="5" width="2" height="4" rx="1" fill="currentColor" />
+              <rect x="5" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
+              <rect x="8.5" y="4" width="2" height="6" rx="1" fill="currentColor" />
+              <rect x="12" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
         <div className="group">
           <label title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
             эскизы
@@ -936,31 +963,6 @@ export const TrackRow = memo(function TrackRow({
               <span className="pan-label">{panLabel(track.pan)}</span>
             </span>
           </label>
-        </div>
-        <div className="group ops">
-          <button
-            className={showRoll ? 'on' : ''}
-            onClick={() => setShowRoll((v) => !v)}
-            title={showRoll ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
-          >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <rect x="1.5" y="2" width="11.5" height="2.4" rx="1.2" fill="currentColor" />
-              <rect x="1.5" y="5.8" width="7" height="2.4" rx="1.2" fill="currentColor" />
-              <rect x="1.5" y="9.6" width="9.5" height="2.4" rx="1.2" fill="currentColor" />
-            </svg>
-          </button>
-          <button
-            className={more ? 'on' : ''}
-            onClick={() => setMore((m) => !m)}
-            title="Звук дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
-          >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <rect x="1.5" y="5" width="2" height="4" rx="1" fill="currentColor" />
-              <rect x="5" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
-              <rect x="8.5" y="4" width="2" height="6" rx="1" fill="currentColor" />
-              <rect x="12" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
-            </svg>
-          </button>
         </div>
       </div>
 
