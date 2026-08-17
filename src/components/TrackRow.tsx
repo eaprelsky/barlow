@@ -802,6 +802,12 @@ export const TrackRow = memo(function TrackRow({
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
   const scaleRows = scaleOf(track);
+  // Истинная длительность ноты в клетках стана: по сетке (noteSteps) или по
+  // огибающей (атака + спад), в шагах эффективного темпа; гейт умножает сверху.
+  const noteCellsBase =
+    track.noteSteps && track.noteSteps > 0
+      ? track.noteSteps
+      : (Math.max(track.attack, 0.0005) + track.decay) / ((pattern.rate ?? track.rate) * tickDuration(bpm));
 
   return (
     <div
@@ -849,6 +855,22 @@ export const TrackRow = memo(function TrackRow({
           <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
             длина, шагов
             <NumField value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+          </label>
+          <label
+            title={
+              track.noteSteps && track.noteSteps > 0
+                ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
+                : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Роляет и для стана, и для звука'
+            }
+          >
+            нота
+            <span className="inline">
+              <NumField
+                value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
+                onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
+              />
+              <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
+            </span>
           </label>
           <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия">
             шаг
@@ -1122,19 +1144,6 @@ export const TrackRow = memo(function TrackRow({
                 <NumField
                   value={track.pitchTime} min={0} max={2} step={0.01}
                   onChange={(pitchTime) => change({ pitchTime })}
-                />
-              </label>
-              <label
-                title={
-                  track.noteSteps && track.noteSteps > 0
-                    ? 'Длина ноты в шагах — привязана к сетке инструмента (шаг эскиза × темп): меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
-                    : '0 — длина по огибающей (атака + спад). Задай число шагов — и длина привяжется к сетке инструмента: при смене темпа и шага тягучесть не поедет'
-                }
-              >
-                длина ноты, шагов
-                <NumField
-                  value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
-                  onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
                 />
               </label>
             </div>
@@ -1830,12 +1839,20 @@ export const TrackRow = memo(function TrackRow({
                       {on && nt!.prob < 1 && (
                         <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
                       )}
-                      {on && Math.abs((nt!.gate ?? 1) - 1) > 1e-6 && (
-                        <span
-                          className="gbar"
-                          style={{ height: `${Math.min(100, Math.round(((nt!.gate ?? 1) / 4) * 100))}%` }}
-                        />
-                      )}
+                      {on &&
+                        (() => {
+                          // Классика нотного стана: бар тянется настоящую
+                          // длительность ноты — в клетках, поверх сетки.
+                          const cells = noteCellsBase * (nt!.gate ?? 1);
+                          if (Math.abs(cells - 1) <= 0.05) return null;
+                          const shown = Math.max(0.08, Math.min(cells, pattern.length - col));
+                          return (
+                            <span
+                              className="note-tail"
+                              style={{ width: `${Math.round(shown * 100)}%` }}
+                            />
+                          );
+                        })()}
                     </button>
                   );
                 })}

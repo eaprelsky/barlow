@@ -924,43 +924,45 @@ export default function App() {
           <div className="mix-rack">
             {patch.tracks.map((t) => (
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
-                <span className="mix-name" title={t.name}>{t.name}</span>
+                <div className="mix-main">
+                  <span className="mix-name" title={t.name}>{t.name}</span>
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={t.volume}
+                    title="Громкость дорожки — та же ручка, что в карточке трека"
+                    onChange={(e) =>
+                      setPatch((p) => ({
+                        ...p,
+                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
+                      }))
+                    }
+                  />
+                  <span className="mini-info">{Math.round(t.volume * 100)}%</span>
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={t.pan}
+                    title={`Панорама дорожки — ${t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}`}
+                    onChange={(e) =>
+                      setPatch((p) => ({
+                        ...p,
+                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: Number(e.target.value) } : x)),
+                      }))
+                    }
+                  />
+                  <button
+                    className={t.enabled === false ? '' : 'on'}
+                    title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
+                    onClick={() =>
+                      setPatch((p) => ({
+                        ...p,
+                        tracks: p.tracks.map((x) =>
+                          x.id === t.id ? { ...x, enabled: x.enabled === false ? undefined : false } : x,
+                        ),
+                      }))
+                    }
+                  >
+                    {t.enabled === false ? 'вкл' : 'выкл'}
+                  </button>
+                </div>
                 <LevelBar vertical read={() => getTrackLevel(t.id)} />
-                <input
-                  type="range" min={0} max={1} step={0.05} value={t.volume}
-                  title="Громкость дорожки — та же ручка, что в карточке трека"
-                  onChange={(e) =>
-                    setPatch((p) => ({
-                      ...p,
-                      tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
-                    }))
-                  }
-                />
-                <span className="mini-info">{Math.round(t.volume * 100)}%</span>
-                <input
-                  type="range" min={0} max={1} step={0.05} value={t.pan}
-                  title={`Панорама дорожки — ${t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}`}
-                  onChange={(e) =>
-                    setPatch((p) => ({
-                      ...p,
-                      tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: Number(e.target.value) } : x)),
-                    }))
-                  }
-                />
-                <button
-                  className={t.enabled === false ? '' : 'on'}
-                  title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
-                  onClick={() =>
-                    setPatch((p) => ({
-                      ...p,
-                      tracks: p.tracks.map((x) =>
-                        x.id === t.id ? { ...x, enabled: x.enabled === false ? undefined : false } : x,
-                      ),
-                    }))
-                  }
-                >
-                  {t.enabled === false ? 'вкл' : 'выкл'}
-                </button>
               </div>
             ))}
             {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}

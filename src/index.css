@@ -483,7 +483,7 @@ header .master-vol input[type='range'] {
   background: var(--cell-bg);
   border: 1px solid var(--border);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
 }
 
@@ -1182,15 +1182,29 @@ button.danger:hover {
 
 .mix-block {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 108px;
-  max-width: 150px;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 116px;
+  max-width: 158px;
   flex: 0 0 auto;
   padding: 8px 10px;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.mix-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Тумбометр — вертикальная полоска у правого края блока */
+.mix-block .level-bar.vertical {
+  height: auto;
 }
 
 .mix-block .mix-name {
@@ -1228,7 +1242,7 @@ button.danger:hover {
 }
 
 .level-bar.vertical {
-  align-self: center;
+  align-self: stretch;
   width: 6px;
   height: 36px;
 }
@@ -1514,14 +1528,17 @@ button.danger:hover {
   width: 64px;
 }
 
-/* Длина ноты (gate): вертикальная полоска справа, высота = ×0.1–4 */
-.gbar {
+/* Длина ноты (gate): классический бар тянется поверх сетки свою длительность */
+.note-tail {
   position: absolute;
-  right: 2px;
-  top: 2px;
-  width: 3px;
+  left: 1px;
+  top: 20%;
+  height: 60%;
   border-radius: 2px;
-  background: var(--accent-2);
+  background: rgba(126, 200, 255, 0.32);
+  box-shadow: 0 0 0 1px rgba(126, 200, 255, 0.25) inset;
+  z-index: 3;
+  pointer-events: none;
 }
 
 /* Скрэтч-пэд */
