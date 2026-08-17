@@ -1099,7 +1099,6 @@ export default function App() {
 
       {showChain && (
         <div className="chain-panel">
-          <span className="scenes-label">цепочка — порядок и длины сцен</span>
           {patch.chain.map((it, i) => {
             const isPlaying =
               playing && patch.followChain && engine.currentChainPos === i;
