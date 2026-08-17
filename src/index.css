@@ -1419,6 +1419,50 @@ button.danger:hover {
   background: var(--border);
 }
 
+/* Мини-свитч режимов мутации */
+.rt-sw {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sw {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  padding: 0;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sw:hover {
+  border-color: var(--accent);
+}
+
+.sw-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.sw.on {
+  background: rgba(126, 200, 255, 0.15);
+  border-color: var(--accent-2);
+}
+
+.sw.on .sw-knob {
+  transform: translateX(12px);
+  background: var(--accent-2);
+}
+
 /* Синхронизация LFO с темпом */
 .sync-select {
   font-size: 11px;

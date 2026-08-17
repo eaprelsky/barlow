@@ -1696,20 +1696,28 @@ export const TrackRow = memo(function TrackRow({
           >
             мутировать
           </span>
-          <button
-            className={mutTime ? 'on' : ''}
-            onClick={() => setMutTime((v) => !v)}
-            title="Режим «время»: вкл/выкл нот, вероятность срабатывания, громкость"
-          >
-            время
-          </button>
-          <button
-            className={mutPitch ? 'on' : ''}
-            onClick={() => setMutPitch((v) => !v)}
-            title="Режим «тон»: высота отдельной ноты — случайная строка шкалы"
-          >
-            тон
-          </button>
+          <span className="rt-sw" title="Мутация времени: вкл/выкл нот, вероятность, громкость">
+            <button
+              className={'sw' + (mutTime ? ' on' : '')}
+              role="switch"
+              aria-checked={mutTime}
+              onClick={() => setMutTime((v) => !v)}
+            >
+              <span className="sw-knob" />
+            </button>
+            <span className="rt-label">время</span>
+          </span>
+          <span className="rt-sw" title="Мутация тона: высота отдельной ноты — случайная строка шкалы">
+            <button
+              className={'sw' + (mutPitch ? ' on' : '')}
+              role="switch"
+              aria-checked={mutPitch}
+              onClick={() => setMutPitch((v) => !v)}
+            >
+              <span className="sw-knob" />
+            </button>
+            <span className="rt-label">тон</span>
+          </span>
           <button
             className="mut"
             disabled={!mutTime && !mutPitch}
