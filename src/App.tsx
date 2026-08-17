@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine, stepIndexAt } from './audio/engine';
 import { euclid } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
-import { mutatePattern } from './music/mutate';
+import { mutatePattern, scatterHeights, type MutateModes } from './music/mutate';
 import { InstrumentBrowser } from './components/InstrumentBrowser';
 import type { InstrumentPreset } from './music/instrumentPresets';
 import {
@@ -558,6 +558,26 @@ export default function App() {
   );
 
   const mutate = useCallback(
+    (trackId: string, modes: MutateModes) => {
+      setPatchStep((p) => ({
+        ...p,
+        tracks: p.tracks.map((t) => {
+          if (t.id !== trackId) return t;
+          const scene = p.scenes.find((s) => s.id === sceneId);
+          const pattern = patternInScene(t, scene);
+          return {
+            ...t,
+            patterns: t.patterns.map((pt) =>
+              pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length, 3, modes) : pt,
+            ),
+          };
+        }),
+      }));
+    },
+    [sceneId],
+  );
+
+  const applyScatterHeights = useCallback(
     (trackId: string) => {
       setPatchStep((p) => ({
         ...p,
@@ -568,7 +588,7 @@ export default function App() {
           return {
             ...t,
             patterns: t.patterns.map((pt) =>
-              pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length) : pt,
+              pt.id === pattern.id ? scatterHeights(pt, scaleOf(t).length) : pt,
             ),
           };
         }),
@@ -1067,6 +1087,7 @@ export default function App() {
             onRemovePattern={removePattern}
             onEuclid={applyEuclid}
             onMutate={mutate}
+            onScatterHeights={applyScatterHeights}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
             onReorder={reorderTrack}

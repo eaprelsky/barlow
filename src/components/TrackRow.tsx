@@ -20,6 +20,7 @@ import {
   scaleOf,
 } from '../types';
 import { presetName } from '../music/scales';
+import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
@@ -90,7 +91,8 @@ interface Props {
   onForkPattern: (trackId: string, patternId: string) => void;
   onRemovePattern: (trackId: string, patternId: string) => void;
   onEuclid: (id: string, pulses: number) => void;
-  onMutate: (id: string) => void;
+  onMutate: (id: string, modes: MutateModes) => void;
+  onScatterHeights: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
@@ -124,6 +126,7 @@ export const TrackRow = memo(function TrackRow({
   onRemovePattern,
   onEuclid,
   onMutate,
+  onScatterHeights,
   onRemove,
   onDuplicate,
   onReorder,
@@ -140,6 +143,8 @@ export const TrackRow = memo(function TrackRow({
   genBusy,
 }: Props) {
   const [pulses, setPulses] = useState(3);
+  const [mutTime, setMutTime] = useState(true);
+  const [mutPitch, setMutPitch] = useState(true);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
   const [showInstruments, setShowInstruments] = useState(false);
@@ -888,23 +893,6 @@ export const TrackRow = memo(function TrackRow({
               <span className="pan-label">{panLabel(track.pan)}</span>
             </span>
           </label>
-          <label title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо">
-            раскидать нот
-            <span className="inline">
-              <NumField
-                value={pulses} min={0} max={pattern.length}
-                onChange={(n) => setPulses(Math.round(n))}
-              />
-              <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по циклу">равномерно</button>
-            </span>
-          </label>
-          <button
-            className="mut"
-            title="Случайно подвинуть пару нот активного эскиза: вкл/выкл, высоты, вероятность, громкость"
-            onClick={() => onMutate(track.id)}
-          >
-            мутировать
-          </button>
         </div>
         <div className="group ops">
           <button
@@ -1682,6 +1670,56 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
+      {showRoll && (
+        <div className="roll-tools">
+          <span
+            className="rt-label"
+            title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо"
+          >
+            раскидать нот
+          </span>
+          <NumField
+            value={pulses} min={0} max={pattern.length}
+            onChange={(n) => setPulses(Math.round(n))}
+          />
+          <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по времени (евклид)">равномерно</button>
+          <button
+            onClick={() => onScatterHeights(track.id)}
+            title="Перебросить высоты всех нот случайно по всей шкале: ритм, громкости, вероятности и длины остаются"
+          >
+            высоты случайно
+          </button>
+          <span className="rt-sep" />
+          <span
+            className="rt-label"
+            title="Что трогает мутация: время — вкл/выкл нот, вероятность, громкость; тон — высота отдельной ноты"
+          >
+            мутировать
+          </span>
+          <button
+            className={mutTime ? 'on' : ''}
+            onClick={() => setMutTime((v) => !v)}
+            title="Режим «время»: вкл/выкл нот, вероятность срабатывания, громкость"
+          >
+            время
+          </button>
+          <button
+            className={mutPitch ? 'on' : ''}
+            onClick={() => setMutPitch((v) => !v)}
+            title="Режим «тон»: высота отдельной ноты — случайная строка шкалы"
+          >
+            тон
+          </button>
+          <button
+            className="mut"
+            disabled={!mutTime && !mutPitch}
+            title="Пара случайных правок активного эскиза по выбранным режимам — поколечное развитие паттерна"
+            onClick={() => onMutate(track.id, { time: mutTime, pitch: mutPitch })}
+          >
+            мутировать
+          </button>
+        </div>
+      )}
       {showRoll && (
       <div className="roll" ref={rollRef}>
         <div className="roll-side">

@@ -1394,6 +1394,31 @@ button.danger:hover {
   flex: 1;
 }
 
+/* Тулбар нотного стана: раскидка нот и мутация — в контексте стана */
+.roll-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  margin-bottom: 6px;
+}
+
+.roll-tools .rt-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.roll-tools .rt-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 4px;
+  background: var(--border);
+}
+
 /* Синхронизация LFO с темпом */
 .sync-select {
   font-size: 11px;

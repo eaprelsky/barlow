@@ -3,6 +3,12 @@
 
 import type { Note, Pattern } from '../types';
 
+/** Что мутируем: время (вкл/выкл, вероятность, громкость) и/или тон (высота). */
+export interface MutateModes {
+  time: boolean;
+  pitch: boolean;
+}
+
 const randNote = (rows: number) => Math.floor(Math.random() * rows);
 
 function randomChord(rows: number): Note[] {
@@ -15,9 +21,18 @@ function randomChord(rows: number): Note[] {
   return notes;
 }
 
-export function mutatePattern(pattern: Pattern, rows: number, edits = 3): Pattern {
+export function mutatePattern(
+  pattern: Pattern,
+  rows: number,
+  edits = 3,
+  modes: MutateModes = { time: true, pitch: true },
+): Pattern {
+  const ops: string[] = [
+    ...(modes.time ? (['toggle', 'prob', 'vel'] as const) : []),
+    ...(modes.pitch ? (['height'] as const) : []),
+  ];
+  if (ops.length === 0) return pattern;
   const steps = pattern.steps.map((s) => ({ ...s, notes: s.notes.map((nt) => ({ ...nt })) }));
-  const ops = ['toggle', 'height', 'prob', 'vel'] as const;
   for (let i = 0; i < edits; i++) {
     const s = steps[Math.floor(Math.random() * steps.length)];
     if (!s) break;
@@ -49,4 +64,27 @@ export function mutatePattern(pattern: Pattern, rows: number, edits = 3): Patter
     }
   }
   return { ...pattern, steps };
+}
+
+/** Случайно перебросить высоты всех нот по шкале: ритм, громкости,
+ *  вероятности и длины нот остаются — меняется только тон. */
+export function scatterHeights(pattern: Pattern, rows: number): Pattern {
+  if (rows <= 1) return pattern;
+  return {
+    ...pattern,
+    steps: pattern.steps.map((s) => {
+      if (s.notes.length === 0) return s;
+      const used = new Set<number>();
+      return {
+        ...s,
+        notes: s.notes.map((nt) => {
+          let n = randNote(rows);
+          let guard = 0;
+          while (used.has(n) && guard++ < rows * 2) n = randNote(rows);
+          used.add(n);
+          return { ...nt, n };
+        }),
+      };
+    }),
+  };
 }
