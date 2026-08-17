@@ -19,10 +19,11 @@ import {
   makeStep,
   scaleOf,
 } from '../types';
-import { SCALE_PRESETS, presetName } from '../music/scales';
+import { presetName } from '../music/scales';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
+import { ScalePicker } from './ScalePicker';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { alertDialog } from './dialogs';
@@ -141,8 +142,6 @@ export const TrackRow = memo(function TrackRow({
   const [pulses, setPulses] = useState(3);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
-  const [customScale, setCustomScale] = useState('');
-  const [etSteps, setEtSteps] = useState(12);
   const [showInstruments, setShowInstruments] = useState(false);
 
   /** Сменить инструмент трека: тембр/огибающая/фильтры/эффекты — из пресета,
@@ -180,64 +179,14 @@ export const TrackRow = memo(function TrackRow({
     change(upd);
   };
 
-  /** Парсер своей шкалы: числа и дроби через запятую/пробел.
-   *  «1, 9/8, 5/4, 3/2, 7/4, 2» — готовая just intonation. */
-  const parseCustomScale = (text: string): number[] | null => {
-    const tokens = text.split(/[,\s]+/).filter(Boolean);
-    if (tokens.length === 0) return null;
-    const out: number[] = [];
-    for (const t of tokens) {
-      let v: number;
-      if (t.includes('/')) {
-        const [a, b] = t.split('/');
-        const num = Number(a);
-        const den = Number(b);
-        v = den > 0 && Number.isFinite(num) ? num / den : NaN;
-      } else {
-        v = Number(t);
-      }
-      if (!Number.isFinite(v) || v <= 0 || v > 16) return null;
-      out.push(v);
-    }
-    out.push(1); // тоника — всегда
-    const uniq = [...new Set(out.map((v) => +v.toFixed(6)))].sort((a, b) => a - b);
-    return uniq.length > 48 ? null : uniq;
-  };
+  /** Парсер своей шкалы живёт в music/scales (parseRatios) — используется
+   *  модалкой выбора шкалы вместе с N-ET и пресетами. */
 
-  const applyCustomScale = () => {
-    const ratios = parseCustomScale(customScale);
-    if (!ratios) {
-      void alertDialog(
-        'Не понял шкалу: числа или дроби (3/2) через запятую, каждое от 0 до 16, до 48 значений',
-        'своя шкала',
-      );
-      return;
-    }
-    change({
-      scale: ratios,
-      scaleOctUp: 0,
-      scaleOctDown: 0,
-      patterns: clampAllNotes(ratios.length - 1),
-    });
-  };
-
-  /** Равномерная темперация: N равных ступеней в октаве. 12 — полутоны,
-   *  24 — четвертитоны, 5 — слендро-подобная, 17/19/22/31 — микрохроматика. */
-  const applyEqualTemperament = () => {
-    const n = Math.round(etSteps);
-    if (n < 2 || n > 48) return;
-    const ratios = Array.from({ length: n + 1 }, (_, k) => +(2 ** (k / n)).toFixed(6));
-    change({
-      scale: ratios,
-      scaleOctUp: 0,
-      scaleOctDown: 0,
-      patterns: clampAllNotes(ratios.length - 1),
-    });
-  };
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [more, setMore] = useState(false);
   const [showRoll, setShowRoll] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
+  const [showScales, setShowScales] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
   const scratchRec = useRef<{ t0: number; pts: { dt: number; pos: number }[] } | null>(null);
   const [scratchArmed, setScratchArmed] = useState(false);
@@ -321,14 +270,14 @@ export const TrackRow = memo(function TrackRow({
       })),
     }));
 
-  const setScaleByName = (name: string) => {
-    const preset = SCALE_PRESETS.find((p) => p.name === name);
-    if (!preset) return; // «своя» — не меняем
+  /** Применить шкалу (пресет, N-ET или своя): сбрасывает октавные сдвиги
+   *  и клампит ноты всех эскизов под новую длину стана. */
+  const applyScale = (scale: number[]) => {
     change({
-      scale: preset.ratios,
+      scale,
       scaleOctUp: 0,
       scaleOctDown: 0,
-      patterns: clampAllNotes(preset.ratios.length - 1),
+      patterns: clampAllNotes(scale.length - 1),
     });
   };
 
@@ -911,17 +860,17 @@ export const TrackRow = memo(function TrackRow({
             title={
               track.waveform === 'sample'
                 ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-                : 'Набор высот нотного стана: пентатоники, семь ладов, чистые интервалы, слендро и пелог, равные ступени. Октавы — кнопками у стана'
+                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
             }
           >
             шкала
-            <select value={presetName(track.scale)} onChange={(e) => setScaleByName(e.target.value)}>
-              {[presetName(track.scale), ...SCALE_PRESETS.map((p) => p.name)]
-                .filter((n, i, arr) => arr.indexOf(n) === i)
-                .map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-            </select>
+            <button
+              className="scale-btn"
+              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
+              onClick={() => setShowScales(true)}
+            >
+              {presetName(track.scale)}
+            </button>
           </label>
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
@@ -1105,35 +1054,6 @@ export const TrackRow = memo(function TrackRow({
                   тоника, Гц
                   <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
                 </label>
-                <label
-                  className="custom-scale-label"
-                  title="Своя шкала: любые отношения частот — множители и дроби через запятую. Дроби дают чистые интервалы: 3/2 — квинта, 5/4 — большая терция"
-                >
-                  своя шкала
-                  <span className="inline">
-                    <input
-                      className="custom-scale-input"
-                      placeholder="напр. 1, 9/8, 5/4, 3/2, 7/4, 2"
-                      value={customScale}
-                      onChange={(e) => setCustomScale(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') applyCustomScale();
-                      }}
-                    />
-                    <button onClick={applyCustomScale} title="Применить (Enter тоже)">применить</button>
-                  </span>
-                </label>
-                <label
-                  className="custom-scale-label"
-                  title="Равномерно темперированная шкала: N равных ступеней в октаве. 12 — обычные полутоны, 24 — четвертитоны, 5 — как слендро, 17/19/22/31 — микрохроматика"
-                >
-                  равных ступеней
-                  <span className="inline">
-                    <NumField value={etSteps} min={2} max={48} onChange={(v) => setEtSteps(Math.round(v))} />
-                    <button onClick={applyEqualTemperament} title="Построить шкалу из N равных ступеней">построить</button>
-                  </span>
-                </label>
-                
               </>
             )}
           </div>
@@ -1924,6 +1844,14 @@ export const TrackRow = memo(function TrackRow({
             setShowInstruments(false);
           }}
           onClose={() => setShowInstruments(false)}
+        />
+      )}
+
+      {showScales && (
+        <ScalePicker
+          current={track.scale}
+          onPick={applyScale}
+          onClose={() => setShowScales(false)}
         />
       )}
 
