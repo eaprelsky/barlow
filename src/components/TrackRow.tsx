@@ -1386,6 +1386,9 @@ export const TrackRow = memo(function TrackRow({
           <div className="group mods-group">
             {effects.map((fx, i) => (
               <div className="mod-row" key={i}>
+                {/* Удаление — первым слева: крестики строк в одну колонку,
+                    ряды не выглядят лесенкой */}
+                <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
                 <select value={fx.type} title="Тип эффекта: фильтр → эффекты → панорама" onChange={(e) => setEffectType(i, e.target.value as Effect['type'])}>
                   {(Object.keys(EFFECT_LABELS) as Effect['type'][]).map((t) => (
                     <option key={t} value={t}>{EFFECT_LABELS[t]}</option>
@@ -1454,7 +1457,6 @@ export const TrackRow = memo(function TrackRow({
                   />
                   <i>{Math.round(fx.mix * 100)}%</i>
                 </span>
-                <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
               </div>
             ))}
             <button onClick={addEffect} title="Добавить эффект">+ эффект</button>
@@ -1464,6 +1466,7 @@ export const TrackRow = memo(function TrackRow({
           <div className="group mods-group">
             {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i}>
+                <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
                 <select
                   value={m.source ?? 'lfo'}
                   title="Источник: LFO — периодическая волна; ступени (S&H) — случайные значения с заданным темпом; перлин — плавные случайные холмы"
@@ -1529,7 +1532,6 @@ export const TrackRow = memo(function TrackRow({
                   />
                   <i>{Math.round(m.depth * 100)}%</i>
                 </span>
-                <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
               </div>
             ))}
             <button onClick={addMod} title="Добавить LFO">+ модуляция</button>

@@ -974,18 +974,15 @@ export default function App() {
 
       {showAi && (
         <div className="ai-panel">
-          <span className="scenes-label">настройки · ИИ-генерация</span>
-          <label title="Ключ хранится только в этом браузере (localStorage). Barlow — локальный инструмент; при публикации ключи должны уйти за прокси">
-            ключ {PROVIDERS.find((p) => p.id === ai.providerId)?.title}
+          <label title="Ключ хранится только в этом браузере (localStorage). Взять: elevenlabs.io → Profile → API Keys. Сэмпл-трек → «сгенерировать по описанию»">
+            ключ API к ElevenLabs
             <input
               type="password" className="ai-key-input"
-              placeholder="вставь API-ключ (elevenlabs.io → Profile → API Keys)"
+              placeholder="sk_…"
               value={ai.apiKey}
               onChange={(e) => saveAi({ apiKey: e.target.value })}
             />
           </label>
-          {ai.apiKey && <span className="ai-ok">ключ сохранён</span>}
-          <span className="hint">сэмпл-трек → «сгенерировать по описанию»</span>
         </div>
       )}
       <div className="scenes">
