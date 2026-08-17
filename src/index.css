@@ -654,6 +654,60 @@ input[type='range'] {
   color: var(--text-dim);
 }
 
+/* Футер: контекстная подсказка + кнопка шпаргалки */
+footer .footer-help {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+/* Модалка «?» — шпаргалка в две колонки + словарь */
+.help-modal {
+  max-width: 680px;
+}
+
+.help-cols {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.help-col {
+  flex: 1;
+  min-width: 260px;
+}
+
+.help-col h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.help-col ul,
+.help-dict {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.help-col li,
+.help-dict li {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.help-dict {
+  margin-top: -6px;
+}
+
+.help-term {
+  color: var(--accent-2);
+}
+
 footer {
   display: flex;
   justify-content: space-between;

@@ -99,6 +99,8 @@ interface Props {
     pulses: number,
   ) => void;
   onMutate: (id: string, modes: MutateModes, edits: number) => void;
+  /** Контекстная подсказка футера: null — вернуть строку по умолчанию. */
+  onHint: (text: string | null) => void;
   getLevel: (id: string) => number;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -133,6 +135,7 @@ export const TrackRow = memo(function TrackRow({
   onRemovePattern,
   onFillAxis,
   onMutate,
+  onHint,
   getLevel,
   onRemove,
   onDuplicate,
@@ -389,6 +392,22 @@ export const TrackRow = memo(function TrackRow({
   useEffect(() => {
     setSel(new Set());
   }, [pattern.id]);
+
+  // Контекстная подсказка футера: пока есть выделение — шпаргалка по нему.
+  // Гасим только свою (hintedRef), чтобы пустые строки чужих треков не
+  // затирали чужую подсказку.
+  const hintedRef = useRef(false);
+  const selHint = (n: number) =>
+    `выделено ${n} · Ctrl+C/V — копипаст · Ctrl+D — дубль · колесо — громкость, Shift — вероятность, Alt — длина · тянуть — перенос`;
+  useEffect(() => {
+    if (sel.size > 0) {
+      onHint(selHint(sel.size));
+      hintedRef.current = true;
+    } else if (hintedRef.current) {
+      onHint(null);
+      hintedRef.current = false;
+    }
+  }, [sel.size, pattern.id, onHint]);
 
   // Мини-карта волны сэмпла для скрэтч-пэда.
   useEffect(() => {
@@ -1794,6 +1813,10 @@ export const TrackRow = memo(function TrackRow({
                 ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
                 : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
             }
+            onMouseEnter={() =>
+              onHint('мировые строи — в пресетах выбора шкалы: гамелан, 22 шрути, макам · октавы — кнопками у стана')
+            }
+            onMouseLeave={() => onHint(hintedRef.current && sel.size > 0 ? selHint(sel.size) : null)}
           >
             шкала
             <button

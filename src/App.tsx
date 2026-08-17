@@ -177,6 +177,29 @@ export default function App() {
   const [showAi, setShowAi] = useState(false);
   const [showLib, setShowLib] = useState(false);
   const [showMix, setShowMix] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  // Контекстная подсказка футера: что происходит сейчас (выделение,
+  // наведение) — null показывает строку по умолчанию.
+  const [hint, setHint] = useState<string | null>(null);
+  const onHint = useCallback((text: string | null) => setHint(text), []);
+
+  // «?» — шпаргалка; Esc — закрыть. Проверки по e.key — символы,
+  // не зависящие от раскладки (?, Esc).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (e.key === 'Escape' && showHelp) {
+        setShowHelp(false);
+      } else if (e.key === '?' && !typing) {
+        e.preventDefault();
+        setShowHelp((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showHelp]);
   const [fileOpen, setFileOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
@@ -1094,6 +1117,7 @@ export default function App() {
             onRemovePattern={removePattern}
             onFillAxis={applyFillAxis}
             onMutate={mutate}
+            onHint={onHint}
             getLevel={getTrackLevel}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
@@ -1115,14 +1139,64 @@ export default function App() {
       </main>
 
       <footer>
-        <span>
-          клик по клетке — нота · столбик нот — аккорд · номер шага — громкость
-          и вероятность · рамка с пустой клетки — выделение нот · тянуть
-          выделенную — перенос · Ctrl+C/V — копипаст (и между треками) ·
-          Ctrl+D — дублировать выделение · Delete — стереть · правый клик
-          по эскизу — форк
+        <span title="Подсказка меняется по контексту: выделение, наведение">
+          {hint ?? 'клик по клетке — нота · рамка — выделение · ? — вся шпаргалка'}
         </span>
+        <button
+          className="footer-help"
+          onClick={() => setShowHelp(true)}
+          title="Шпаргалка жестов и словарь терминов"
+        >
+          ?
+        </button>
       </footer>
+
+      {showHelp && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowHelp(false);
+          }}
+        >
+          <div className="modal help-modal">
+            <h3>шпаргалка</h3>
+            <div className="help-cols">
+              <div className="help-col">
+                <h4>ноты и стан</h4>
+                <ul>
+                  <li>клик по клетке — нота · столбик — аккорд · правый клик — убрать</li>
+                  <li>рамка с пустой клетки — выделение · Shift-клик — добавить к выделению</li>
+                  <li>тянуть выделенное — перенос · колесо над нотой — громкость (Shift — вероятность, Alt — длина)</li>
+                  <li>тянуть правый край ноты — длительность</li>
+                  <li>клик по номеру шага — панель шага</li>
+                </ul>
+              </div>
+              <div className="help-col">
+                <h4>структура и правки</h4>
+                <ul>
+                  <li>правый клик по эскизу — форк: независимая копия</li>
+                  <li>Ctrl+C / V — копипаст нот (и между треками) · Ctrl+D — дубль выделения</li>
+                  <li>Delete — стереть выделенное · Esc — снять выделение</li>
+                  <li>Ctrl+Z / Ctrl+Shift+Z — отменить / вернуть</li>
+                </ul>
+              </div>
+            </div>
+            <h3>словарь</h3>
+            <ul className="help-dict">
+              <li><span className="help-term">партия</span> — какой эскиз трека играет в этой сцене</li>
+              <li><span className="help-term">эскиз</span> — вариация партии: свой рисунок нот, один на все сцены, где играет</li>
+              <li><span className="help-term">сцена</span> — снимок ансамбля: по партии на каждый трек</li>
+              <li><span className="help-term">цепочка</span> — порядок сцен и их длины: арранжмент от начала до конца</li>
+              <li><span className="help-term">стан</span> — нотная сетка: колонки-шаги × строки-высоты</li>
+              <li><span className="help-term">шкала</span> — набор высот стана: мировые строи, N-ET, свои дроби</li>
+            </ul>
+            <div className="modal-btns">
+              <span className="spacer" />
+              <button onClick={() => setShowHelp(false)}>закрыть</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showInstruments && (
         <InstrumentBrowser
