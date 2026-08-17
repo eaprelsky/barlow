@@ -1876,7 +1876,7 @@ export const TrackRow = memo(function TrackRow({
                               <span
                                 className="pbar"
                                 style={{
-                                  width: `max(3px, calc(${shown.toFixed(2)} * var(--pitch, 27px) * ${nt!.prob} - 6px))`,
+                                  width: `max(3px, calc(${shown.toFixed(2)} * var(--pitch, 27px) * ${nt!.prob} - 7px))`,
                                 }}
                               />
                               {nt!.prob < 0.995 && (
