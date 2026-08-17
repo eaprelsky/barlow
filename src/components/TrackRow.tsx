@@ -933,14 +933,23 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => setShowRoll((v) => !v)}
             title={showRoll ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
           >
-            {showRoll ? 'ноты ▴' : 'ноты ▾'}
+            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
+              <rect x="1.5" y="2" width="11.5" height="2.4" rx="1.2" fill="currentColor" />
+              <rect x="1.5" y="5.8" width="7" height="2.4" rx="1.2" fill="currentColor" />
+              <rect x="1.5" y="9.6" width="9.5" height="2.4" rx="1.2" fill="currentColor" />
+            </svg>
           </button>
           <button
             className={more ? 'on' : ''}
             onClick={() => setMore((m) => !m)}
-            title="Настройки звука дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
+            title="Звук дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
           >
-            {more ? 'звук ▴' : 'звук ▾'}
+            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
+              <rect x="1.5" y="5" width="2" height="4" rx="1" fill="currentColor" />
+              <rect x="5" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
+              <rect x="8.5" y="4" width="2" height="6" rx="1" fill="currentColor" />
+              <rect x="12" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
+            </svg>
           </button>
         </div>
       </div>
@@ -1846,14 +1855,14 @@ export const TrackRow = memo(function TrackRow({
                               <span
                                 className="note-bar"
                                 style={{
-                                  width: `${Math.round(shown * 100)}%`,
+                                  width: `calc(${shown.toFixed(2)} * var(--pitch, 27px) - 3px)`,
                                   opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
                                 }}
                               />
                               <span
                                 className="pbar"
                                 style={{
-                                  width: `max(3px, calc(${Math.max(8, Math.round(shown * nt!.prob * 100))}% - 3px))`,
+                                  width: `max(3px, calc(${shown.toFixed(2)} * var(--pitch, 27px) * ${nt!.prob} - 6px))`,
                                 }}
                               />
                               {nt!.prob < 0.995 && (

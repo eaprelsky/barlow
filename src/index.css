@@ -388,6 +388,8 @@ header .master-vol input[type='range'] {
 .group.ops > button {
   align-self: flex-end;
   margin-bottom: 1px;
+  padding: 3px 6px;
+  line-height: 0;
 }
 
 .remove {
@@ -477,6 +479,10 @@ header .master-vol input[type='range'] {
 
 .cell {
   width: 24px;
+  /* Шаг видимой сетки стана: клетка 24px + гэп 3px — бары нот
+     растягиваются в этих единицах, чтобы пенёк 1 шаг был ровно
+     в клетку, а хвосты — по видимым клеткам. */
+  --pitch: 27px;
   height: var(--cell, 18px);
   border-radius: 4px;
   padding: 0;
