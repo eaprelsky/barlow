@@ -146,6 +146,7 @@ export const TrackRow = memo(function TrackRow({
   genBusy,
 }: Props) {
   const [pulses, setPulses] = useState(3);
+  const [showFill, setShowFill] = useState(false);
   const [mutTime, setMutTime] = useState(true);
   const [mutPitch, setMutPitch] = useState(true);
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
@@ -362,12 +363,14 @@ export const TrackRow = memo(function TrackRow({
   const [box, setBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(null);
   const [ghost, setGhost] = useState<{ dc: number; dr: number } | null>(null);
   // Растяжение ноты за правый край бара: стартовая ширина в клетках.
+  // Если тянут выделенную ноту — гейт-дельту получают все выделенные.
   const grabRef = useRef<null | {
     col: number;
     row: number;
     pointerId: number;
     startX: number;
     startCells: number;
+    startGates: Map<string, number>;
   }>(null);
   const dragRef = useRef<null | {
     mode: 'pending' | 'box' | 'move';
@@ -836,36 +839,59 @@ export const TrackRow = memo(function TrackRow({
   };
 
   // ---- Растяжение ноты мышкой: тянуть за правый край бара — меняется гейт
-  // (длительность ×). Правка коалесцируется как слайдер: весь драг — один
-  // шаг undo. 27px = --pitch, видимая ширина клетки с гэпом.
+  // (длительность ×). Тянут выделенную — дельта применяется ко всему
+  // выделению (как Alt+колесо). Правка коалесцируется как слайдер: весь драг
+  // — один шаг undo. 27px = --pitch, видимая ширина клетки с гэпом.
   const PITCH_PX = 27;
   const grabDown = (e: ReactPointerEvent<HTMLSpanElement>, col: number, row: number) => {
     if (e.button !== 0 || e.shiftKey) return;
     e.stopPropagation(); // это не клик по клетке и не рамка выделения
     e.currentTarget.setPointerCapture(e.pointerId);
     clip.activeTrackId = track.id;
-    const gate = pattern.steps[col]?.notes.find((x) => x.n === row)?.gate ?? 1;
+    // Стартовые гейты всех затронутых нот: драг считает дельту от них,
+    // а не от текущих — иначе каждое движение наращивало бы их повторно.
+    const startGates = new Map<string, number>();
+    const key = `${col}:${row}`;
+    const keys = sel.has(key) ? [...sel] : [key];
+    for (const k of keys) {
+      const [c, n] = k.split(':').map(Number);
+      const g = pattern.steps[c]?.notes.find((x) => x.n === n)?.gate ?? 1;
+      startGates.set(k, g);
+    }
     grabRef.current = {
       col,
       row,
       pointerId: e.pointerId,
       startX: e.clientX,
-      startCells: noteCellsBase * gate,
+      startCells: noteCellsBase * (startGates.get(key) ?? 1),
+      startGates,
     };
   };
   const grabMove = (e: ReactPointerEvent<HTMLSpanElement>) => {
     const g = grabRef.current;
     if (!g || e.pointerId !== g.pointerId) return;
     const cells = g.startCells + (e.clientX - g.startX) / PITCH_PX;
-    const gate = Math.min(4, Math.max(0.1, Math.round((cells / noteCellsBase) * 10) / 10));
-    const cur = pattern.steps[g.col]?.notes.find((x) => x.n === g.row)?.gate ?? 1;
-    if (gate === cur) return;
+    const newGate = Math.min(4, Math.max(0.1, Math.round((cells / noteCellsBase) * 10) / 10));
+    const delta = newGate - (g.startGates.get(`${g.col}:${g.row}`) ?? 1);
+    // Раскладываем целевые гейты и проверяем, есть ли реальное изменение.
+    const targets = new Map<string, number>();
+    let dirty = false;
+    for (const [k, sg] of g.startGates) {
+      const [c, n] = k.split(':').map(Number);
+      const cur = pattern.steps[c]?.notes.find((x) => x.n === n)?.gate ?? 1;
+      const target = Math.min(4, Math.max(0.1, Math.round((sg + delta) * 10) / 10));
+      targets.set(k, target);
+      if (target !== cur) dirty = true;
+    }
+    if (!dirty) return;
     onPatternChange(track.id, pattern.id, {
-      steps: pattern.steps.map((s, j) =>
-        j !== g.col
-          ? s
-          : { ...s, notes: s.notes.map((x) => (x.n === g.row ? { ...x, gate } : x)) },
-      ),
+      steps: pattern.steps.map((s, j) => ({
+        ...s,
+        notes: s.notes.map((x) => {
+          const t = targets.get(`${j}:${x.n}`);
+          return t === undefined ? x : { ...x, gate: t };
+        }),
+      })),
     });
   };
   const grabUp = (e: ReactPointerEvent<HTMLSpanElement>) => {
@@ -931,10 +957,12 @@ export const TrackRow = memo(function TrackRow({
           </button>
         </div>
         <div className="group">
-          <label title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
+          {/* div, не label: label переносит :hover и клики на первый
+              вложенный контрол — чип M загорался при наведении на любой эскиз */}
+          <div className="lbl" title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
             эскизы
             {patternChips}
-          </label>
+          </div>
         </div>
         <div className="group">
           <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
@@ -1769,23 +1797,37 @@ export const TrackRow = memo(function TrackRow({
             </button>
           </label>
           <span className="rt-sep" />
-          <span
-            className="rt-label"
-            title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо"
-          >
-            раскидать нот
-          </span>
-          <NumField
-            value={pulses} min={0} max={pattern.length}
-            onChange={(n) => setPulses(Math.round(n))}
-          />
-          <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по времени (евклид)">равномерно</button>
+          {/* Заполнение стана прячется за одной кнопкой: сложность видно
+              только тому, кто её запросил */}
           <button
-            onClick={() => onScatterHeights(track.id)}
-            title="Перебросить высоты всех нот случайно по всей шкале: ритм, громкости, вероятности и длины остаются"
+            className={showFill ? 'on' : ''}
+            title="Заполнение нотного стана: евклидово раскладывание нот и случайные высоты"
+            onClick={() => setShowFill((v) => !v)}
           >
-            высоты случайно
+            заполнить
           </button>
+          {showFill && (
+            <span className="fill-tools">
+              <span
+                className="rt-label"
+                title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо"
+              >
+                раскидать нот
+              </span>
+              <NumField
+                narrow
+                value={pulses} min={0} max={pattern.length}
+                onChange={(n) => setPulses(Math.round(n))}
+              />
+              <button onClick={() => onEuclid(track.id, pulses)} title="Расставить ноты равномерно по времени (евклид)">равномерно</button>
+              <button
+                onClick={() => onScatterHeights(track.id)}
+                title="Перебросить высоты всех нот случайно по всей шкале: ритм, громкости, вероятности и длины остаются"
+              >
+                высоты случайно
+              </button>
+            </span>
+          )}
           <span className="rt-sep" />
           <span
             className="rt-label"
