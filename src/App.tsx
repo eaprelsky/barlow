@@ -755,11 +755,15 @@ export default function App() {
         >
           {playing ? '■' : '▶'}
         </button>
-        <label title="Темп в ударах в минуту. Изменение на ходу пока запрещено — смените на стопе">
+        <label title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
           темп
           <NumField
-            value={patch.bpm} min={30} max={300} disabled={playing}
-            onChange={(bpm) => setPatch((p) => ({ ...p, bpm: Math.round(bpm) }))}
+            value={patch.bpm} min={30} max={300}
+            onChange={(bpm) => {
+              const v = Math.round(bpm);
+              if (engine.playing) engine.setBpm(v);
+              setPatch((p) => ({ ...p, bpm: v }));
+            }}
           />
         </label>
         <label
@@ -802,6 +806,16 @@ export default function App() {
             <circle cx="7.5" cy="7.5" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
           </svg>
         </button>
+        <button
+          className={showHelp ? 'on help-btn' : 'help-btn'}
+          onClick={() => setShowHelp(true)}
+          title="Шпаргалка жестов и словарь терминов"
+        >
+          ?
+        </button>
+        {/* Перенос строки: название пьесы и всё после него — вторым рядом.
+            Правый верхний угол остаётся за частыми действиями. */}
+        <span className="hdr-break" />
         <input
           className="title-input"
           value={patch.title ?? ''}
@@ -889,13 +903,6 @@ export default function App() {
         >
           цепочка
         </button>
-        <button
-          className={showHelp ? 'on help-btn' : 'help-btn'}
-          onClick={() => setShowHelp(true)}
-          title="Шпаргалка жестов и словарь терминов"
-        >
-          ?
-        </button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -916,70 +923,79 @@ export default function App() {
         <div className="mix-panel">
           <span className="scenes-label">микшер — громкости и выключатели дорожек</span>
           <div className="mix-rack">
-            <div className="mix-master">
-              <span className="scenes-label">мастер</span>
-              <label
-                title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче (спад -3 дБ/октаву), белый — свежее шипение. Идёт после лимитера — компрессия его не качает"
-              >
-                шум
-                <select
-                  value={patch.masterNoise ?? 'off'}
-                  onChange={(e) =>
-                    setPatch((pp) => ({ ...pp, masterNoise: e.target.value as Patch['masterNoise'] }))
-                  }
-                >
-                  <option value="off">—</option>
-                  <option value="white">белый</option>
-                  <option value="pink">розовый</option>
-                </select>
-              </label>
-              {(patch.masterNoise ?? 'off') !== 'off' && (
-                <label title="Уровень шума, в процентах с десятыми: 0.2–0.5% — дышащий воздух, 1–3% — лёгкая лента, дальше — винил и плёнка">
-                  <NumField
-                    value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
-                    min={0} max={15} step={0.1}
-                    onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
-                  />
-                  %
+            <div className="mix-block master">
+              <div className="mix-main">
+                <span className="mix-name">мастер</span>
+                <label title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает">
+                  шум
+                  <select
+                    value={patch.masterNoise ?? 'off'}
+                    onChange={(e) =>
+                      setPatch((pp) => ({ ...pp, masterNoise: e.target.value as Patch['masterNoise'] }))
+                    }
+                  >
+                    <option value="off">—</option>
+                    <option value="white">белый</option>
+                    <option value="pink">розовый</option>
+                  </select>
                 </label>
-              )}
-              <label
-                title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Пики перестают выпрыгивать, звук собирается в кулак"
-              >
-                компрессия
-                <NumField
-                  value={Math.round((patch.masterComp ?? 0) * 100)}
-                  min={0} max={100} step={5}
-                  onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
-                />
-                %
-              </label>
+                {(patch.masterNoise ?? 'off') !== 'off' && (
+                  <label title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка">
+                    уровень
+                    <NumField
+                      narrow
+                      value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
+                      min={0} max={15} step={0.1}
+                      onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
+                    />
+                  </label>
+                )}
+                <label title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется)">
+                  компрессия
+                  <NumField
+                    narrow
+                    value={Math.round((patch.masterComp ?? 0) * 100)}
+                    min={0} max={100} step={5}
+                    onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
+                  />
+                </label>
+              </div>
             </div>
             {patch.tracks.map((t) => (
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
                 <div className="mix-main">
                   <span className="mix-name" title={t.name}>{t.name}</span>
-                  <input
-                    type="range" min={0} max={1} step={0.05} value={t.volume}
-                    title="Громкость дорожки — та же ручка, что в карточке трека"
-                    onChange={(e) =>
-                      setPatch((p) => ({
-                        ...p,
-                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
-                      }))
-                    }
-                  />
-                  <span className="mini-info">{Math.round(t.volume * 100)}%</span>
-                  <input
-                    type="range" min={0} max={1} step={0.05} value={t.pan}
+                  <label className="mix-ctl" title="Громкость дорожки — та же ручка, что в карточке трека">
+                    громкость
+                    <input
+                      type="range" min={0} max={1} step={0.05} value={t.volume}
+                      onChange={(e) =>
+                        setPatch((p) => ({
+                          ...p,
+                          tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
+                        }))
+                      }
+                    />
+                    <i>{Math.round(t.volume * 100)}%</i>
+                  </label>
+                  <label
+                    className="mix-ctl"
                     title={`Панорама дорожки — ${t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}`}
-                    onChange={(e) =>
-                      setPatch((p) => ({
-                        ...p,
-                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: Number(e.target.value) } : x)),
-                      }))
-                    }
-                  />
+                  >
+                    пан
+                    <input
+                      type="range" min={0} max={1} step={0.05} value={t.pan}
+                      onChange={(e) =>
+                        setPatch((p) => ({
+                          ...p,
+                          tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: Number(e.target.value) } : x)),
+                        }))
+                      }
+                    />
+                    <i>
+                      {t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}
+                    </i>
+                  </label>
                   <button
                     className={t.enabled === false ? '' : 'on'}
                     title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"

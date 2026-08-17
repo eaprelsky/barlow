@@ -557,6 +557,36 @@ export class AudioEngine implements AudioBackend {
     );
   }
 
+  /** Смена темпа на ходу: часы треков пере-якорятся — позиция шага
+   *  сохраняется, дальше играем новым темпом. Границы сцен и тактов
+   *  масштабируются той же пропорцией, playhead не прыгает. */
+  setBpm(bpm: number): void {
+    const patch = this.patch;
+    if (!patch || !this.ctx) return;
+    const old = patch.bpm;
+    if (bpm === old || !Number.isFinite(bpm) || bpm <= 0) return;
+    const now = this.ctx.currentTime;
+    const ratio = tickDuration(bpm) / tickDuration(old);
+    const stretch = (t: number) => now + (t - now) * ratio;
+    // Якорь тактов (nextBarTime) и граница сцены едут той же пропорцией.
+    this.startAt = stretch(this.startAt);
+    if (this.sceneAdvanceTime !== null) this.sceneAdvanceTime = stretch(this.sceneAdvanceTime);
+    for (const [id, clock] of this.clocks) {
+      const track = patch.tracks.find((t) => t.id === id);
+      if (!track) continue;
+      const pattern = patternInScene(track, this.scene());
+      if (!pattern) continue;
+      // Дробная позиция в шагах с момента сброса — сохраняем её точно,
+      // формула playhead остаётся непрерывной через новый якорь.
+      const oldStepDur = stepDuration(track, old, pattern);
+      const posFrac = Math.max(0, (now - clock.resetTime) / oldStepDur);
+      const newStepDur = oldStepDur * ratio;
+      clock.resetTime = now - posFrac * newStepDur;
+      clock.nextStepTime = Math.max(stretch(clock.nextStepTime), now + 0.01);
+    }
+    this.patch = { ...patch, bpm };
+  }
+
   /** Вход в режим цепочки / выход из него на ходу. */
   setFollowChain(on: boolean): void {
     if (!this.playing || !this.patch || !this.ctx) return;

@@ -24,6 +24,8 @@ export interface AudioBackend {
   setScene(id: string): void;
   /** Вход в режим цепочки / выход из него на ходу. */
   setFollowChain(on: boolean): void;
+  /** Смена темпа на ходу: часы пере-якорятся, позиция не сбивается. */
+  setBpm(bpm: number): void;
 
   /** Часы трека (resetTime нужен playhead'у). */
   clockOf(trackId: string): TrackClock | undefined;

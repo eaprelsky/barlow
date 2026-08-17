@@ -656,26 +656,56 @@ input[type='range'] {
   color: var(--text-dim);
 }
 
-/* Микшер: полоса мастера (шум, компрессия) над рэком дорожек */
-.mix-master {
+/* Микшер: плитка мастера — в рэке с дорожками, не шире их */
+.mix-block.master {
+  min-width: 128px;
+  max-width: 158px;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+.mix-block.master .mix-main label {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 6px 10px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.mix-master .scenes-label {
+  gap: 6px;
   font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
-/* Футер убран (шпаргалка — в модалке «?»); классы оставлены на случай возврата */
-footer .footer-help {
-  padding: 2px 10px;
-  font-size: 12px;
+.mix-block.master select {
+  width: 64px;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+/* Ручка плитки дорожки: подпись + ползунок + значение в одну строку */
+.mix-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.mix-ctl input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.mix-ctl i {
+  font-style: normal;
+  font-size: 10px;
+  min-width: 30px;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+/* Шапка: перенос после настроек/справки — название пьесы и действия
+   второй строкой; правый верхний угол за частыми элементами */
+.hdr-break {
+  flex-basis: 100%;
+  height: 0;
 }
 
 /* Кнопка «?» в шапке */
