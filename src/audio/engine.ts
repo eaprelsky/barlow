@@ -393,8 +393,11 @@ export class AudioEngine implements AudioBackend {
     } else {
       this.sceneAdvanceTime = null;
     }
-    this.applyMasterFx(patch);
+    // Таймер — до applyMasterFx: слой шума создаётся только «пока играем»
+    // (getter playing смотрит на таймер). Раньше шум не начинался на play,
+    // а включался при первой правке патча — например, смене темпа.
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
+    this.applyMasterFx(patch);
     this.scheduler();
   }
 

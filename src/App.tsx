@@ -792,6 +792,9 @@ export default function App() {
               ? `R${Math.round(((patch.masterPan ?? 0.5) - 0.5) * 200)}`
               : 'центр'}
         </label>
+        {/* Правый угол первой строки — настройки и справка; частые
+            действия уедут на вторую строку за переносом */}
+        <span className="spacer" />
         <button
           className={showAi ? 'on hdr-icon' : 'hdr-icon'}
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
@@ -926,8 +929,8 @@ export default function App() {
             <div className="mix-block master">
               <div className="mix-main">
                 <span className="mix-name">мастер</span>
-                <label title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает">
-                  шум
+                <label className="mix-ctl" title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает. Играет, пока играет транспорт">
+                  <span className="mc-cap">шум</span>
                   <select
                     value={patch.masterNoise ?? 'off'}
                     onChange={(e) =>
@@ -940,20 +943,18 @@ export default function App() {
                   </select>
                 </label>
                 {(patch.masterNoise ?? 'off') !== 'off' && (
-                  <label title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка">
-                    уровень
+                  <label className="mix-ctl" title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка">
+                    <span className="mc-cap">уровень</span>
                     <NumField
-                      narrow
                       value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
                       min={0} max={15} step={0.1}
                       onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
                     />
                   </label>
                 )}
-                <label title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется)">
-                  компрессия
+                <label className="mix-ctl" title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется)">
+                  <span className="mc-cap">компрессия</span>
                   <NumField
-                    narrow
                     value={Math.round((patch.masterComp ?? 0) * 100)}
                     min={0} max={100} step={5}
                     onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
@@ -966,7 +967,7 @@ export default function App() {
                 <div className="mix-main">
                   <span className="mix-name" title={t.name}>{t.name}</span>
                   <label className="mix-ctl" title="Громкость дорожки — та же ручка, что в карточке трека">
-                    громкость
+                    <span className="mc-cap">громкость<i>{Math.round(t.volume * 100)}%</i></span>
                     <input
                       type="range" min={0} max={1} step={0.05} value={t.volume}
                       onChange={(e) =>
@@ -976,13 +977,17 @@ export default function App() {
                         }))
                       }
                     />
-                    <i>{Math.round(t.volume * 100)}%</i>
                   </label>
                   <label
                     className="mix-ctl"
                     title={`Панорама дорожки — ${t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}`}
                   >
-                    пан
+                    <span className="mc-cap">
+                      пан
+                      <i>
+                        {t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}
+                      </i>
+                    </span>
                     <input
                       type="range" min={0} max={1} step={0.05} value={t.pan}
                       onChange={(e) =>
@@ -992,9 +997,6 @@ export default function App() {
                         }))
                       }
                     />
-                    <i>
-                      {t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}
-                    </i>
                   </label>
                   <button
                     className={t.enabled === false ? '' : 'on'}

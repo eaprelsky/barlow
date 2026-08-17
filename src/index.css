@@ -656,49 +656,46 @@ input[type='range'] {
   color: var(--text-dim);
 }
 
-/* Микшер: плитка мастера — в рэке с дорожками, не шире их */
+/* Микшер: плитка мастера — шире дорожечных, ручки подписью сверху */
 .mix-block.master {
-  min-width: 128px;
-  max-width: 158px;
+  min-width: 200px;
+  max-width: 240px;
   flex: 0 0 auto;
   align-items: stretch;
 }
 
-.mix-block.master .mix-main label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.mix-block.master .mix-main select {
+  width: 100%;
   font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
 }
 
-.mix-block.master select {
-  width: 64px;
-  font-size: 11px;
-  padding: 2px 4px;
+.mix-block.master .mix-main input[type='number'] {
+  width: 100%;
 }
 
-/* Ручка плитки дорожки: подпись + ползунок + значение в одну строку */
+/* Ручка плитки: подпись и значение строкой над контролом во всю ширину */
 .mix-ctl {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-cap {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   font-size: 10px;
+  color: var(--text-dim);
+}
+
+.mc-cap i {
+  font-style: normal;
   color: var(--text-dim);
 }
 
 .mix-ctl input[type='range'] {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-}
-
-.mix-ctl i {
-  font-style: normal;
-  font-size: 10px;
-  min-width: 30px;
-  text-align: right;
-  color: var(--text-dim);
 }
 
 /* Шапка: перенос после настроек/справки — название пьесы и действия
