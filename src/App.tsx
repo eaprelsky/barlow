@@ -924,7 +924,6 @@ export default function App() {
 
       {showMix && (
         <div className="mix-panel">
-          <span className="scenes-label">микшер — громкости и выключатели дорожек</span>
           <div className="mix-rack">
             <div className="mix-block master">
               <div className="mix-main">
