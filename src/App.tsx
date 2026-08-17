@@ -944,20 +944,26 @@ export default function App() {
                 </label>
                 {(patch.masterNoise ?? 'off') !== 'off' && (
                   <label className="mix-ctl" title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка">
-                    <span className="mc-cap">уровень</span>
-                    <NumField
+                    <span className="mc-cap">
+                      уровень
+                      <i>{(Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10).toFixed(1)}%</i>
+                    </span>
+                    <input
+                      type="range" min={0} max={15} step={0.1}
                       value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
-                      min={0} max={15} step={0.1}
-                      onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
+                      onChange={(e) => setPatch((pp) => ({ ...pp, masterNoiseLevel: Number(e.target.value) / 100 }))}
                     />
                   </label>
                 )}
                 <label className="mix-ctl" title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется)">
-                  <span className="mc-cap">компрессия</span>
-                  <NumField
+                  <span className="mc-cap">
+                    компрессия
+                    <i>{Math.round((patch.masterComp ?? 0) * 100)}%</i>
+                  </span>
+                  <input
+                    type="range" min={0} max={100} step={5}
                     value={Math.round((patch.masterComp ?? 0) * 100)}
-                    min={0} max={100} step={5}
-                    onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
+                    onChange={(e) => setPatch((pp) => ({ ...pp, masterComp: Number(e.target.value) / 100 }))}
                   />
                 </label>
               </div>

@@ -669,20 +669,20 @@ input[type='range'] {
   font-size: 11px;
 }
 
-.mix-block.master .mix-main input[type='number'] {
-  width: 100%;
-}
-
-/* Ручка плитки: подпись и значение строкой над контролом во всю ширину */
+/* Ручка плитки: подпись и значение строкой над контролом во всю ширину.
+   align-items обязателен: глобальный label{align-items:center} иначе
+   сжимает подпись по контенту — значение прилипает к буквам */
 .mix-ctl {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 2px;
 }
 
 .mc-cap {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   align-items: baseline;
   font-size: 10px;
   color: var(--text-dim);
