@@ -293,7 +293,9 @@ header .master-vol input[type='range'] {
   min-width: 42px;
 }
 
-.mods-group {
+/* Вкладки эффектов/модуляций — колонка от левого края. Специфичность
+   выше .group (его align-items: flex-end перебивал, кнопка «+» уезжала вправо) */
+.group.mods-group {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
@@ -654,10 +656,32 @@ input[type='range'] {
   color: var(--text-dim);
 }
 
-/* Футер: контекстная подсказка + кнопка шпаргалки */
+/* Микшер: полоса мастера (шум, компрессия) над рэком дорожек */
+.mix-master {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mix-master .scenes-label {
+  font-size: 11px;
+}
+
+/* Футер убран (шпаргалка — в модалке «?»); классы оставлены на случай возврата */
 footer .footer-help {
   padding: 2px 10px;
   font-size: 12px;
+}
+
+/* Кнопка «?» в шапке */
+.help-btn {
+  padding: 4px 10px;
+  font-size: 13px;
 }
 
 /* Модалка «?» — шпаргалка в две колонки + словарь */
@@ -1141,10 +1165,12 @@ header button.on {
   padding-right: 26px;
 }
 
-/* …кроме коротких селектов долей (шаг, шаг эскиза) */
+/* …кроме коротких селектов долей (шаг, шаг эскиза). Высота — как у полей:
+   селект на 1.8px ниже, из-за выравнивания по низу подпись «шаг» уезжала */
 .group select.rate-sel {
   min-width: 0;
   width: 84px;
+  height: 26.8px;
 }
 
 /* Короткие числовые поля: длина цикла (макс 64), десятые процента */

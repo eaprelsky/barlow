@@ -408,6 +408,19 @@ export class AudioEngine implements AudioBackend {
     this.lastVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
+    // Хвосты (эхо, реверб) не доигрывают в тишине после стопа: мастер
+    // плавно гасится, цепочки разбираются — на следующем play scheduler
+    // соберёт их заново.
+    if (this.ctx && this.master) {
+      const t = this.ctx.currentTime;
+      this.master.setVolume(0, t);
+      window.setTimeout(() => {
+        if (this.playing) return; // успели нажать play — не трогаем
+        for (const chain of this.chains.values()) disposeChain(chain);
+        this.chains.clear();
+        this.meters.clear();
+      }, 120);
+    }
   }
 
   // ---- Ручной скрэтч-пэд: игла под мышью, вне планировщика ----

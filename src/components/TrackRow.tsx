@@ -100,8 +100,6 @@ interface Props {
     pulses: number,
   ) => void;
   onMutate: (id: string, modes: MutateModes, edits: number) => void;
-  /** Контекстная подсказка футера: null — вернуть строку по умолчанию. */
-  onHint: (text: string | null) => void;
   getLevel: (id: string) => number;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -136,7 +134,6 @@ export const TrackRow = memo(function TrackRow({
   onRemovePattern,
   onFillAxis,
   onMutate,
-  onHint,
   getLevel,
   onRemove,
   onDuplicate,
@@ -154,6 +151,9 @@ export const TrackRow = memo(function TrackRow({
   genBusy,
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
+  // Громкость/пан: двойной клик по подписи — точное число вместо ползунка.
+  const [volField, setVolField] = useState(false);
+  const [panField, setPanField] = useState(false);
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
@@ -388,22 +388,6 @@ export const TrackRow = memo(function TrackRow({
   useEffect(() => {
     setSel(new Set());
   }, [pattern.id]);
-
-  // Контекстная подсказка футера: пока есть выделение — шпаргалка по нему.
-  // Гасим только свою (hintedRef), чтобы пустые строки чужих треков не
-  // затирали чужую подсказку.
-  const hintedRef = useRef(false);
-  const selHint = (n: number) =>
-    `выделено ${n} · Ctrl+C/V — копипаст · Ctrl+D — дубль · колесо — громкость, Shift — вероятность, Alt — длина · тянуть — перенос`;
-  useEffect(() => {
-    if (sel.size > 0) {
-      onHint(selHint(sel.size));
-      hintedRef.current = true;
-    } else if (hintedRef.current) {
-      onHint(null);
-      hintedRef.current = false;
-    }
-  }, [sel.size, pattern.id, onHint]);
 
   // Мини-карта волны сэмпла для скрэтч-пэда.
   useEffect(() => {
@@ -983,27 +967,51 @@ export const TrackRow = memo(function TrackRow({
               <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
             </span>
           </label>
-          <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
+          <label
+            title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр». Двойной клик по подписи — точное число вместо ползунка"
+            onDoubleClick={() => setVolField((v) => !v)}
+          >
             громкость
-            <span className="inline">
-              <input
-                type="range" min={0} max={1} step={0.05} value={track.volume}
-                onChange={(e) => change({ volume: Number(e.target.value) })}
-              />
-              <span className="pan-label">{Math.round(track.volume * 100)}%</span>
-            </span>
+            {volField ? (
+              <span className="inline">
+                <NumField
+                  value={Math.round(track.volume * 100)} min={0} max={100}
+                  onChange={(v) => change({ volume: v / 100 })}
+                />
+                <span className="pan-label">%</span>
+              </span>
+            ) : (
+              <span className="inline">
+                <input
+                  type="range" min={0} max={1} step={0.05} value={track.volume}
+                  onChange={(e) => change({ volume: Number(e.target.value) })}
+                />
+                <span className="pan-label">{Math.round(track.volume * 100)}%</span>
+              </span>
+            )}
           </label>
           <label
-            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг"
+            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг. Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
+            onDoubleClick={() => setPanField((v) => !v)}
           >
             пан
-            <span className="inline">
-              <input
-                type="range" min={0} max={1} step={0.05} value={track.pan}
-                onChange={(e) => change({ pan: Number(e.target.value) })}
-              />
-              <span className="pan-label">{panLabel(track.pan)}</span>
-            </span>
+            {panField ? (
+              <span className="inline">
+                <NumField
+                  value={Math.round(track.pan * 100)} min={0} max={100}
+                  onChange={(v) => change({ pan: v / 100 })}
+                />
+                <span className="pan-label">{panLabel(track.pan)}</span>
+              </span>
+            ) : (
+              <span className="inline">
+                <input
+                  type="range" min={0} max={1} step={0.05} value={track.pan}
+                  onChange={(e) => change({ pan: Number(e.target.value) })}
+                />
+                <span className="pan-label">{panLabel(track.pan)}</span>
+              </span>
+            )}
           </label>
         </div>
       </div>
@@ -1764,8 +1772,6 @@ export const TrackRow = memo(function TrackRow({
         <RollTools
           track={track}
           pattern={pattern}
-          selHint={sel.size > 0 ? selHint(sel.size) : null}
-          onHint={onHint}
           onFillAxis={onFillAxis}
           onMutate={onMutate}
           onPatternCommand={onPatternCommand}

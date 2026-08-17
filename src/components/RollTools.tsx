@@ -11,9 +11,6 @@ import { NumField } from './NumField';
 interface Props {
   track: Track;
   pattern: Pattern;
-  /** Текущая подсказка выделения (null — нет): шкала возвращает её после ховера. */
-  selHint: string | null;
-  onHint: (text: string | null) => void;
   onFillAxis: (
     id: string,
     axis: 'time' | 'height',
@@ -28,8 +25,6 @@ interface Props {
 export function RollTools({
   track,
   pattern,
-  selHint,
-  onHint,
   onFillAxis,
   onMutate,
   onPatternCommand,
@@ -51,10 +46,6 @@ export function RollTools({
             ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
             : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
         }
-        onMouseEnter={() =>
-          onHint('мировые строи — в пресетах выбора шкалы: гамелан, 22 шрути, макам · октавы — кнопками у стана')
-        }
-        onMouseLeave={() => onHint(selHint)}
       >
         шкала
         <button

@@ -180,10 +180,6 @@ export default function App() {
   const [showLib, setShowLib] = useState(false);
   const [showMix, setShowMix] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  // Контекстная подсказка футера: что происходит сейчас (выделение,
-  // наведение) — null показывает строку по умолчанию.
-  const [hint, setHint] = useState<string | null>(null);
-  const onHint = useCallback((text: string | null) => setHint(text), []);
 
   // «?» — шпаргалка; Esc — закрыть. Проверки по e.key — символы,
   // не зависящие от раскладки (?, Esc).
@@ -792,43 +788,6 @@ export default function App() {
               ? `R${Math.round(((patch.masterPan ?? 0.5) - 0.5) * 200)}`
               : 'центр'}
         </label>
-        <label
-          title="Фоновый шум мастера: лента и воздух поверх всего. Розовый — мягче (спад -3 дБ/октаву), белый — свежее шипение. Идёт после лимитера — компрессия его не качает"
-        >
-          шум
-          <select
-            value={patch.masterNoise ?? 'off'}
-            onChange={(e) =>
-              setPatch((pp) => ({ ...pp, masterNoise: e.target.value as Patch['masterNoise'] }))
-            }
-          >
-            <option value="off">—</option>
-            <option value="white">белый</option>
-            <option value="pink">розовый</option>
-          </select>
-        </label>
-        {(patch.masterNoise ?? 'off') !== 'off' && (
-          <label title="Уровень шума, в процентах с десятыми: 0.2–0.5% — дышащий воздух, 1–3% — лёгкая лента, дальше — винил и плёнка">
-            <NumField
-              narrow
-              value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
-              min={0} max={15} step={0.1}
-              onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
-            />
-            %
-          </label>
-        )}
-        <label
-          title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Пики перестают выпрыгивать, звук собирается в кулак"
-        >
-          компрессия
-          <NumField
-            value={Math.round((patch.masterComp ?? 0) * 100)}
-            min={0} max={100} step={5}
-            onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
-          />
-          %
-        </label>
         <button
           className={showAi ? 'on hdr-icon' : 'hdr-icon'}
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
@@ -930,6 +889,13 @@ export default function App() {
         >
           цепочка
         </button>
+        <button
+          className={showHelp ? 'on help-btn' : 'help-btn'}
+          onClick={() => setShowHelp(true)}
+          title="Шпаргалка жестов и словарь терминов"
+        >
+          ?
+        </button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -950,6 +916,45 @@ export default function App() {
         <div className="mix-panel">
           <span className="scenes-label">микшер — громкости и выключатели дорожек</span>
           <div className="mix-rack">
+            <div className="mix-master">
+              <span className="scenes-label">мастер</span>
+              <label
+                title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче (спад -3 дБ/октаву), белый — свежее шипение. Идёт после лимитера — компрессия его не качает"
+              >
+                шум
+                <select
+                  value={patch.masterNoise ?? 'off'}
+                  onChange={(e) =>
+                    setPatch((pp) => ({ ...pp, masterNoise: e.target.value as Patch['masterNoise'] }))
+                  }
+                >
+                  <option value="off">—</option>
+                  <option value="white">белый</option>
+                  <option value="pink">розовый</option>
+                </select>
+              </label>
+              {(patch.masterNoise ?? 'off') !== 'off' && (
+                <label title="Уровень шума, в процентах с десятыми: 0.2–0.5% — дышащий воздух, 1–3% — лёгкая лента, дальше — винил и плёнка">
+                  <NumField
+                    value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
+                    min={0} max={15} step={0.1}
+                    onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
+                  />
+                  %
+                </label>
+              )}
+              <label
+                title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Пики перестают выпрыгивать, звук собирается в кулак"
+              >
+                компрессия
+                <NumField
+                  value={Math.round((patch.masterComp ?? 0) * 100)}
+                  min={0} max={100} step={5}
+                  onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
+                />
+                %
+              </label>
+            </div>
             {patch.tracks.map((t) => (
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
                 <div className="mix-main">
@@ -1119,7 +1124,6 @@ export default function App() {
             onRemovePattern={removePattern}
             onFillAxis={applyFillAxis}
             onMutate={mutate}
-            onHint={onHint}
             getLevel={getTrackLevel}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
@@ -1139,19 +1143,6 @@ export default function App() {
         ))}
         {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
       </main>
-
-      <footer>
-        <span title="Подсказка меняется по контексту: выделение, наведение">
-          {hint ?? 'клик по клетке — нота · рамка — выделение · ? — вся шпаргалка'}
-        </span>
-        <button
-          className="footer-help"
-          onClick={() => setShowHelp(true)}
-          title="Шпаргалка жестов и словарь терминов"
-        >
-          ?
-        </button>
-      </footer>
 
       {showHelp && (
         <div

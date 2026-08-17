@@ -100,12 +100,22 @@ export interface Pattern {
   muted?: boolean;
 }
 
-export type ModTarget = 'pan' | 'volume' | 'filterFreq';
+export type ModTarget =
+  | 'pan'
+  | 'volume'
+  | 'filterFreq'
+  // Цели эффектов — действуют на первый эффект в списке трека.
+  | 'fxMix'
+  | 'fxTime'
+  | 'fxFeedback';
 
 export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
   pan: 'панорама',
   volume: 'громкость',
   filterFreq: 'фильтр',
+  fxMix: 'глубина эффекта',
+  fxTime: 'время эха',
+  fxFeedback: 'повторы эха',
 };
 
 /** Вставной эффект трека (после фильтра, до панорамы). */
