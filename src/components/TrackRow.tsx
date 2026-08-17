@@ -1812,11 +1812,7 @@ export const TrackRow = memo(function TrackRow({
                           : '',
                         ghost && sel.has(`${col - ghost.dc}:${i - ghost.dr}`) ? 'ghost' : '',
                       ].join(' ')}
-                      style={
-                        on
-                          ? { opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel) }
-                          : undefined
-                      }
+                      style={undefined}
                       title={
                         on
                           ? `${(track.freq * ratio).toFixed(1)} Гц${chord ? ` · аккорд из ${s.notes.length} нот` : ''} · громкость ${Math.round(nt!.vel * 100)}% · вероятность ${Math.round(nt!.prob * 100)}%${Math.abs((nt!.gate ?? 1) - 1) > 1e-6 ? ` · длина ×${(nt!.gate ?? 1).toFixed(1)}` : ''}\nклик по другой строке — добавить ноту (аккорд) · правый клик — убрать ноту`
@@ -1836,23 +1832,26 @@ export const TrackRow = memo(function TrackRow({
                         else clearCell(col);
                       }}
                     >
-                      {on && nt!.prob < 1 && (
-                        <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
-                      )}
                       {on &&
                         (() => {
-                          // Классика нотного стана: бар тянется настоящую
-                          // длительность ноты — в клетках, поверх сетки.
+                          // Нота — это бар: растянут на истинную длительность
+                          // (сетка/огибающая × гейт), поверх сетки. Ретриггер
+                          // рисуется позже по DOM — виден поверх хвоста.
                           const cells = noteCellsBase * (nt!.gate ?? 1);
-                          if (Math.abs(cells - 1) <= 0.05) return null;
-                          const shown = Math.max(0.08, Math.min(cells, pattern.length - col));
+                          const shown = Math.max(0.12, Math.min(cells, pattern.length - col));
                           return (
                             <span
-                              className="note-tail"
-                              style={{ width: `${Math.round(shown * 100)}%` }}
+                              className="note-bar"
+                              style={{
+                                width: `${Math.round(shown * 100)}%`,
+                                opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
+                              }}
                             />
                           );
                         })()}
+                      {on && nt!.prob < 1 && (
+                        <span className="pbar" style={{ width: `${Math.round(nt!.prob * 100)}%` }} />
+                      )}
                     </button>
                   );
                 })}
