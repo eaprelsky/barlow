@@ -18,6 +18,7 @@ import {
 } from './types';
 import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
+import { LevelBar } from './components/LevelBar';
 import { NumField } from './components/NumField';
 import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
@@ -597,6 +598,9 @@ export default function App() {
     [sceneId],
   );
 
+  // Живой уровень дорожки для тумбометров (карточка трека и микшер).
+  const getTrackLevel = useCallback((id: string) => engine.trackLevel(id), [engine]);
+
   const saveAi = useCallback((next: Partial<AiSettings>) => {
     setAi((prev) => {
       const merged = { ...prev, ...next };
@@ -921,6 +925,7 @@ export default function App() {
             {patch.tracks.map((t) => (
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
                 <span className="mix-name" title={t.name}>{t.name}</span>
+                <LevelBar vertical read={() => getTrackLevel(t.id)} />
                 <input
                   type="range" min={0} max={1} step={0.05} value={t.volume}
                   title="Громкость дорожки — та же ручка, что в карточке трека"
@@ -1088,6 +1093,7 @@ export default function App() {
             onEuclid={applyEuclid}
             onMutate={mutate}
             onScatterHeights={applyScatterHeights}
+            getLevel={getTrackLevel}
             onRemove={removeTrack}
             onDuplicate={duplicateTrack}
             onReorder={reorderTrack}

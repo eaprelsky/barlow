@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type {
   Effect,
@@ -25,6 +25,7 @@ import { instrumentNameOf } from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
 import { ScalePicker } from './ScalePicker';
+import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { alertDialog } from './dialogs';
@@ -93,6 +94,7 @@ interface Props {
   onEuclid: (id: string, pulses: number) => void;
   onMutate: (id: string, modes: MutateModes) => void;
   onScatterHeights: (id: string) => void;
+  getLevel: (id: string) => number;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
@@ -127,6 +129,7 @@ export const TrackRow = memo(function TrackRow({
   onEuclid,
   onMutate,
   onScatterHeights,
+  getLevel,
   onRemove,
   onDuplicate,
   onReorder,
@@ -145,6 +148,7 @@ export const TrackRow = memo(function TrackRow({
   const [pulses, setPulses] = useState(3);
   const [mutTime, setMutTime] = useState(true);
   const [mutPitch, setMutPitch] = useState(true);
+  const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
   const [showInstruments, setShowInstruments] = useState(false);
@@ -789,6 +793,7 @@ export const TrackRow = memo(function TrackRow({
           />
           <span className="mini-info">{pattern.length} шагов</span>
         </div>
+        <LevelBar className="track-level" read={readLevel} />
       </div>
     );
   }
@@ -879,7 +884,13 @@ export const TrackRow = memo(function TrackRow({
           </label>
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
-            <NumField value={track.volume} min={0} max={1} step={0.05} onChange={(volume) => change({ volume })} />
+            <span className="inline">
+              <input
+                type="range" min={0} max={1} step={0.05} value={track.volume}
+                onChange={(e) => change({ volume: Number(e.target.value) })}
+              />
+              <span className="pan-label">{Math.round(track.volume * 100)}%</span>
+            </span>
           </label>
           <label
             title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг"
@@ -902,8 +913,12 @@ export const TrackRow = memo(function TrackRow({
           >
             {showRoll ? 'ноты ▴' : 'ноты ▾'}
           </button>
-          <button className="more-btn" onClick={() => setMore((m) => !m)}>
-            {more ? 'меньше ▴' : 'ещё ▾'}
+          <button
+            className={more ? 'on' : ''}
+            onClick={() => setMore((m) => !m)}
+            title="Настройки звука дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
+          >
+            {more ? 'звук ▴' : 'звук ▾'}
           </button>
         </div>
       </div>
@@ -1900,6 +1915,8 @@ export const TrackRow = memo(function TrackRow({
           onClose={() => setShowScales(false)}
         />
       )}
+
+      <LevelBar className="track-level" read={readLevel} />
 
       {showPicker && (
         <SamplePicker

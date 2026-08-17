@@ -168,11 +168,6 @@ header .master-vol input[type='range'] {
   padding: 2px 8px;
 }
 
-.more-btn {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
 .more-row {
   margin-top: 10px;
   padding: 8px 10px;
@@ -383,6 +378,11 @@ header .master-vol input[type='range'] {
 
 .group.ops {
   align-items: center;
+  /* Швартовка: «ноты»/«звук» всегда в правом верхнем углу карточки —
+     переносы строк их не двигают. Отступ справа расчищает место под
+     иконки дублирования/удаления трека. */
+  margin-left: auto;
+  margin-right: 72px;
 }
 
 .group.ops > button {
@@ -1207,6 +1207,45 @@ button.danger:hover {
 
 .mix-block.off .mix-name {
   color: var(--text-dim);
+}
+
+/* Тумбометры живого уровня дорожки */
+.level-bar {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(126, 200, 255, 0.08);
+}
+
+.level-bar .level-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--accent-2);
+  transform: scaleX(0);
+  transform-origin: left;
+  will-change: transform;
+}
+
+.level-bar.vertical {
+  align-self: center;
+  width: 6px;
+  height: 36px;
+}
+
+.level-bar.vertical .level-fill {
+  transform: scaleY(0);
+  transform-origin: bottom;
+}
+
+/* Полоска в карточке трека — по нижней кромке, от свёрнутого до полного вида */
+.track-level {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0 0 8px 8px;
 }
 
 .mix-block button.on {

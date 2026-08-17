@@ -81,6 +81,8 @@ interface TrackChain {
   // Гейт сайдчейна: живёт отдельно от gain, чтобы качаться поверх
   // эффективной громкости эскиза.
   duck: GainNode;
+  // Тумбометр: ответвление от duck, читается trackLevel для UI.
+  meter: AnalyserNode;
   mods: ModNodes[];
   fx: FxNodes[];
   // Сигнатура набора модуляций и эффектов: изменилась — цепочка пересобирается.
@@ -429,6 +431,11 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
   panner.connect(gain);
   gain.connect(duck);
   duck.connect(dest);
+  // Тумбометр — тупиковое ответвление: анализатору не нужен выход,
+  // он читает поток на проход.
+  const meter = ctx.createAnalyser();
+  meter.fftSize = 512;
+  duck.connect(meter);
 
   // Эффекты: фильтры → (dry|wet каждого эффекта) → панорама.
   const fx: FxNodes[] = [];
@@ -506,6 +513,7 @@ function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackC
     panner,
     gain,
     duck,
+    meter,
     mods,
     fx,
     modSig: `${modsSigOf(track.mods)}|${fxSigOf(track.effects ?? [])}`,
@@ -543,6 +551,7 @@ function disposeChain(chain: TrackChain): void {
   chain.panner.disconnect();
   chain.gain.disconnect();
   chain.duck.disconnect();
+  chain.meter.disconnect();
 }
 
 /** Мастер: громкость → компрессия (плотность 0..1) → мягкий tanh-лимитер.
@@ -1116,6 +1125,8 @@ export class AudioEngine {
   private noiseKind = '';
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
+  // Баллистика тумбометров: пик кадра с мгновенной атакой и плавным спадом.
+  private meters = new Map<string, { buf: Float32Array<ArrayBuffer>; level: number }>();
   private clocks = new Map<string, TrackClock>();
   private timer: number | null = null;
   private patch: Patch | null = null;
@@ -1247,9 +1258,30 @@ export class AudioEngine {
         disposeChain(chain);
         this.chains.delete(id);
         this.clocks.delete(id);
+        this.meters.delete(id);
         this.lastVoices.delete(id);
       }
     }
+  }
+
+  /** Живой уровень дорожки 0..1 для индикации: пик с мгновенной атакой
+   *  и экспоненциальным спадом. Вызывается из rAF — должно быть дёшево. */
+  trackLevel(trackId: string): number {
+    const chain = this.chains.get(trackId);
+    if (!chain || !this.ctx) return 0;
+    let st = this.meters.get(trackId);
+    if (!st) {
+      st = { buf: new Float32Array(chain.meter.fftSize), level: 0 };
+      this.meters.set(trackId, st);
+    }
+    chain.meter.getFloatTimeDomainData(st.buf);
+    let peak = 0;
+    for (let i = 0; i < st.buf.length; i++) {
+      const v = Math.abs(st.buf[i]);
+      if (v > peak) peak = v;
+    }
+    st.level = peak > st.level ? peak : st.level * 0.86 + peak * 0.14;
+    return st.level > 1 ? 1 : st.level;
   }
 
   private duckLastVoice(trackId: string, t: number): void {
