@@ -1594,6 +1594,19 @@ button.danger:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Ось заполнения: подпись + кнопки действий, срабатывают по клику */
+.fill-axis {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fill-axis > button {
+  padding: 3px 8px;
+  font-size: 11px;
 }
 
 .roll-tools > button.on {

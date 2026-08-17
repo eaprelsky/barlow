@@ -529,13 +529,15 @@ export default function App() {
     });
   }, []);
 
-  /** Заполнение стана по включённым осям: время — N нот по шагам
-   *  (равномерно-евклид или случайно), высота — лестница или случайные
-   *  строки. Оси складываются: время задаёт рисунок, высота — тона. */
-  const applyFill = useCallback(
+  /** Заполнение одной оси стана — клик по кнопке оси применяет её сразу,
+   *  оси независимы и компонуются: время (равномерно/случайно N нот),
+   *  тон (лестница/случайно/одна высота ×1). */
+  const applyFillAxis = useCallback(
     (
       trackId: string,
-      o: { time: boolean; height: boolean; mode: 'even' | 'random'; pulses: number },
+      axis: 'time' | 'height',
+      mode: 'even' | 'random' | 'ladder' | 'one',
+      pulses: number,
     ) => {
       setPatchStep((p) => ({
         ...p,
@@ -544,29 +546,28 @@ export default function App() {
           const scene = p.scenes.find((s) => s.id === sceneId);
           const pattern = patternInScene(t, scene);
           const rows = scaleOf(t).length;
-          let next = pattern;
-          if (o.time) {
+          let steps = pattern.steps;
+          if (axis === 'time') {
             const mask =
-              o.mode === 'even'
-                ? euclid(pattern.length, o.pulses)
-                : randomMask(pattern.length, o.pulses);
-            next = {
-              ...next,
-              steps: next.steps.map((s, i) => ({
-                ...s,
-                // одна нота на колонку: «раскидать N нот» даёт ровно N
-                // (аккорды в занятых колонках подрезаются)
-                notes: mask[i] ? [s.notes[0] ?? makeNote(0)] : [],
-              })),
-            };
+              mode === 'even'
+                ? euclid(pattern.length, pulses)
+                : randomMask(pattern.length, pulses);
+            steps = steps.map((s, i) => ({
+              ...s,
+              // одна нота на колонку: «раскидать N нот» даёт ровно N
+              notes: mask[i] ? [s.notes[0] ?? makeNote(0)] : [],
+            }));
+          } else if (mode === 'one') {
+            // Полоска на уровне ×1 (тоника шкалы); нет точной единицы — низ стана
+            const n = Math.max(0, scaleOf(t).findIndex((r) => Math.abs(r - 1) < 1e-6));
+            steps = steps.map((s) => ({ ...s, notes: s.notes.map((nt) => ({ ...nt, n })) }));
+          } else {
+            const next = mode === 'ladder' ? spreadHeights(pattern, rows) : scatterHeights(pattern, rows);
+            steps = next.steps;
           }
-          if (o.height) {
-            next = o.mode === 'even' ? spreadHeights(next, rows) : scatterHeights(next, rows);
-          }
-          if (next === pattern) return t;
           return {
             ...t,
-            patterns: t.patterns.map((pt) => (pt.id === pattern.id ? next : pt)),
+            patterns: t.patterns.map((pt) => (pt.id === pattern.id ? { ...pt, steps } : pt)),
           };
         }),
       }));
@@ -575,7 +576,7 @@ export default function App() {
   );
 
   const mutate = useCallback(
-    (trackId: string, modes: MutateModes) => {
+    (trackId: string, modes: MutateModes, edits: number) => {
       setPatchStep((p) => ({
         ...p,
         tracks: p.tracks.map((t) => {
@@ -585,7 +586,7 @@ export default function App() {
           return {
             ...t,
             patterns: t.patterns.map((pt) =>
-              pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length, 3, modes) : pt,
+              pt.id === pattern.id ? mutatePattern(pt, scaleOf(t).length, edits, modes) : pt,
             ),
           };
         }),
@@ -1091,7 +1092,7 @@ export default function App() {
             onAddPattern={addPattern}
             onForkPattern={forkPattern}
             onRemovePattern={removePattern}
-            onFill={applyFill}
+            onFillAxis={applyFillAxis}
             onMutate={mutate}
             getLevel={getTrackLevel}
             onRemove={removeTrack}

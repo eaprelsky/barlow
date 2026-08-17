@@ -91,13 +91,14 @@ interface Props {
   onAddPattern: (trackId: string) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
   onRemovePattern: (trackId: string, patternId: string) => void;
-  /** Заполнение стана по осям: время — N нот (равномерно/случайно),
-   *  высота — лестница/случайные строки. */
-  onFill: (
+  /** Заполнение одной оси стана; клик по кнопке оси применяет её сразу. */
+  onFillAxis: (
     id: string,
-    o: { time: boolean; height: boolean; mode: 'even' | 'random'; pulses: number },
+    axis: 'time' | 'height',
+    mode: 'even' | 'random' | 'ladder' | 'one',
+    pulses: number,
   ) => void;
-  onMutate: (id: string, modes: MutateModes) => void;
+  onMutate: (id: string, modes: MutateModes, edits: number) => void;
   getLevel: (id: string) => number;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -130,7 +131,7 @@ export const TrackRow = memo(function TrackRow({
   onAddPattern,
   onForkPattern,
   onRemovePattern,
-  onFill,
+  onFillAxis,
   onMutate,
   getLevel,
   onRemove,
@@ -150,10 +151,10 @@ export const TrackRow = memo(function TrackRow({
 }: Props) {
   const [pulses, setPulses] = useState(3);
   const [showFill, setShowFill] = useState(false);
-  // Оси генерации: общие для заполнения (равномерно/случайно) и мутации —
-  // мутирование это тоже заполнение, только щепоткой правок.
-  const [fillTime, setFillTime] = useState(true);
-  const [fillHeights, setFillHeights] = useState(false);
+  // Мутация: что правит (оси) и сколько правок за клик (уровень).
+  const [mutTime, setMutTime] = useState(true);
+  const [mutPitch, setMutPitch] = useState(true);
+  const [mutEdits, setMutEdits] = useState(3);
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
@@ -1804,18 +1805,14 @@ export const TrackRow = memo(function TrackRow({
             </button>
           </label>
           <span className="rt-sep" />
-          {/* Генерация стана — за одной иконкой: сложность видна только
-              тому, кто её запросил. Оси время/высота общие для заполнения
-              и мутации: мутировать — то же заполнение, но щепоткой правок. */}
+          {/* Генерация стана за одной кнопкой. Оси независимы: клик по
+              кнопке оси применяет только её — время и тон компонуются. */}
           <button
-            className={showFill ? 'on ib' : 'ib'}
-            title="Заполнение и развитие стана: оси время/высота, равномерно/случайно, мутация, очистка"
-            aria-label="заполнить"
+            className={showFill ? 'on' : ''}
+            title="Заполнение стана: время и тон по кнопкам, мутация с уровнем, очистка"
             onClick={() => setShowFill((v) => !v)}
           >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <path d="M7.5 1.5 8.9 6.1 13.5 7.5 8.9 8.9 7.5 13.5 6.1 8.9 1.5 7.5 6.1 6.1Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-            </svg>
+            заполнить
           </button>
           {showFill && (
             <span className="fill-tools">
@@ -1827,81 +1824,91 @@ export const TrackRow = memo(function TrackRow({
                 value={pulses} min={0} max={pattern.length}
                 onChange={(n) => setPulses(Math.round(n))}
               />
-              <span className="rt-sw" title="Ось времени: раскидать N нот по шагам цикла либо подвинуть ритм мутацией">
+              <span className="fill-axis">
+                <span className="rt-label" title="Клик сразу применяет ось времени">время</span>
                 <button
-                  className={'sw' + (fillTime ? ' on' : '')}
-                  role="switch"
-                  aria-checked={fillTime}
-                  onClick={() => setFillTime((v) => !v)}
+                  title="Евклидово раскладывание N нот: максимально равномерно, 3 по 8 — тресильо"
+                  onClick={() => onFillAxis(track.id, 'time', 'even', pulses)}
                 >
-                  <span className="sw-knob" />
+                  равномерно
                 </button>
-                <span className="rt-label">время</span>
-              </span>
-              <span className="rt-sw" title="Ось высоты: расставить тона по строкам шкалы либо подвинуть мутацией">
                 <button
-                  className={'sw' + (fillHeights ? ' on' : '')}
-                  role="switch"
-                  aria-checked={fillHeights}
-                  onClick={() => setFillHeights((v) => !v)}
+                  title="N нот по случайным шагам цикла — то же количество, без равномерности"
+                  onClick={() => onFillAxis(track.id, 'time', 'random', pulses)}
                 >
-                  <span className="sw-knob" />
+                  случайно
                 </button>
-                <span className="rt-label">высота</span>
               </span>
+              <span className="fill-axis">
+                <span className="rt-label" title="Клик сразу применяет ось тона к текущим нотам">тон</span>
+                <button
+                  title="Ровная лестница по строкам шкалы: слева направо, от низа к верху"
+                  onClick={() => onFillAxis(track.id, 'height', 'ladder', pulses)}
+                >
+                  лестница
+                </button>
+                <button
+                  title="Случайные строки шкалы: ритм, громкости и длины не трогаются"
+                  onClick={() => onFillAxis(track.id, 'height', 'random', pulses)}
+                >
+                  случайно
+                </button>
+                <button
+                  title="Все ноты на одну высоту ×1 (тоника шкалы) — сплошная полоска, как у баса или бочки"
+                  onClick={() => onFillAxis(track.id, 'height', 'one', pulses)}
+                >
+                  ×1
+                </button>
+              </span>
+              <span className="rt-sep" />
+              <span className="fill-axis">
+                <span className="rt-label" title="Что мутирует: щепотка случайных правок по включённым осям">мутировать</span>
+                <span className="rt-sw" title="Мутация времени: вкл/выкл нот, вероятность, громкость">
+                  <button
+                    className={'sw' + (mutTime ? ' on' : '')}
+                    role="switch"
+                    aria-checked={mutTime}
+                    onClick={() => setMutTime((v) => !v)}
+                  >
+                    <span className="sw-knob" />
+                  </button>
+                  <span className="rt-label">время</span>
+                </span>
+                <span className="rt-sw" title="Мутация тона: высота отдельной ноты">
+                  <button
+                    className={'sw' + (mutPitch ? ' on' : '')}
+                    role="switch"
+                    aria-checked={mutPitch}
+                    onClick={() => setMutPitch((v) => !v)}
+                  >
+                    <span className="sw-knob" />
+                  </button>
+                  <span className="rt-label">тон</span>
+                </span>
+                <span className="rt-label" title="Сколько случайных правок за один клик — уровень мутации">правок</span>
+                <NumField
+                  narrow
+                  value={mutEdits} min={1} max={32}
+                  onChange={(n) => setMutEdits(Math.round(n))}
+                />
+                <button
+                  disabled={!mutTime && !mutPitch}
+                  title="Случайные правки по включённым осям: слушай — мутируй — оставляй или снова мутируй"
+                  onClick={() => onMutate(track.id, { time: mutTime, pitch: mutPitch }, mutEdits)}
+                >
+                  мутировать
+                </button>
+              </span>
+              <span className="rt-sep" />
               <button
-                className="ib"
-                disabled={!fillTime && !fillHeights}
-                title="Равномерно: время — евклидово раскладывание N нот (3 по 8 — тресильо); высота — ровная лестница по строкам шкалы"
-                aria-label="равномерно"
-                onClick={() => onFill(track.id, { time: fillTime, height: fillHeights, mode: 'even', pulses })}
-              >
-                <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-                  <path d="M1.5 11.5h12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  <circle cx="3" cy="5" r="1.6" fill="currentColor" />
-                  <circle cx="7.5" cy="5" r="1.6" fill="currentColor" />
-                  <circle cx="12" cy="5" r="1.6" fill="currentColor" />
-                </svg>
-              </button>
-              <button
-                className="ib"
-                disabled={!fillTime && !fillHeights}
-                title="Случайно: время — N нот по случайным шагам цикла; высота — случайные строки шкалы. Ритм и тона не смешиваются: каждая ось своя"
-                aria-label="случайно"
-                onClick={() => onFill(track.id, { time: fillTime, height: fillHeights, mode: 'random', pulses })}
-              >
-                <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-                  <rect x="2" y="1.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                  <circle cx="5.4" cy="4.9" r="1.1" fill="currentColor" />
-                  <circle cx="9.6" cy="4.9" r="1.1" fill="currentColor" />
-                  <circle cx="5.4" cy="9.1" r="1.1" fill="currentColor" />
-                  <circle cx="9.6" cy="9.1" r="1.1" fill="currentColor" />
-                </svg>
-              </button>
-              <button
-                className="ib"
-                disabled={!fillTime && !fillHeights}
-                title="Мутировать: пара случайных правок по включённым осям — время: вкл/выкл нот, вероятность, громкость; высота: тон отдельной ноты. Поколечное развитие паттерна"
-                aria-label="мутировать"
-                onClick={() => onMutate(track.id, { time: fillTime, pitch: fillHeights })}
-              >
-                <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-                  <path d="M4 12.5V1.5M4 5.5l6-3M4 8.5l6 3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
-              </button>
-              <button
-                className="ib"
                 title="Очистить стан этого эскиза: убрать все ноты (undo вернёт)"
-                aria-label="очистить"
                 onClick={() =>
                   onPatternCommand(track.id, pattern.id, {
                     steps: pattern.steps.map((s) => ({ ...s, notes: [] })),
                   })
                 }
               >
-                <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
-                  <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
+                очистить
               </button>
             </span>
           )}
