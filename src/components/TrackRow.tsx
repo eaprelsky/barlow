@@ -361,6 +361,14 @@ export const TrackRow = memo(function TrackRow({
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [box, setBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(null);
   const [ghost, setGhost] = useState<{ dc: number; dr: number } | null>(null);
+  // Растяжение ноты за правый край бара: стартовая ширина в клетках.
+  const grabRef = useRef<null | {
+    col: number;
+    row: number;
+    pointerId: number;
+    startX: number;
+    startCells: number;
+  }>(null);
   const dragRef = useRef<null | {
     mode: 'pending' | 'box' | 'move';
     col: number;
@@ -715,7 +723,11 @@ export const TrackRow = memo(function TrackRow({
         return (
           <button
             key={pt.id}
-            className={pt.id === pattern.id ? 'chip on' : 'chip'}
+            className={
+              'chip' +
+              (pt.id === pattern.id ? ' on' : '') +
+              (pattern.muted ? ' dim' : '')
+            }
             title={
               (pt.forkedFrom
                 ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
@@ -823,6 +835,43 @@ export const TrackRow = memo(function TrackRow({
     return false;
   };
 
+  // ---- Растяжение ноты мышкой: тянуть за правый край бара — меняется гейт
+  // (длительность ×). Правка коалесцируется как слайдер: весь драг — один
+  // шаг undo. 27px = --pitch, видимая ширина клетки с гэпом.
+  const PITCH_PX = 27;
+  const grabDown = (e: ReactPointerEvent<HTMLSpanElement>, col: number, row: number) => {
+    if (e.button !== 0 || e.shiftKey) return;
+    e.stopPropagation(); // это не клик по клетке и не рамка выделения
+    e.currentTarget.setPointerCapture(e.pointerId);
+    clip.activeTrackId = track.id;
+    const gate = pattern.steps[col]?.notes.find((x) => x.n === row)?.gate ?? 1;
+    grabRef.current = {
+      col,
+      row,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startCells: noteCellsBase * gate,
+    };
+  };
+  const grabMove = (e: ReactPointerEvent<HTMLSpanElement>) => {
+    const g = grabRef.current;
+    if (!g || e.pointerId !== g.pointerId) return;
+    const cells = g.startCells + (e.clientX - g.startX) / PITCH_PX;
+    const gate = Math.min(4, Math.max(0.1, Math.round((cells / noteCellsBase) * 10) / 10));
+    const cur = pattern.steps[g.col]?.notes.find((x) => x.n === g.row)?.gate ?? 1;
+    if (gate === cur) return;
+    onPatternChange(track.id, pattern.id, {
+      steps: pattern.steps.map((s, j) =>
+        j !== g.col
+          ? s
+          : { ...s, notes: s.notes.map((x) => (x.n === g.row ? { ...x, gate } : x)) },
+      ),
+    });
+  };
+  const grabUp = (e: ReactPointerEvent<HTMLSpanElement>) => {
+    if (grabRef.current?.pointerId === e.pointerId) grabRef.current = null;
+  };
+
   return (
     <div
       className={
@@ -889,8 +938,25 @@ export const TrackRow = memo(function TrackRow({
         </div>
         <div className="group">
           <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
-            длина, шагов
-            <NumField value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+            длина
+            <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+          </label>
+          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия">
+            шаг
+            <select
+              className="rate-sel"
+              value={RATE_OPTIONS.some((o) => o.v === track.rate) ? String(track.rate) : 'custom'}
+              onChange={(e) => {
+                if (e.target.value !== 'custom') change({ rate: Number(e.target.value) });
+              }}
+            >
+              {RATE_OPTIONS.map((o) => (
+                <option key={o.v} value={String(o.v)}>{o.label}</option>
+              ))}
+              {!RATE_OPTIONS.some((o) => o.v === track.rate) && (
+                <option value="custom">своя ×{track.rate}</option>
+              )}
+            </select>
           </label>
           <label
             title={
@@ -907,22 +973,6 @@ export const TrackRow = memo(function TrackRow({
               />
               <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
             </span>
-          </label>
-          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия">
-            шаг
-            <select
-              value={RATE_OPTIONS.some((o) => o.v === track.rate) ? String(track.rate) : 'custom'}
-              onChange={(e) => {
-                if (e.target.value !== 'custom') change({ rate: Number(e.target.value) });
-              }}
-            >
-              {RATE_OPTIONS.map((o) => (
-                <option key={o.v} value={String(o.v)}>{o.label}</option>
-              ))}
-              {!RATE_OPTIONS.some((o) => o.v === track.rate) && (
-                <option value="custom">своя ×{track.rate}</option>
-              )}
-            </select>
           </label>
           <label title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр»">
             громкость
@@ -1264,6 +1314,7 @@ export const TrackRow = memo(function TrackRow({
               шаг эскиза
               <span className="inline">
                 <select
+                  className="rate-sel"
                   value={
                     RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
                       ? String(pattern.rate ?? track.rate)
@@ -1700,6 +1751,24 @@ export const TrackRow = memo(function TrackRow({
 
       {showRoll && (
         <div className="roll-tools">
+          <label
+            className="rt-scale"
+            title={
+              track.waveform === 'sample'
+                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
+                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
+            }
+          >
+            шкала
+            <button
+              className="scale-btn"
+              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
+              onClick={() => setShowScales(true)}
+            >
+              {presetName(track.scale)}
+            </button>
+          </label>
+          <span className="rt-sep" />
           <span
             className="rt-label"
             title="Евклидов ритм: ноты раскладываются максимально равномерно по циклу. Например, 3 ноты по 8 шагов — знаменитый тресильо"
@@ -1754,24 +1823,6 @@ export const TrackRow = memo(function TrackRow({
           >
             мутировать
           </button>
-          <span className="rt-sep" />
-          <label
-            className="rt-scale"
-            title={
-              track.waveform === 'sample'
-                ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-                : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
-            }
-          >
-            шкала
-            <button
-              className="scale-btn"
-              title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
-              onClick={() => setShowScales(true)}
-            >
-              {presetName(track.scale)}
-            </button>
-          </label>
         </div>
       )}
       {showRoll && (
@@ -1869,13 +1920,30 @@ export const TrackRow = memo(function TrackRow({
                           const ret = overlapsTail(col, i);
                           return (
                             <>
+                              {/* Короче шага — серая подложка клетки: видно,
+                                  что нота есть и где она стоит; оранжевым —
+                                  настоящая длительность. */}
+                              {snapped < 1 && (
+                                <span
+                                  className="note-stub"
+                                  style={{ width: `calc(var(--pitch, 27px) - 3px)` }}
+                                />
+                              )}
                               <span
                                 className={'note-bar' + (ret ? ' ret' : '')}
                                 style={{
                                   width: `calc(${shown.toFixed(2)} * var(--pitch, 27px) - 3px)`,
                                   opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
                                 }}
-                              />
+                              >
+                                <span
+                                  className="note-grab"
+                                  onPointerDown={(e) => grabDown(e, col, i)}
+                                  onPointerMove={grabMove}
+                                  onPointerUp={grabUp}
+                                  onPointerCancel={grabUp}
+                                />
+                              </span>
                               {nt!.prob < 0.995 && (
                                 <span
                                   className="pbar"

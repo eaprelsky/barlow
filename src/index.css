@@ -537,6 +537,37 @@ header .master-vol input[type='range'] {
     0 0 10px rgba(255, 180, 84, 0.25);
 }
 
+/* Нота короче шага: серая подложка клетки (нота есть, длительность —
+   оранжевым сверху) — два слоя вместо укороченного пенька */
+.note-stub {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: #4b5563;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Ручка растяжения: правый край бара ноты, тянуть — длительность (гейт) */
+.note-grab {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  border-radius: 0 4px 4px 0;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 4;
+}
+
+.cell:hover .note-grab {
+  background: rgba(255, 255, 255, 0.35);
+}
+
 .cell.ph {
   border-color: rgba(255, 255, 255, 0.45);
 }
@@ -729,7 +760,7 @@ footer {
 }
 
 .ai-key-input {
-  width: 320px;
+  width: 240px;
 }
 
 .ai-ok {
@@ -1050,6 +1081,23 @@ header button.on {
   padding-right: 26px;
 }
 
+/* …кроме коротких селектов долей (шаг, шаг эскиза) */
+.group select.rate-sel {
+  min-width: 0;
+  width: 84px;
+}
+
+/* Короткие числовые поля: длина цикла (макс 64), десятые процента */
+input.narrow {
+  width: 44px;
+}
+
+/* Шестерёнка «настройки» — иконка в общем ряду шапки */
+.hdr-icon {
+  padding: 4px 6px;
+  line-height: 0;
+}
+
 /* Мьют/соло партии */
 
 .ms-btns {
@@ -1258,9 +1306,16 @@ button.danger:hover {
   min-width: 0;
 }
 
+/* Слайдеры микшера — по ширине колонки, тумбометр не прижимается к ним */
+.mix-main input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
 /* Тумбометр — вертикальная полоска у правого края блока */
 .mix-block .level-bar.vertical {
   height: auto;
+  margin-left: 6px;
 }
 
 .mix-block .mix-name {
@@ -1336,6 +1391,13 @@ button.danger:hover {
 
 .chip.on .scene-cnt {
   color: var(--accent-2);
+}
+
+/* Пока эскиз замьючен (чип M), выбор партии ничего не решает —
+   остальные эскизы гаснут */
+.chip.dim {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* Мультиселект нот */

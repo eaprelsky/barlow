@@ -788,6 +788,7 @@ export default function App() {
         {(patch.masterNoise ?? 'off') !== 'off' && (
           <label title="Уровень шума, в процентах с десятыми: 0.2–0.5% — дышащий воздух, 1–3% — лёгкая лента, дальше — винил и плёнка">
             <NumField
+              narrow
               value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
               min={0} max={15} step={0.1}
               onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
@@ -806,6 +807,20 @@ export default function App() {
           />
           %
         </label>
+        <button
+          className={showAi ? 'on hdr-icon' : 'hdr-icon'}
+          onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
+          title="Настройки: ключ ИИ-генерации"
+          aria-label="настройки"
+        >
+          <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+            <path
+              d="M6.1 1.5h2.8l.35 1.9c.5.16.96.4 1.37.72l1.8-.7 1.4 2.42-1.44 1.28c.04.28.04.56 0 .84l1.44 1.28-1.4 2.42-1.8-.7c-.41.31-.87.55-1.37.72l-.35 1.9H6.1l-.35-1.9a4.9 4.9 0 0 1-1.37-.72l-1.8.7-1.4-2.42 1.44-1.28a4.5 4.5 0 0 1 0-.84L1.18 6.34l1.4-2.42 1.8.7c.41-.32.87-.56 1.37-.72l.35-1.9Z"
+              fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
+            />
+            <circle cx="7.5" cy="7.5" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        </button>
         <input
           className="title-input"
           value={patch.title ?? ''}
@@ -893,13 +908,6 @@ export default function App() {
         >
           цепочка
         </button>
-        <button
-          className={showAi ? 'on' : ''}
-          onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
-          title="Настройки: ключ ИИ-генерации"
-        >
-          настройки
-        </button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -919,8 +927,6 @@ export default function App() {
       {showMix && (
         <div className="mix-panel">
           <span className="scenes-label">микшер — громкости и выключатели дорожек</span>
-          <span className="spacer" />
-          <button onClick={() => setShowMix(false)} title="Скрыть панель">скрыть</button>
           <div className="mix-rack">
             {patch.tracks.map((t) => (
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>

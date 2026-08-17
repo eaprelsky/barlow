@@ -7,6 +7,8 @@ interface Props {
   step?: number;
   title?: string;
   disabled?: boolean;
+  /** «узкий» — короткие поля (длина цикла, проценты): 2–4 символа */
+  narrow?: boolean;
   onChange: (v: number) => void;
 }
 
@@ -15,7 +17,7 @@ interface Props {
 // валидное число в диапазоне. Нормализация — при потере фокуса или Enter.
 // Обычный контролируемый input так не умеет: value подставляется на каждый
 // keystroke и поле «не даёт» себя очистить.
-export function NumField({ value, min, max, step = 1, title, disabled, onChange }: Props) {
+export function NumField({ value, min, max, step = 1, title, disabled, narrow, onChange }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? String(value);
 
@@ -35,6 +37,7 @@ export function NumField({ value, min, max, step = 1, title, disabled, onChange 
 
   return (
     <input
+      className={narrow ? 'narrow' : undefined}
       type="number"
       inputMode="decimal"
       min={min}
