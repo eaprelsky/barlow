@@ -506,9 +506,8 @@ header .master-vol input[type='range'] {
   border-color: transparent;
 }
 
-/* Нота — растянутый бар настоящей длительности. Головка (светлая
-   левая кромка) отмечает старт, в том числе ретриггер поверх хвоста
-   соседней длинной ноты. */
+/* Нота — растянутый бар настоящей длительности. Без украшений: пенёк
+   занимает клетку целиком. */
 .note-bar {
   position: absolute;
   left: 0;
@@ -517,11 +516,17 @@ header .master-vol input[type='range'] {
   min-width: 4px;
   border-radius: 4px;
   background: var(--step-on);
+  box-shadow: 0 0 10px rgba(255, 180, 84, 0.25);
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Ретриггер: нота стартует поверх ещё звучащего хвоста — только тогда
+   рисуем тёмную головку, чтобы было видно обе. */
+.note-bar.ret {
   box-shadow:
     inset 3px 0 0 rgba(62, 37, 8, 0.9),
     0 0 10px rgba(255, 180, 84, 0.25);
-  z-index: 3;
-  pointer-events: none;
 }
 
 .cell.ph {
@@ -550,7 +555,7 @@ header .master-vol input[type='range'] {
 /* Цифра вероятности на голове ноты */
 .pnum {
   position: absolute;
-  left: 7px;
+  left: 4px;
   top: 50%;
   transform: translateY(-50%);
   color: #000;
@@ -560,6 +565,11 @@ header .master-vol input[type='range'] {
   z-index: 3;
   pointer-events: none;
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+/* Цифра правее, когда у ноты есть тёмная головка ретриггера */
+.note-bar.ret ~ .pnum {
+  left: 7px;
 }
 
 /* Панель шага: открывается кликом по номеру колонки. */

@@ -808,6 +808,16 @@ export const TrackRow = memo(function TrackRow({
     track.noteSteps && track.noteSteps > 0
       ? track.noteSteps
       : (Math.max(track.attack, 0.0005) + track.decay) / ((pattern.rate ?? track.rate) * tickDuration(bpm));
+  /** Начинается ли нота (col, row) поверх ещё звучащего хвоста предыдущей
+   *  ноты той же высоты — только в этом случае рисуем тёмную головку. */
+  const overlapsTail = (col: number, row: number): boolean => {
+    for (let c = col - 1; c >= 0; c--) {
+      const prev = pattern.steps[c]?.notes.find((x) => x.n === row);
+      if (!prev) continue;
+      if (c + noteCellsBase * (prev.gate ?? 1) > col + 0.08) return true;
+    }
+    return false;
+  };
 
   return (
     <div
@@ -1848,12 +1858,16 @@ export const TrackRow = memo(function TrackRow({
                           // рисуется позже по DOM — виден поверх хвоста.
                           // Линия вероятности и цифра масштабируются к длине
                           // бара: 100% — вся нота, без цифры.
+                          // Пенёк в ~1 шаг занимает клетку целиком: длина
+                          // ближе 0.2 клетки к единице — визуальный квант сетки.
                           const cells = noteCellsBase * (nt!.gate ?? 1);
-                          const shown = Math.max(0.12, Math.min(cells, pattern.length - col));
+                          const snapped = Math.abs(cells - 1) <= 0.2 ? 1 : cells;
+                          const shown = Math.max(0.12, Math.min(snapped, pattern.length - col));
+                          const ret = overlapsTail(col, i);
                           return (
                             <>
                               <span
-                                className="note-bar"
+                                className={'note-bar' + (ret ? ' ret' : '')}
                                 style={{
                                   width: `calc(${shown.toFixed(2)} * var(--pitch, 27px) - 3px)`,
                                   opacity: sel.has(`${col}:${i}`) ? '1' : String(0.55 + 0.45 * nt!.vel),
