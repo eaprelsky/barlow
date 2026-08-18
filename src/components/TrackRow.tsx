@@ -173,6 +173,7 @@ export const TrackRow = memo(function TrackRow({
       scaleOctDown: 0,
       attack: t.attack ?? track.attack,
       decay: t.decay ?? track.decay,
+      sustain: t.sustain ?? 0,
       pitchDrop: t.pitchDrop ?? 1,
       pitchTime: t.pitchTime ?? 0.08,
       filterLow: t.filterLow ?? 20,

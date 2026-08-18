@@ -26,7 +26,7 @@ const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 // TrackRow): по ним и опознаём текущий пресет. Ручки вне списка (громкость,
 // ритм, вибрато, сайдчейн) — пользователя, на совпадение не влияют.
 const MATCH_FIELDS: (keyof Track)[] = [
-  'waveform', 'freq', 'scale', 'attack', 'decay', 'pitchDrop', 'pitchTime',
+  'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
@@ -62,13 +62,15 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   {
     name: 'воббл-бас',
     category: 'бас',
-    hint: 'дабстеп-вобл: квадратный LFO качает фильтр в долю — ву-бубубу-ву',
+    hint: 'дабстеп-вобл: треугольный LFO качает резонансный фильтр, дисторшн плотнит. Rate = восьмые при 118 BPM — под свой темп перецепи селектом «синхр»',
     track: {
       name: 'воббл', waveform: 'supersaw', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
       voiceMorph: 0.25,
-      length: 16, rate: 4, attack: 0.005, decay: 0.4, filterFreq: 1200, filterQ: 6,
-      mono: true, volume: 0.75,
-      mods: [{ target: 'filterFreq', shape: 'square', rate: 5.83, depth: 1 }],
+      length: 16, rate: 4, attack: 0.005, decay: 1.8, sustain: 0.85,
+      filterFreq: 800, filterQ: 6,
+      mono: true, volume: 0.7,
+      effects: [{ type: 'dist', drive: 5, mix: 0.65 }],
+      mods: [{ target: 'filterFreq', shape: 'triangle', rate: 3.93, depth: 0.35 }],
     },
   },
   {
