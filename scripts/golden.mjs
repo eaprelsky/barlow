@@ -15,6 +15,7 @@ import { chromium } from 'playwright-core';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = fileURLToPath(new URL('../fixtures/golden.json', import.meta.url));
+const FIXTURE_PATCH_FILE = fileURLToPath(new URL('../fixtures/fixture-patch.json', import.meta.url));
 const UPDATE = process.argv.includes('--update');
 const BROWSER =
   process.env.BARLOW_BROWSER ??
@@ -24,70 +25,9 @@ const PORT = 5199;
 // Фикс-патч: только детерминированные узлы (осцилляторы, фильтры, delay,
 // LFO-модуляции, мастер-компрессия). Шум, реверб (случайный IR),
 // вероятность < 1, сэмплы и скрэтч — недетерминированы, в эталон не входят.
-const FIXTURE_PATCH = {
-  version: 0, // подставляется из PATCH_VERSION на странице
-  bpm: 120,
-  masterVolume: 1,
-  masterComp: 0.3,
-  masterPan: 0.5,
-  masterNoise: 'off',
-  followChain: false,
-  title: 'golden',
-  scenes: [{ id: 's1', name: 'a', slots: { t1: 'p1', t2: 'p2', t3: 'p3' } }],
-  chain: [{ sceneId: 's1', bars: 2 }],
-  tracks: [
-    {
-      id: 't1', name: 'bass', rate: 4, phase: 0, waveform: 'sine',
-      scale: [1], scaleOctUp: 0, scaleOctDown: 0, freq: 55,
-      attack: 0.002, decay: 0.3, sustain: 0.2,
-      pitchDrop: 2.5, pitchTime: 0.08, noteSteps: 1,
-      filterLow: 30, filterFreq: 900, volume: 0.8, pan: 0.5,
-      mods: [], effects: [], mono: true, vibratoRate: 5, vibratoDepth: 0,
-      patterns: [{
-        id: 'p1', name: 'A', length: 8,
-        steps: Array.from({ length: 8 }, (_, i) =>
-          i === 0 || i === 3 || i === 6 ? { notes: [{ n: 0, vel: 0.8, prob: 1 }] } : { notes: [] },
-        ),
-      }],
-    },
-    {
-      id: 't2', name: 'lead', rate: 2, phase: 0, waveform: 'triangle',
-      scale: [1, 1.25, 1.5], scaleOctUp: 0, scaleOctDown: 0, freq: 330,
-      attack: 0.004, decay: 0.25, sustain: 0.3,
-      pitchDrop: 1, pitchTime: 0.08, noteSteps: 1,
-      filterLow: 40, filterFreq: 6000, volume: 0.6, pan: 0.5,
-      mods: [{ target: 'pan', source: 'lfo', shape: 'sine', rate: 0.5, depth: 0.6 }],
-      effects: [{ type: 'delay', timeSec: 0.25, feedback: 0.4, mix: 0.3 }],
-      mono: false, vibratoRate: 5, vibratoDepth: 12,
-      patterns: [{
-        id: 'p2', name: 'A', length: 8,
-        steps: [
-          { notes: [{ n: 2, vel: 0.7, prob: 1 }] },
-          { notes: [] },
-          { notes: [{ n: 1, vel: 0.7, prob: 1 }] },
-          { notes: [] },
-          { notes: [{ n: 0, vel: 0.7, prob: 1 }, { n: 2, vel: 0.6, prob: 1 }] },
-          { notes: [] },
-          { notes: [{ n: 1, vel: 0.7, prob: 1 }] },
-          { notes: [] },
-        ],
-      }],
-    },
-    {
-      id: 't3', name: 'fm', rate: 1, phase: 0, waveform: 'fm',
-      scale: [1, 1.5], scaleOctUp: 0, scaleOctDown: 0, freq: 174,
-      fmRatio: 2, fmIndex: 3,
-      attack: 0.001, decay: 0.5, sustain: 0,
-      pitchDrop: 1, pitchTime: 0.08, noteSteps: 2,
-      filterLow: 40, filterFreq: 9000, volume: 0.5, pan: 0.4,
-      mods: [], effects: [], mono: false, vibratoRate: 5, vibratoDepth: 0,
-      patterns: [{
-        id: 'p3', name: 'A', length: 8,
-        steps: [2, 5].flatMap((n) => [{ notes: [{ n, vel: 0.75, prob: 1 }] }, { notes: [] }]),
-      }],
-    },
-  ],
-};
+// Живёт в fixtures/fixture-patch.json: его же читает Rust-golden
+// (cargo run --bin golden) — один патч, две реализации, один эталон.
+const FIXTURE_PATCH = JSON.parse(readFileSync(FIXTURE_PATCH_FILE, 'utf8'));
 
 async function waitForServer(url, tries = 60) {
   for (let i = 0; i < tries; i++) {

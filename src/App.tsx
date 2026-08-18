@@ -31,6 +31,7 @@ import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { slugify } from './utils/slug';
 import { Library } from './components/Library';
+import { AudioPanel } from './components/AudioPanel';
 
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
@@ -178,6 +179,7 @@ export default function App() {
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
   const [showAi, setShowAi] = useState(false);
   const [showLib, setShowLib] = useState(false);
+  const [showAudio, setShowAudio] = useState(false);
   const [showMix, setShowMix] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -795,6 +797,21 @@ export default function App() {
         {/* Правый угол первой строки — настройки и справка; частые
             действия уедут на вторую строку за переносом */}
         <span className="spacer" />
+        {isDesktop && (
+          <button
+            className={showAudio ? 'on hdr-icon' : 'hdr-icon'}
+            onClick={() => setShowAudio((v) => !v)}
+            title="Звуковой вывод: устройство, exclusive-режим, тест-тон (нативный движок)"
+            aria-label="звуковой вывод"
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+              {/* динамик с дугами */}
+              <path d="M2 5.5v4h2.5L8 12V3L4.5 5.5H2z" fill="currentColor" />
+              <path d="M10 5c1 .8 1 4.2 0 5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M12 3.5c1.8 1.6 1.8 6.4 0 8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
         <button
           className={showAi ? 'on hdr-icon' : 'hdr-icon'}
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
@@ -1212,6 +1229,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {showAudio && <AudioPanel onClose={() => setShowAudio(false)} />}
 
       {showInstruments && (
         <InstrumentBrowser

@@ -1645,6 +1645,32 @@ button.danger:hover {
   margin-top: 4px;
 }
 
+/* Панель звукового вывода (нативный движок) */
+.audio-panel {
+  gap: 10px;
+}
+
+.audio-panel label {
+  justify-content: flex-start;
+}
+
+.audio-panel select {
+  width: 260px;
+}
+
+.audio-panel .audio-info {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent-2);
+}
+
+.audio-panel .audio-error {
+  margin: 0;
+  font-size: 12px;
+  color: #e05555;
+  white-space: pre-wrap;
+}
+
 /* Выбор шкалы: список по группам + инструменты (N-ET, своя) */
 .scale-list {
   overflow-y: auto;
