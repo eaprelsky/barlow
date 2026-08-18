@@ -1075,24 +1075,37 @@ export const TrackRow = memo(function TrackRow({
                 {title}
               </button>
             ))}
+            <span className="spacer" />
+            {tab === 'snd' && (
+              <button
+                className="save-inst"
+                title="Сохранить звук дорожки как свой пресет — появится в браузере инструментов, категория «мои»"
+                aria-label="сохранить инструмент"
+                onClick={() => void saveInstrumentAs()}
+              >
+                {/* дискета: контур со срезом, жалюзи, окошко */}
+                <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+                  <path d="M1.7 1.7h8.2l2.4 2.4v8.2H1.7z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                  <path d="M4.2 1.7v3.6h4.6V1.7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                  <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
           </div>
           {tab === 'snd' && (
           <div className="group">
-            <label title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
+            {/* div, не label: label переносит hover/клики на первый
+                вложенный контрол — «выбрать…» подсвечивался при наведении
+                на соседей */}
+            <div className="lbl" title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
               инструмент
               <span className="inline">
                 <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
                   {instrumentNameOf(track)}
                 </span>
                 <button onClick={() => setShowInstruments(true)}>выбрать…</button>
-                <button
-                  onClick={() => void saveInstrumentAs()}
-                  title="Сохранить звук дорожки как свой пресет — появится в браузере инструментов, категория «мои»"
-                >
-                  сохранить…
-                </button>
               </span>
-            </label>
+            </div>
             <label title="Форма волны осциллятора — основа тембра">
               волна
               <select value={track.waveform} onChange={(e) => change({ waveform: e.target.value as Waveform })}>

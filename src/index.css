@@ -993,6 +993,14 @@ header button.on {
   background: var(--panel);
 }
 
+/* Дискета «сохранить инструмент» — правый край ряда вкладок */
+.tabs > button {
+  align-self: center;
+  padding: 3px 7px;
+  line-height: 0;
+  color: var(--text-dim);
+}
+
 .env-tab {
   flex-direction: row;
   align-items: flex-start;
