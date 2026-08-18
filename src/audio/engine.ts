@@ -282,6 +282,7 @@ export class AudioEngine implements AudioBackend {
     }
     chain.hp.frequency.setTargetAtTime(track.filterLow, t0, 0.03);
     chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
+    chain.filter.Q.setTargetAtTime(track.filterQ ?? 0.8, t0, 0.03);
     chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
     chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
     eff.mods.forEach((m, i) => {

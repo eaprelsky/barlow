@@ -176,6 +176,9 @@ export interface Track {
   // Частоты обрезки: highpass снизу и lowpass сверху, Гц.
   filterLow: number;
   filterFreq: number;
+  // Резонанс lowpass (Q): 0.8 — ровный обрез, 4–10 — звонкое «горло»
+  // (воббл, сквелч), 15+ — самозвон на частоте среза.
+  filterQ?: number;
   // Огибающая ноты, сек.
   attack: number;
   decay: number;
@@ -626,6 +629,7 @@ export function normalizePatch(p: Patch): Patch {
             : undefined,
         filterLow: clamp((t as { filterLow?: number }).filterLow ?? 20, 20, 4000, 20),
         filterFreq: clamp(t.filterFreq, 60, 12000, 8000),
+        filterQ: clamp((t as { filterQ?: number }).filterQ ?? 0.8, 0.5, 20, 0.8),
         attack: clamp(t.attack, 0, 1, 0.002),
         decay: clamp(t.decay, 0.01, 4, 0.25),
         sustain: clamp(t.sustain ?? 0, 0, 1, 0),

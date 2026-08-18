@@ -177,6 +177,7 @@ export const TrackRow = memo(function TrackRow({
       pitchTime: t.pitchTime ?? 0.08,
       filterLow: t.filterLow ?? 20,
       filterFreq: t.filterFreq ?? 8000,
+      filterQ: t.filterQ ?? 0.8,
       effects: t.effects ?? [],
       mono: t.mono,
       fmRatio: t.fmRatio ?? 2,
@@ -1242,6 +1243,13 @@ export const TrackRow = memo(function TrackRow({
               <NumField
                 value={track.filterFreq} min={60} max={12000} step={10}
                 onChange={(filterFreq) => change({ filterFreq })}
+              />
+            </label>
+            <label title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе">
+              резонанс, Q
+              <NumField
+                value={track.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
+                onChange={(filterQ) => change({ filterQ })}
               />
             </label>
             <label title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое">

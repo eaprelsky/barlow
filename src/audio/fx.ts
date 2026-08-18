@@ -232,7 +232,7 @@ export function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode):
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = track.filterFreq;
-  filter.Q.value = 0.8;
+  filter.Q.value = track.filterQ ?? 0.8;
   hp.connect(filter);
   const panner = ctx.createStereoPanner();
   panner.pan.value = track.pan * 2 - 1;

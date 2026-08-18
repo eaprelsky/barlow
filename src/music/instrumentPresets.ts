@@ -27,7 +27,7 @@ const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 // ритм, вибрато, сайдчейн) — пользователя, на совпадение не влияют.
 const MATCH_FIELDS: (keyof Track)[] = [
   'waveform', 'freq', 'scale', 'attack', 'decay', 'pitchDrop', 'pitchTime',
-  'filterLow', 'filterFreq', 'effects', 'mono',
+  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
 ];
@@ -66,7 +66,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     track: {
       name: 'воббл', waveform: 'supersaw', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
       voiceMorph: 0.25,
-      length: 16, rate: 4, attack: 0.005, decay: 0.4, filterFreq: 1200,
+      length: 16, rate: 4, attack: 0.005, decay: 0.4, filterFreq: 1200, filterQ: 6,
       mono: true, volume: 0.75,
       mods: [{ target: 'filterFreq', shape: 'square', rate: 5.83, depth: 1 }],
     },
