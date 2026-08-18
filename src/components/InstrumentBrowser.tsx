@@ -108,7 +108,6 @@ export function InstrumentBrowser({ title, onPick, onClose }: Props) {
                       }}
                     >
                       <span className="inst-name">{p.name}</span>
-                      <span className="inst-wave">{waveOf(p)}</span>
                       <button
                         className="inst-del"
                         title="Удалить пресет"
@@ -128,7 +127,6 @@ export function InstrumentBrowser({ title, onPick, onClose }: Props) {
                       onClick={() => onPick(p)}
                     >
                       <span className="inst-name">{p.name}</span>
-                      <span className="inst-wave">{waveOf(p)}</span>
                     </button>
                   ),
                 )}

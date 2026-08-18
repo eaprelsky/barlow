@@ -1631,11 +1631,6 @@ button.danger:hover {
   font-weight: 600;
 }
 
-.inst-wave {
-  font-size: 11px;
-  color: var(--accent-2);
-}
-
 /* Поле ввода в модалке (prompt) */
 .modal-input {
   width: 100%;
