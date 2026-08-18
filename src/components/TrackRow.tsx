@@ -20,7 +20,11 @@ import {
   scaleOf,
 } from '../types';
 import type { MutateModes } from '../music/mutate';
-import { instrumentNameOf } from '../music/instrumentPresets';
+import {
+  instrumentNameOf,
+  loadUserPresets,
+  saveUserPreset,
+} from '../music/instrumentPresets';
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import { InstrumentBrowser } from './InstrumentBrowser';
 import { ScalePicker } from './ScalePicker';
@@ -29,7 +33,7 @@ import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
 import { EnvGraph, PitchGraph } from './EnvGraph';
-import { alertDialog } from './dialogs';
+import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration } from '../audio/timing';
@@ -190,10 +194,41 @@ export const TrackRow = memo(function TrackRow({
       grainCount: t.grainCount ?? 10,
       grainPos: t.grainPos ?? 0.3,
       grainScatter: t.grainScatter ?? 0.15,
+      vibratoRate: t.vibratoRate ?? 5,
+      vibratoDepth: t.vibratoDepth ?? 0,
       patterns: clampAllNotes(scale.length - 1),
     };
     if (t.mods) upd.mods = t.mods.map((m) => ({ ...m }));
+    if (t.scratchPoints) upd.scratchPoints = t.scratchPoints.map((pt) => ({ ...pt }));
     change(upd);
+  };
+
+  /** Сохранить звук дорожки как свой пресет: категория «мои» в браузере
+   *  инструментов, применение — как у встроенных. Триггер перерисовки
+   *  обновляет имя инструмента на панели сразу после сохранения. */
+  const [, bumpInstruments] = useState(0);
+  const saveInstrumentAs = async () => {
+    const current = instrumentNameOf(track);
+    const suggested = current === 'своя настройка' ? track.name : current;
+    const name = await promptDialog({
+      title: 'сохранить инструмент',
+      text: 'Пресет появится в браузере инструментов, категория «мои»',
+      okLabel: 'сохранить',
+      input: { value: suggested },
+    });
+    if (!name || !name.trim()) return;
+    const n = name.trim();
+    if (loadUserPresets().some((p) => p.name === n)) {
+      const ok = await confirmDialog({
+        title: 'заменить пресет?',
+        text: `«${n}» уже есть среди твоих — перезаписать его звуком этой дорожки?`,
+        okLabel: 'заменить',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    saveUserPreset(n, track);
+    bumpInstruments((v) => v + 1);
   };
 
   /** Парсер своей шкалы живёт в music/scales (parseRatios) — используется
@@ -904,9 +939,10 @@ export const TrackRow = memo(function TrackRow({
             aria-label="нотный стан"
           >
             <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <rect x="1.5" y="2" width="11.5" height="2.4" rx="1.2" fill="currentColor" />
-              <rect x="1.5" y="5.8" width="7" height="2.4" rx="1.2" fill="currentColor" />
-              <rect x="1.5" y="9.6" width="9.5" height="2.4" rx="1.2" fill="currentColor" />
+              {/* восьмая нота: головка, штиль, флажок */}
+              <ellipse cx="4.4" cy="10.8" rx="2.7" ry="2.2" fill="currentColor" transform="rotate(-14 4.4 10.8)" />
+              <rect x="6.6" y="1.6" width="1.4" height="9.6" rx="0.7" fill="currentColor" />
+              <path d="M8 1.8c2.7 1.3 4.2 3.4 3.4 6-.4 1.4-.3 2.4.4 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
           </button>
           <button
@@ -916,10 +952,11 @@ export const TrackRow = memo(function TrackRow({
             aria-label="звук дорожки"
           >
             <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <rect x="1.5" y="5" width="2" height="4" rx="1" fill="currentColor" />
-              <rect x="5" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
-              <rect x="8.5" y="4" width="2" height="6" rx="1" fill="currentColor" />
-              <rect x="12" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
+              <rect x="0.9" y="5" width="2" height="4" rx="1" fill="currentColor" />
+              <rect x="3.7" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
+              <rect x="6.5" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
+              <rect x="9.3" y="4" width="2" height="6" rx="1" fill="currentColor" />
+              <rect x="12.1" y="5.5" width="2" height="3" rx="1" fill="currentColor" />
             </svg>
           </button>
         </div>
@@ -1048,6 +1085,12 @@ export const TrackRow = memo(function TrackRow({
                   {instrumentNameOf(track)}
                 </span>
                 <button onClick={() => setShowInstruments(true)}>выбрать…</button>
+                <button
+                  onClick={() => void saveInstrumentAs()}
+                  title="Сохранить звук дорожки как свой пресет — появится в браузере инструментов, категория «мои»"
+                >
+                  сохранить…
+                </button>
               </span>
             </label>
             <label title="Форма волны осциллятора — основа тембра">
@@ -1253,17 +1296,17 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(filterQ) => change({ filterQ })}
               />
             </label>
-            <label title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое">
+            <label title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса">
               вибрато, Гц
               <NumField
-                value={track.vibratoRate ?? 5} min={0.1} max={12} step={0.1}
+                value={track.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
                 onChange={(vibratoRate) => change({ vibratoRate })}
               />
             </label>
-            <label title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 центов — заметное; 100 — широкий ук">
+            <label title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава">
               вибрато, центы
               <NumField
-                value={track.vibratoDepth ?? 0} min={0} max={100} step={1}
+                value={track.vibratoDepth ?? 0} min={0} max={1200} step={5}
                 onChange={(vibratoDepth) => change({ vibratoDepth })}
               />
             </label>

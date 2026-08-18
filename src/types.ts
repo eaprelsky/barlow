@@ -641,8 +641,8 @@ export function normalizePatch(p: Patch): Patch {
         fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
         fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
         voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
-        vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 12, 5),
-        vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 100, 0),
+        vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 30, 5),
+        vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 1200, 0),
         ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
         sampleMode:
           t.sampleMode === 'grain' || t.sampleMode === 'scratch' ? t.sampleMode : 'plain',

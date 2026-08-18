@@ -1602,6 +1602,30 @@ button.danger:hover {
   border-color: var(--accent);
 }
 
+/* Карточка своего пресета — div с кнопкой удаления (button в button
+   нельзя); клик по карточке применяет, ✕ — удаляет. */
+.inst-card.user {
+  position: relative;
+  cursor: pointer;
+}
+
+.inst-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-color: transparent;
+  background: transparent;
+}
+
+.inst-del:hover {
+  color: #ff7676;
+  border-color: #e05555;
+}
+
 .inst-name {
   color: var(--accent);
   font-weight: 600;
@@ -1612,10 +1636,10 @@ button.danger:hover {
   color: var(--accent-2);
 }
 
-.inst-hint {
-  font-size: 11px;
-  color: var(--text-dim);
-  line-height: 1.35;
+/* Поле ввода в модалке (prompt) */
+.modal-input {
+  width: 100%;
+  margin-top: 4px;
 }
 
 /* Выбор шкалы: список по группам + инструменты (N-ET, своя) */

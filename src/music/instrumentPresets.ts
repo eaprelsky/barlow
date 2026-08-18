@@ -7,11 +7,13 @@ export interface InstrumentPreset {
   name: string;
   // Группа в браузере инструментов (порядок категорий — CATEGORY_ORDER).
   category: string;
-  hint: string;
+  // Пояснение для поиска встроенных; на плитке не показывается.
+  hint?: string;
   track: Partial<Track> & { length?: number };
 }
 
 export const CATEGORY_ORDER = [
+  'мои', // пользовательские пресеты (USER_CATEGORY) — пустая группа скрыта
   'бас',
   'тоны и лиды',
   'перкуссия',
@@ -28,6 +30,7 @@ const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 const MATCH_FIELDS: (keyof Track)[] = [
   'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
+  'vibratoRate', 'vibratoDepth',
   'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
 ];
@@ -39,7 +42,8 @@ const sameValue = (a: unknown, b: unknown): boolean => {
 
 /** Имя пресета, которому соответствуют параметры трека; иначе «своя». */
 export function instrumentNameOf(track: Track): string {
-  for (const p of INSTRUMENT_PRESETS) {
+  // Свои — первыми: перезаписанный юзером пресет важнее встроенного тёзки.
+  for (const p of [...loadUserPresets(), ...INSTRUMENT_PRESETS]) {
     const preset = p.track as Partial<Track>;
     if (MATCH_FIELDS.every((f) => preset[f] === undefined || sameValue(preset[f], track[f]))) {
       return p.name;
@@ -66,7 +70,9 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     track: {
       name: 'воббл', waveform: 'supersaw', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
       voiceMorph: 0.25,
-      length: 16, rate: 4, attack: 0.005, decay: 1.8, sustain: 0.85,
+      length: 16, rate: 4, attack: 0.05, decay: 1.8, sustain: 0.85,
+      pitchDrop: 1.3, pitchTime: 0.3,
+      vibratoRate: 12, vibratoDepth: 100,
       filterFreq: 800, filterQ: 6,
       mono: true, volume: 0.7,
       effects: [{ type: 'dist', drive: 5, mix: 0.65 }],
@@ -210,7 +216,68 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   {
     name: 'пустой',
     category: 'прочее',
-    hint: 'чистый лист, всё настроишь сам',
+    hint: 'чистый лист, всё настроешь сам',
     track: { name: 'трек', waveform: 'square', freq: 220, scale: [1], length: 16, rate: 1 },
   },
 ];
+
+// Пользовательские пресеты: «сохрани как инструмент» — настроенный трек
+// под своим именем, в браузере инструментов категорией «мои». Хранилище —
+// localStorage (как автосейв патча); состав — те же звуковые поля, что
+// переносит applyInstrumentPreset, чтобы сохранённое применялось без потерь.
+
+const USER_KEY = 'barlow.instruments.v1';
+export const USER_CATEGORY = 'мои';
+
+const SAVE_FIELDS: (keyof Track)[] = [
+  'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
+  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
+  'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife', 'sampleMode',
+  'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+  'vibratoRate', 'vibratoDepth', 'scratchPoints', 'mods',
+];
+
+export function loadUserPresets(): InstrumentPreset[] {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return [];
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(
+        (p): p is { name: string; track: Partial<Track> } =>
+          typeof p === 'object' &&
+          p !== null &&
+          typeof (p as { name?: unknown }).name === 'string' &&
+          typeof (p as { track?: unknown }).track === 'object' &&
+          (p as { track?: unknown }).track !== null,
+      )
+      .map((p) => ({ name: p.name, category: USER_CATEGORY, track: p.track }));
+  } catch {
+    /* повреждённое хранилище — своих пресетов просто нет */
+    return [];
+  }
+}
+
+/** Записать (или перезаписать по имени) пресет из звуковых полей трека. */
+export function saveUserPreset(name: string, track: Track): void {
+  const sound = Object.fromEntries(
+    SAVE_FIELDS.filter((f) => track[f] !== undefined).map((f) => [f, track[f]]),
+  ) as Partial<Track>;
+  const list = loadUserPresets().filter((p) => p.name !== name);
+  list.push({ name, category: USER_CATEGORY, track: sound });
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(list));
+  } catch {
+    /* переполнение квоты — молча */
+  }
+}
+
+export function deleteUserPreset(name: string): void {
+  const list = loadUserPresets().filter((p) => p.name !== name);
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}

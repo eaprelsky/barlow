@@ -12,11 +12,15 @@ export interface DialogReq {
   onlyOk?: boolean;
   // Опасное действие — кнопка подтверждения красная.
   danger?: boolean;
+  // Текстовое поле (prompt): resolve строкой по «ок», null по отмене.
+  input?: { placeholder?: string; value?: string };
 }
 
 export interface PendingDialog {
   req: DialogReq;
   resolve: (ok: boolean) => void;
+  // Текущее значение поля req.input — пишет Dialog.tsx по мере ввода.
+  inputValue?: string;
 }
 
 // Подряд идущие вопросы не затирают друг друга.
@@ -62,4 +66,20 @@ export function alertDialog(text: string, title = 'внимание'): Promise<v
   return confirmDialog({ title, text, okLabel: 'ок', onlyOk: true }).then(
     () => undefined,
   );
+}
+
+/** Спросить текст (замена prompt): «ок»/Enter — строка, отмена — null. */
+export function promptDialog(
+  req: DialogReq,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const pending: PendingDialog = {
+      req,
+      // «ок» резолвит булевым контрактом очереди; строку берём из поля
+      resolve: (ok) => resolve(ok ? (pending.inputValue ?? '') : null),
+    };
+    pending.inputValue = req.input?.value ?? '';
+    queue.push(pending);
+    notify();
+  });
 }
