@@ -50,7 +50,7 @@ fn audible_ids(patch: &Patch, scene: &super::patch::Scene) -> std::collections::
 /// Chromium вносит линейную задержку ~193 сэмпла (FIR апсемплинга без
 /// компенсации — снято зондом). Нативный limiter_value задержки не имеет;
 /// сдвиг нужен только для сэмпл-точной сверки с web-эталоном.
-pub const WEB_SHAPER_4X_LATENCY: usize = 193;
+pub const WEB_SHAPER_4X_LATENCY: usize = 199;
 
 /// Рендер цепочки сцен (арранжмент) в стерео. Сверка с WebAudio — через
 /// golden (RMS-блоки + пик), частота рендера 44100 как в web-эталоне.
