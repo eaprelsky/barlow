@@ -969,27 +969,36 @@ header button.on {
   text-align: left;
 }
 
-/* Вкладки «ещё…» */
+/* Вкладки «ещё…» — язычки, сидящие на линии контейнера */
 
 .tabs {
   display: flex;
+  align-items: flex-end;
   gap: 4px;
   width: 100%;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 6px;
 }
 
 .tab {
   padding: 3px 12px;
   font-size: 12px;
-  border-radius: 8px 8px 0 0;
   color: var(--text-dim);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  margin-bottom: -1px; /* сесть на линию, перекрыв её у активной */
+}
+
+.tab:hover {
+  border-color: transparent;
+  color: var(--accent);
 }
 
 .tab.on {
   color: var(--accent);
-  border-color: var(--border) var(--border) transparent;
+  border-color: var(--border) var(--border) var(--panel);
   background: var(--panel);
 }
 

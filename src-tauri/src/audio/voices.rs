@@ -52,7 +52,18 @@ pub fn voice_shape(track: &Track, notes: &[&Note], step_sec: f64) -> VoiceShape 
         .iter()
         .map(|nt| nt.gate.unwrap_or(1.0).clamp(0.1, 4.0))
         .fold(1.0f64, f64::max);
-    let voice_len = base_len * max_gate;
+    let mut sus = track.sustain.unwrap_or(0.0).clamp(0.0, 1.0);
+    let base_len = match track.note_steps {
+        Some(ns) if ns > 0.0 => ns * step_sec,
+        _ => attack + track.decay,
+    };
+    let mut voice_len = base_len * max_gate;
+    // 100% плато без сетки — «тянуть до перебоя» (порт voices.ts):
+    // потолок 16 с, релиз 50 мс через sus чуть меньше единицы.
+    if track.note_steps.is_none() && sus >= 0.99 {
+        voice_len = voice_len.max(16.0);
+        sus = 1.0 - 0.05 / voice_len;
+    }
     let gates = notes
         .iter()
         .enumerate()
@@ -63,7 +74,7 @@ pub fn voice_shape(track: &Track, notes: &[&Note], step_sec: f64) -> VoiceShape 
         voice_len,
         base_len,
         peak,
-        sus: track.sustain.unwrap_or(0.0).clamp(0.0, 1.0),
+        sus,
         gates,
     }
 }

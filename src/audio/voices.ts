@@ -321,13 +321,21 @@ export function triggerVoice(
   // Длина ноты: по умолчанию — огибающая трека (атака + спад); при
   // noteSteps — привязка к сетке инструмента (шаг эскиза × темп), тогда
   // тягучесть не едет при смене темпа. Гейт ноты умножает сверху.
+  // 100% плато без сетки — «тянуть до перебоя»: голос живёт до потолка
+  // 16 с, пока его не срежет mono-retrigger или смена партии; релиз —
+  // мягкие 50 мс вместо обрыва (внутренний sus чуть меньше единицы).
   const gates = notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4));
   const maxGate = Math.max(1, ...gates);
+  let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   const baseLen =
     track.noteSteps && track.noteSteps > 0
       ? track.noteSteps * stepSec
       : attack + track.decay;
-  const voiceLen = baseLen * maxGate;
+  let voiceLen = baseLen * maxGate;
+  if (!track.noteSteps && sus >= 0.99) {
+    voiceLen = Math.max(voiceLen, 16);
+    sus = 1 - 0.05 / voiceLen;
+  }
   const noteGainOf = (i: number): GainNode | null => {
     if (gates[i] >= maxGate - 1e-9) return null;
     const ng = ctx.createGain();
@@ -340,7 +348,6 @@ export function triggerVoice(
   /** Куда подключать источник ноты i: через её гейт-гейн или сразу в amp. */
   const noteDest = (i: number): AudioNode => noteGainOf(i) ?? amp;
   // Огибающая: атака → плато (sustain, доля звуковой части) → спад.
-  const sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
   amp.gain.setValueAtTime(peak, time + attack + (voiceLen - attack) * sus);
