@@ -4,6 +4,11 @@
 // ресемплинга и системного лимитера) с fallback в shared. Источник звука
 // пока тест-тон; на его место встанет микс движка.
 
+pub mod chain;
+pub mod dsp;
+pub mod master;
 pub mod output;
 pub mod patch;
+pub mod render;
 pub mod timing;
+pub mod voices;

@@ -12,6 +12,7 @@
 use std::path::{Path, PathBuf};
 
 use barlow_lib::audio::patch::Patch;
+use barlow_lib::audio::render::render_patch;
 
 struct Fingerprint {
     blocks: Vec<f64>,
@@ -48,11 +49,7 @@ fn fingerprint(chans: &[Vec<f32>], rate: u32) -> Fingerprint {
     }
 }
 
-/// Этап 2: рендер-заглушка — тишина нужной длины (по эталону, чтобы
-/// сверка структуры уже работала). Этап 3+ заменит на настоящий синтез.
-fn render_stub(samples: usize) -> Vec<Vec<f32>> {
-    vec![vec![0.0; samples], vec![0.0; samples]]
-}
+/// render_patch из render.rs — настоящий посэмпловый синтез (этап 3+).
 
 fn find_upwards(name: &str) -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
@@ -83,13 +80,13 @@ fn main() {
         patch.bpm
     );
 
-    // Эталон задаёт длину рендера (web-golden рендерит 2 такта сцены s1).
+    // Эталон задаёт частоту рендера (web-golden рендерит на 44100).
     let ref_json = std::fs::read_to_string(&golden_path).expect("прочитать эталон");
     let reference: serde_json::Value = serde_json::from_str(&ref_json).expect("разобрать эталон");
-    let samples = reference["samples"].as_u64().expect("samples в эталоне") as usize;
     let rate = reference["rate"].as_u64().unwrap_or(44100) as u32;
 
-    let chans = render_stub(samples);
+    let (l, r) = render_patch(&patch, rate as f64);
+    let chans = vec![l, r];
     let fp = fingerprint(&chans, rate);
 
     if update {
@@ -110,20 +107,39 @@ fn main() {
         .iter()
         .map(|v| v.as_f64().unwrap_or(0.0))
         .collect();
+    let ref_samples = reference["samples"].as_u64().unwrap_or(0) as usize;
     let ref_peak = reference["peak"].as_f64().unwrap_or(0.0);
+    let peak_drift = (ref_peak - fp.peak).abs();
     let mut worst = 0.0f64;
+    let mut worst_i = 0usize;
     for (i, b) in ref_blocks.iter().enumerate() {
         if let Some(f) = fp.blocks.get(i) {
-            worst = worst.max((b - f).abs());
+            let d = (b - f).abs();
+            if d > worst {
+                worst = d;
+                worst_i = i;
+            }
         }
     }
-    let peak_drift = (ref_peak - fp.peak).abs();
-    let ok = worst <= 0.002 && peak_drift <= 0.01 && samples == fp.samples;
+    // Отладочный дамп отпечатка — сверка блоков вручную.
+    let _ = std::fs::write(
+        golden_path.with_file_name("golden-rust.json"),
+        serde_json::json!({
+            "blocks": fp.blocks,
+            "peak": fp.peak,
+            "samples": fp.samples,
+            "rate": fp.rate,
+        })
+        .to_string(),
+    );
+    let ok = worst <= 0.002 && peak_drift <= 0.01 && ref_samples == fp.samples;
     println!(
-        "golden(rust): {} — макс. дрейф RMS-блока {:.2e}, пик {:.2e}, сэмплов {} (рендер — заглушка этапа 2, зелёным станет на этапе 3+)",
+        "golden(rust): {} — макс. дрейф RMS-блока {:.2e} (блок {}), пик {:.2e} (rust {}), сэмплов {}",
         if ok { "PASS" } else { "FAIL" },
         worst,
+        worst_i,
         peak_drift,
+        fp.peak,
         fp.samples
     );
     std::process::exit(if ok { 0 } else { 1 });

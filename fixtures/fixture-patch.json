@@ -2,7 +2,7 @@
   "version": 0,
   "bpm": 120,
   "masterVolume": 1,
-  "masterComp": 0.3,
+  "masterComp": 0,
   "masterPan": 0.5,
   "masterNoise": "off",
   "followChain": false,
@@ -12,7 +12,7 @@
   "tracks": [
     {
       "id": "t1", "name": "bass", "rate": 4, "phase": 0, "waveform": "sine",
-      "scale": [1], "scaleOctUp": 0, "scaleOctDown": 0, "freq": 55,
+      "scale": [1], "scaleOctUp": 0, "scaleOctDown": 0, "freq": 220,
       "attack": 0.002, "decay": 0.3, "sustain": 0.2,
       "pitchDrop": 2.5, "pitchTime": 0.08, "noteSteps": 1,
       "filterLow": 30, "filterFreq": 900, "volume": 0.8, "pan": 0.5,

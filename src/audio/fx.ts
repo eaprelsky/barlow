@@ -249,6 +249,9 @@ export function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode):
   duck.connect(meter);
 
   // Эффекты: фильтры → (dry|wet каждого эффекта) → панорама.
+  // dry и wet — кроссфейд: обработанный сигнал приходит только через
+  // ветку обработки (delay/shaper/convolver); раньше wet дублировался
+  // в sum напрямую — сухой сигнал смешивался дважды.
   const fx: FxNodes[] = [];
   let node: AudioNode = filter;
   for (const e of track.effects ?? []) {
@@ -260,7 +263,6 @@ export function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode):
     node.connect(dry);
     dry.connect(sum);
     node.connect(wet);
-    wet.connect(sum);
     if (e.type === 'delay') {
       const delay = ctx.createDelay(2.5);
       delay.delayTime.value = e.timeSec;
@@ -366,25 +368,28 @@ export function disposeChain(chain: TrackChain): void {
 }
 
 /** Мастер: громкость → компрессия (плотность 0..1) → мягкий tanh-лимитер.
- *  Компрессор с нейтральными настройками при 0 — цепь стабильна,
- *  переключение без щелчков перестройки. */
+ *  Компрессор при 0 физически исключён из цепи (нейтральный
+ *  DynamicsCompressorNode всё равно добавлял ~+1.8 дБ). */
 export function connectMaster(
   ctx: BaseAudioContext,
   masterVolume: number,
   compAmount = 0,
 ): MasterNodes {
   const master = ctx.createGain();
-  master.gain.value = 0.75 * masterVolume;
+  // 1.5: компенсация убранного скрытого ×2 старой кривой лимитера —
+  // привычная громкость сохранена, окно линейности стало шире.
+  master.gain.value = 1.5 * masterVolume;
   // Мягкий лимитер: до 0.8 сигнал идеально линеен (ноль искажений),
-  // выше — плавный tanh-пережим. Раньше кривая искажала сразу от нуля:
-  // совпадение пиков баса и бочки звучало периодическим «тыком».
+  // выше — плавный tanh-пережим. Кривая обязана жить на домене входа
+  // [-1, 1]: WaveShaper мапит вход на всю кривую — кривая на [-2, 2]
+  // означала скрытое усиление ×2 и клип с |x| ≈ 0.4.
   const shaper = ctx.createWaveShaper();
   shaper.oversample = '4x';
   const n = 2048;
   const curve = new Float32Array(n);
   const knee = 0.8;
   for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 4 - 2; // диапазон входа [-2, 2]
+    const x = (i / (n - 1)) * 2 - 1; // диапазон входа [-1, 1]
     const ax = Math.abs(x);
     const y =
       ax <= knee ? ax : knee + (1 - knee) * Math.tanh((ax - knee) / (1 - knee));
@@ -393,9 +398,14 @@ export function connectMaster(
   shaper.curve = curve;
   const comp = ctx.createDynamicsCompressor();
   const makeup = ctx.createGain();
-  master.connect(comp);
-  comp.connect(makeup);
-  makeup.connect(shaper);
+  // 0 — компрессии нет вовсе: мастер → лимитер напрямую.
+  if (compAmount <= 0) {
+    master.connect(shaper);
+  } else {
+    master.connect(comp);
+    comp.connect(makeup);
+    makeup.connect(shaper);
+  }
   const masterPan = ctx.createStereoPanner();
   shaper.connect(masterPan);
   masterPan.connect(ctx.destination);
@@ -403,7 +413,7 @@ export function connectMaster(
     input: master,
     comp,
     makeup,
-    setVolume: (v, at) => master.gain.setTargetAtTime(0.75 * v, at, 0.05),
+    setVolume: (v, at) => master.gain.setTargetAtTime(1.5 * v, at, 0.05),
     setPan: (v, at) => masterPan.pan.setTargetAtTime(v * 2 - 1, at, 0.05),
     setComp: (v, at) => {
       const d = Math.min(1, Math.max(0, v));
