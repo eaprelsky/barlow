@@ -8,6 +8,9 @@ taskkill //IM barlow.exe //F 2>/dev/null || true
 sleep 1
 
 export PATH="$HOME/.cargo/bin:$PATH"
+# Один поток сборки: параллельные rustc на windows-крейтах упираются в
+# commit-лимит машины (os error 1455 / STATUS_STACK_BUFFER_OVERRUN).
+export CARGO_BUILD_JOBS=1
 if [ -z "$HTTPS_PROXY" ]; then
   # крейты качаются через локальный прокси, если прямой сети нет
   export HTTPS_PROXY=http://127.0.0.1:12334 HTTP_PROXY=http://127.0.0.1:12334
