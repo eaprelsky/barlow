@@ -151,7 +151,8 @@ pub fn note_freq(track: &Track, base_freq: f64, t: f64) -> f64 {
     f
 }
 
-/// Рендер голоса осцилляторной модели (sine/square/triangle/sawtooth/fm).
+/// Рендер голоса осцилляторной модели (sine/square/triangle/sawtooth/fm)
+/// и сэмплера (plain/grain/scratch; сэмпл — ресемплированный моно).
 /// t0 — абсолютное время старта (сек), step_sec — шаг эскиза.
 pub fn render_osc_voice(
     track: &Track,
@@ -159,6 +160,7 @@ pub fn render_osc_voice(
     t0: f64,
     step_sec: f64,
     sr: f64,
+    sample: Option<&super::samples::SampleData>,
 ) -> RenderedVoice {
     let sh = voice_shape(track, notes, step_sec);
     let stop = t0 + sh.voice_len + 0.05;
@@ -345,6 +347,36 @@ pub fn render_osc_voice(
                     s
                 });
             }
+            Waveform::Sample => {
+                if let Some(sample) = sample {
+                    match track.sample_mode {
+                        Some(super::patch::SampleMode::Scratch) => {
+                            render_scratch(track, sample, &mut out, &sh, sr)
+                        }
+                        Some(super::patch::SampleMode::Grain) => {} // облако ниже, по всем нотам
+                        _ => {
+                            let ratio = base_freq / track.freq.max(1e-6);
+                            let mut pos = 0.0f64;
+                            render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                                let speed =
+                                    if track.pitch_drop > 1.0 && track.pitch_time > 0.0 {
+                                        exponential_ramp(
+                                            t,
+                                            0.0,
+                                            ratio * track.pitch_drop,
+                                            track.pitch_time,
+                                            ratio,
+                                        )
+                                    } else {
+                                        ratio
+                                    };
+                                pos += speed;
+                                sample.mono.get(pos as usize).copied().unwrap_or(0.0) as f64
+                            });
+                        }
+                    }
+                }
+            }
             _ => {
                 // Остальные модели — этап 4 (supersaw, karplus, …)
                 let mut phase = 0.0f64;
@@ -356,7 +388,149 @@ pub fn render_osc_voice(
             }
         }
     }
+    if matches!(track.waveform, Waveform::Sample)
+        && matches!(track.sample_mode, Some(super::patch::SampleMode::Grain))
+    {
+        if let Some(sample) = sample {
+            render_grain_cloud(track, notes, sample, &mut out, &sh, sr);
+        }
+    }
     RenderedVoice { start_sample, samples: out }
+}
+
+/// Скрэтч на ноте: игла идёт по ломаной scratchPoints (t → pos 0..1),
+/// позиция сглаживается one-pole ~4 мс (порт worklet barlow-scratch).
+fn render_scratch(
+    track: &Track,
+    sample: &super::samples::SampleData,
+    out: &mut [f32],
+    sh: &VoiceShape,
+    sr: f64,
+) {
+    let points: Vec<(f64, f64)> = track
+        .scratch_points
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .map(|p| (p.t, p.pos))
+        .collect();
+    let voice_len = sh.voice_len;
+    // Огибающая скрэтча: рампа 10 мс → плато до 88% → спад.
+    let peak = sh.peak;
+    let read_at = |pos01: f64| -> f32 {
+        let p = (pos01.clamp(0.0, 1.0)) * (sample.mono.len().saturating_sub(2)) as f64;
+        let i = p.floor() as usize;
+        let frac = (p - i as f64) as f32;
+        sample.mono[i] + (sample.mono[i + 1] - sample.mono[i]) * frac
+    };
+    let mut smooth = points.first().map(|p| p.1).unwrap_or(0.0);
+    let alpha = 1.0 - (-1.0 / (0.004 * sr)).exp();
+    for (i, slot) in out.iter_mut().enumerate() {
+        let t = i as f64 / sr;
+        let target = if points.is_empty() {
+            t / voice_len
+        } else {
+            let mut target = points[0].1;
+            for (pt, pp) in &points {
+                if *pt <= t / voice_len.max(1e-9) {
+                    target = *pp;
+                }
+            }
+            // линейная интерполяция между точками ломаной
+            for w in points.windows(2) {
+                let (t0, p0) = w[0];
+                let (t1, p1) = w[1];
+                let x0 = t0 * voice_len;
+                let x1 = t1 * voice_len;
+                if t >= x0 && t <= x1 && x1 > x0 {
+                    target = p0 + (p1 - p0) * (t - x0) / (x1 - x0);
+                }
+            }
+            target
+        };
+        smooth += (target - smooth) * alpha;
+        let env = if t < 0.01 {
+            linear_ramp(t, 0.0, 0.0, 0.01, peak)
+        } else if t < voice_len * 0.88 {
+            peak
+        } else {
+            exponential_ramp(t, voice_len * 0.88, peak, voice_len, 0.0001)
+        };
+        *slot = read_at(smooth) * env as f32;
+    }
+}
+
+/// Гранулярное облако (порт scheduleGrainCloud): равномерная россыпь
+/// Ханн-окон из сэмпла, джиттер стартов на своём ГПСЧ, общий гейт облака.
+fn render_grain_cloud(
+    track: &Track,
+    notes: &[&Note],
+    sample: &super::samples::SampleData,
+    out: &mut [f32],
+    sh: &VoiceShape,
+    sr: f64,
+) {
+    let g_max = notes
+        .iter()
+        .map(|nt| nt.gate.unwrap_or(1.0).clamp(0.1, 4.0))
+        .fold(1.0, f64::max);
+    let dur = (sh.base_len * g_max).max(0.05);
+    let sample_dur = sample.mono.len() as f64 / sr;
+    let size_sec = (track.grain_size_ms.unwrap_or(120.0) / 1000.0).clamp(0.01, sample_dur.max(0.011));
+    let pos_c = track.grain_pos.unwrap_or(0.3).clamp(0.0, 1.0);
+    let scatter = track.grain_scatter.unwrap_or(0.15).clamp(0.0, 1.0);
+    let per_note = track.grain_count.unwrap_or(10).clamp(1, 32) as usize;
+    let total = (per_note * notes.len()).min(64);
+    let per = ((total as f64 / notes.len() as f64).round() as usize).max(1);
+    let step_t = dur / per as f64;
+    let grain_amp = sh.peak * 1.4 / (total as f64).sqrt();
+    let rows = scale_of(track);
+    let max = rows.len().saturating_sub(1) as i64;
+    let mut rng = super::dsp::XorShift::new(0xBADC0DE);
+    let read_at = |pos01: f64| -> f32 {
+        let p = pos01.clamp(0.0, 1.0) * (sample.mono.len().saturating_sub(2)) as f64;
+        let i = p.floor() as usize;
+        let frac = (p - i as f64) as f32;
+        sample.mono[i] + (sample.mono[i + 1] - sample.mono[i]) * frac
+    };
+    let mut last_end = 0.0f64;
+    for g in 0..per {
+        let t0 = g as f64 * step_t;
+        let at = (t0 + (rng.next_f64() - 0.5) * step_t * 0.4).max(0.0);
+        for nt in notes {
+            let idx = nt.n.clamp(0, max) as usize;
+            let ratio = rows.get(idx).copied().unwrap_or(1.0);
+            let center = (pos_c + (rng.next_f64() * 2.0 - 1.0) * scatter * 0.5).clamp(0.0, 1.0);
+            let room = (sample_dur - size_sec * ratio).max(0.0);
+            let start01 = center * room;
+            let start = (at * sr) as usize;
+            let grain_len = (size_sec * sr).ceil() as usize;
+            for k in 0..grain_len {
+                let di = start + k;
+                if di >= out.len() {
+                    break;
+                }
+                // Ханн-окно
+                let w = (std::f64::consts::PI * k as f64 / grain_len as f64).sin();
+                let pos01 = start01 + k as f64 / sr / sr * ratio;
+                out[di] += read_at(pos01) * (w * w * grain_amp * nt.vel) as f32;
+            }
+            last_end = last_end.max(at + size_sec);
+        }
+    }
+    // Огибающая облака: мягкий старт, плато, общий спад в конце.
+    let n = out.len();
+    for (i, slot) in out.iter_mut().enumerate() {
+        let t = i as f64 / sr;
+        let env = if t < 0.02f64.min(dur * 0.2) {
+            linear_ramp(t, 0.0, 0.0, 0.02f64.min(dur * 0.2), 1.0)
+        } else if t < dur {
+            1.0
+        } else {
+            exponential_ramp(t, dur, 1.0, last_end.max(dur) + 0.01, 0.0001)
+        };
+        *slot *= env as f32;
+    }
 }
 
 /// Заполнить буфер ноты: осциллятор × огибающая × гейт.
@@ -413,7 +587,7 @@ mod tests {
         let t = track_json("sine");
         let note = Note { n: 0, vel: 1.0, prob: 1.0, gate: None };
         let notes = [&note];
-        let v = render_osc_voice(&t, &notes, 0.5, 0.125, 44100.0);
+        let v = render_osc_voice(&t, &notes, 0.5, 0.125, 44100.0, None);
         assert_eq!(v.start_sample, 22050);
         assert!(v.samples[0].abs() < 1e-6);
         let mid = &v.samples[1000..2000];
@@ -442,7 +616,7 @@ mod tests {
             t.waveform = wf;
             let note = Note { n: 0, vel: 1.0, prob: 1.0, gate: None };
             let notes = [&note];
-            let v = render_osc_voice(&t, &notes, 0.1, 0.125, 44100.0);
+            let v = render_osc_voice(&t, &notes, 0.1, 0.125, 44100.0, None);
             let mid = &v.samples[200..4410];
             let peak = mid.iter().fold(0.0f32, |a, s| a.max(s.abs()));
             // Модальный — тихая по природе модель (шумовой щелчок в

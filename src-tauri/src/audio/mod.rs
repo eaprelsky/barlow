@@ -10,5 +10,6 @@ pub mod master;
 pub mod output;
 pub mod patch;
 pub mod render;
+pub mod samples;
 pub mod timing;
 pub mod voices;

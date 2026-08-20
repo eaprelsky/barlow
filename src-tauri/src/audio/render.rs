@@ -108,7 +108,7 @@ pub fn render_patch(patch: &Patch, sr: f64) -> (Vec<f32>, Vec<f32>) {
                     .filter(|nt| nt.prob >= 1.0)
                     .collect();
                 if !notes.is_empty() && audible && track.enabled != Some(false) {
-                    let voice = render_osc_voice(track, &notes, tt, step_dur, sr);
+                    let voice = render_osc_voice(track, &notes, tt, step_dur, sr, None);
                     let mix = voice_mix
                         .entry((track.id.clone(), item.scene_id.clone()))
                         .or_default();
