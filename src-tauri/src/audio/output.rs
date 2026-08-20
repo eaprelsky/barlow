@@ -38,37 +38,69 @@ pub struct OutputConfig {
     pub engine: Option<std::sync::Arc<super::engine::LiveEngine>>,
 }
 
-/// Активные рендер-устройства; дефолт первым.
+/// Активные рендер-устройства; дефолт первым. COM-вызовы — в собственном
+/// потоке: потоки пула Tauri живут в STA, и CoInitializeEx(MTA) там
+/// падает с RPC_E_CHANGED_MODE (0x80010106).
 pub fn list_devices() -> Result<Vec<DeviceInfo>, String> {
-    let hr = initialize_mta();
-    if hr.is_err() {
-        return Err(format!("MTA: {hr:?}"));
-    }
-    let enumerator = DeviceEnumerator::new().map_err(|e| e.to_string())?;
-    let mut out: Vec<DeviceInfo> = Vec::new();
-    if let Ok(def) = enumerator.get_default_device(&Direction::Render) {
-        if let (Ok(id), Ok(name)) = (def.get_id(), def.get_friendlyname()) {
-            out.push(DeviceInfo { id, name, default: true });
-        }
-    }
-    if let Ok(collection) = enumerator.get_device_collection(&Direction::Render) {
-        for idx in 0..collection.get_nbr_devices().unwrap_or(0) {
-            let Ok(dev) = collection.get_device_at_index(idx) else {
-                continue;
-            };
-            if !matches!(dev.get_state(), Ok(DeviceState::Active)) {
-                continue;
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let hr = initialize_mta();
+            if hr.is_err() {
+                return Err(format!("MTA: {hr:?}"));
             }
-            let (Ok(id), Ok(name)) = (dev.get_id(), dev.get_friendlyname()) else {
-                continue;
-            };
-            if out.iter().any(|d| d.id == id) {
-                continue;
+            let enumerator = DeviceEnumerator::new().map_err(|e| e.to_string())?;
+            let mut out: Vec<DeviceInfo> = Vec::new();
+            if let Ok(def) = enumerator.get_default_device(&Direction::Render) {
+                if let (Ok(id), Ok(name)) = (def.get_id(), def.get_friendlyname()) {
+                    out.push(DeviceInfo { id, name, default: true });
+                }
             }
-            out.push(DeviceInfo { id, name, default: false });
-        }
-    }
-    Ok(out)
+            if let Ok(collection) = enumerator.get_device_collection(&Direction::Render) {
+                for idx in 0..collection.get_nbr_devices().unwrap_or(0) {
+                    let Ok(dev) = collection.get_device_at_index(idx) else {
+                        continue;
+                    };
+                    if !matches!(dev.get_state(), Ok(DeviceState::Active)) {
+                        continue;
+                    }
+                    let (Ok(id), Ok(name)) = (dev.get_id(), dev.get_friendlyname()) else {
+                        continue;
+                    };
+                    if out.iter().any(|d| d.id == id) {
+                        continue;
+                    }
+                    out.push(DeviceInfo { id, name, default: false });
+                }
+            }
+            Ok(out)
+        })
+        .join()
+        .unwrap_or_else(|_| Err("поток перечисления устройств умер".into()))
+    })
+}
+
+/// Нативный формат устройства (частота/каналы) — без открытия потока
+/// вывода; в собственном потоке (см. list_devices).
+pub fn query_format(device_id: Option<String>) -> Result<(u32, usize), String> {
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            let hr = initialize_mta();
+            if hr.is_err() {
+                return Err(format!("MTA: {hr:?}"));
+            }
+            let enumerator = DeviceEnumerator::new().map_err(|e| e.to_string())?;
+            let device = match device_id {
+                Some(id) => enumerator.get_device(&id).map_err(|e| e.to_string()),
+                None => enumerator
+                    .get_default_device(&Direction::Render)
+                    .map_err(|e| e.to_string()),
+            }?;
+            let fmt = device.get_device_format().map_err(|e| e.to_string())?;
+            Ok((fmt.get_samplespersec(), fmt.get_nchannels() as usize))
+        })
+        .join()
+        .unwrap_or_else(|_| Err("поток опроса формата умер".into()))
+    })
 }
 
 struct Shared {
@@ -80,14 +112,13 @@ pub struct OutputHandle {
     pub info: OutputInfo,
     shared: Arc<Shared>,
     join: Option<JoinHandle<()>>,
+    /// Поток шлёт сигнал по выходу — ждём с таймаутом, чтобы GUI не вис.
+    done: mpsc::Receiver<()>,
 }
 
 impl Drop for OutputHandle {
     fn drop(&mut self) {
-        self.shared.running.store(false, Ordering::Relaxed);
-        if let Some(j) = self.join.take() {
-            let _ = j.join();
-        }
+        self.shutdown();
     }
 }
 
@@ -96,16 +127,27 @@ impl OutputHandle {
         self.shared.tone_on.store(on, Ordering::Relaxed);
     }
 
-    pub fn stop(mut self) {
+    /// Остановить поток: максимум 1.5 c ожидания, дальше detach —
+    /// интерфейс не имеет права зависнуть из-за аудио.
+    fn shutdown(&mut self) {
         self.shared.running.store(false, Ordering::Relaxed);
-        if let Some(j) = self.join.take() {
-            let _ = j.join();
+        if self.done.recv_timeout(std::time::Duration::from_millis(1500)).is_ok() {
+            if let Some(j) = self.join.take() {
+                let _ = j.join();
+            }
+        } else if let Some(j) = self.join.take() {
+            std::mem::forget(j); // detach: поток добьёт очистку сам
         }
+    }
+
+    pub fn stop(mut self) {
+        self.shutdown();
     }
 }
 
 pub fn start(config: OutputConfig) -> Result<OutputHandle, String> {
     let (tx, rx) = mpsc::channel::<Result<OutputInfo, String>>();
+    let (done_tx, done_rx) = mpsc::channel::<()>();
     let shared = Arc::new(Shared {
         running: AtomicBool::new(true),
         tone_on: AtomicBool::new(false),
@@ -113,11 +155,14 @@ pub fn start(config: OutputConfig) -> Result<OutputHandle, String> {
     let sh = Arc::clone(&shared);
     let join = std::thread::Builder::new()
         .name("barlow-audio-out".into())
-        .spawn(move || run_stream(&config, &sh, tx))
+        .spawn(move || {
+            run_stream(&config, &sh, tx);
+            let _ = done_tx.send(());
+        })
         .map_err(|e| e.to_string())?;
     match rx.recv() {
         // Ok — поток доложил параметры и ушёл в цикл событий
-        Ok(Ok(info)) => Ok(OutputHandle { info, shared, join: Some(join) }),
+        Ok(Ok(info)) => Ok(OutputHandle { info, shared, join: Some(join), done: done_rx }),
         Ok(Err(e)) => {
             let _ = join.join();
             Err(e)

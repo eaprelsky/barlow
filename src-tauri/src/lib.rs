@@ -302,19 +302,9 @@ fn audio_output_start(
     if let Some(old) = guard.take() {
         old.stop();
     }
-    let probe = audio::output::start(audio::output::OutputConfig {
-        device_id: None,
-        exclusive,
-        buffer_frames,
-        engine: None,
-    });
-    // Двухфазный старт: пробным запуском узнаём частоту/каналы, создаём
-    // движок и стартуем окончательно (probe-поток умирает по Drop).
-    let (rate, channels) = match &probe {
-        Ok(h) => (h.info.rate, h.info.channels),
-        Err(e) => return Err(e.clone()),
-    };
-    drop(probe);
+    // Формат устройства — лёгким запросом (без открытия вывода): probe-старт
+    // конкурировал бы за устройство с финальным запуском.
+    let (rate, _channels) = audio::output::query_format(device.clone())?;
     let engine = audio::engine::LiveEngine::new(rate as f64);
     {
         let app2 = app.clone();
