@@ -96,6 +96,9 @@ export class AudioEngine implements AudioBackend {
   private noiseKind = '';
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
+  // Уходящие цепочки: хвосты нот доигрывают с затуханием ~30 мс, потом
+  // узлы освобождаются — стык инструментов/эскизов без щелчка.
+  private retiring: { chain: TrackChain; dieAt: number }[] = [];
   // Баллистика тумбометров: пик кадра с мгновенной атакой и плавным спадом.
   private meters = new Map<string, { buf: Float32Array<ArrayBuffer>; level: number }>();
   private clocks = new Map<string, TrackClock>();
@@ -226,13 +229,29 @@ export class AudioEngine implements AudioBackend {
     const alive = new Set(patch.tracks.map((t) => t.id));
     for (const [id, chain] of this.chains) {
       if (!alive.has(id)) {
-        disposeChain(chain);
+        this.retireChain(chain, this.ctx.currentTime);
         this.chains.delete(id);
         this.clocks.delete(id);
         this.meters.delete(id);
         this.lastVoices.delete(id);
       }
     }
+  }
+
+  /** Мягко увести цепочку: гейн в ноль за ~20 мс, узлы живут ещё 0.3 c —
+   *  хвосты нот затухают, а не обрываются (клик на стыке). */
+  private retireChain(chain: TrackChain, at: number): void {
+    chain.gain.gain.cancelScheduledValues(at);
+    chain.gain.gain.setTargetAtTime(0, at, 0.02);
+    for (const m of chain.mods) {
+      try {
+        m.src.stop(at + 0.3);
+      } catch {
+        /* уже остановлен */
+      }
+    }
+    for (const f of chain.fx) f.lfo?.stop(at + 0.3);
+    this.retiring.push({ chain, dieAt: at + 0.3 });
   }
 
   /** Живой уровень дорожки 0..1 для индикации: пик с мгновенной атакой
@@ -262,8 +281,8 @@ export class AudioEngine implements AudioBackend {
   }
 
   /** Применить эффективные параметры эскиза к цепочке трека.
-   *  Смена набора модуляций пересобирает цепочку (хвосты нот обрываются —
-   *  сознательно, как стоп клипа). */
+   *  Смена набора модуляций пересобирает цепочку: старая мягко уходит
+   *  (хвосты нот затухают в ней), новая включается параллельно. */
   private applyTrackParams(
     trackId: string,
     chain: TrackChain,
@@ -275,7 +294,7 @@ export class AudioEngine implements AudioBackend {
     const t0 = ctx.currentTime;
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
-      disposeChain(chain);
+      this.retireChain(chain, t0);
       const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
       this.chains.set(trackId, fresh);
       return fresh;
@@ -421,6 +440,8 @@ export class AudioEngine implements AudioBackend {
       window.setTimeout(() => {
         if (this.playing) return; // успели нажать play — не трогаем
         for (const chain of this.chains.values()) disposeChain(chain);
+        for (const r of this.retiring) disposeChain(r.chain);
+        this.retiring = [];
         this.chains.clear();
         this.meters.clear();
       }, 120);
@@ -618,6 +639,15 @@ export class AudioEngine implements AudioBackend {
     const patch = this.patch;
     if (!ctx || !patch || !this.noiseBuffer) return;
     const horizon = ctx.currentTime + SCHEDULE_AHEAD;
+
+    // Освобождение доживших уходящих цепочек.
+    if (this.retiring.length > 0) {
+      this.retiring = this.retiring.filter((r) => {
+        if (r.dieAt > ctx.currentTime) return true;
+        disposeChain(r.chain);
+        return false;
+      });
+    }
 
     // Смены сцен внутри горизонта планирования.
     let guard = 0;
