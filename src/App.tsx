@@ -298,11 +298,11 @@ export default function App() {
       return;
     }
     void engine.ensureSamples(patch).then(() => {
-      const started = engine.play(patch, sceneId);
+      const started: void | Promise<number> = engine.play(patch, sceneId);
       setPlaying(true);
       // Нативный запуск сообщает о неполадках — показываем, а не молчим.
-      if (started && typeof (started as Promise<number>).then === 'function') {
-        void (started as Promise<number>)
+      if (started instanceof Promise) {
+        void started
           .then(async (sampleTracks) => {
             if (sampleTracks > 0) {
               // Фоновая загрузка сэмплов успевает за полторы секунды
