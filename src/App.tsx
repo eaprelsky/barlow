@@ -298,13 +298,14 @@ export default function App() {
       return;
     }
     void engine.ensureSamples(patch).then(() => {
-      const started: void | Promise<number> = engine.play(patch, sceneId);
+      const started = engine.play(patch, sceneId);
       setPlaying(true);
       // Нативный запуск сообщает о неполадках — показываем, а не молчим.
-      if (started instanceof Promise) {
-        void started
+      // Web-движок вернёт undefined: ветка молчит.
+      {
+        void Promise.resolve(started as void | number | Promise<number>)
           .then(async (sampleTracks) => {
-            if (sampleTracks > 0) {
+            if ((sampleTracks ?? 0) > 0) {
               // Фоновая загрузка сэмплов успевает за полторы секунды
               await new Promise((r) => setTimeout(r, 1500));
               const loaded = await invoke<number>('audio_sample_count').catch(() => -1);
