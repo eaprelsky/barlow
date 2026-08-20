@@ -277,7 +277,22 @@ fn audio_settings(app: AppHandle) -> AudioSettings {
 /// Создаёт нативный live-движок на частоте устройства; часы идут наружу
 /// событием audio-clock (~30 Гц).
 #[tauri::command]
-fn audio_output_start(
+async fn audio_output_start(
+    app: AppHandle,
+    device: Option<String>,
+    exclusive: bool,
+    buffer_frames: u32,
+) -> Result<audio::output::OutputInfo, String> {
+    // Тяжёлое (WASAPI-инициализация, локы) — вне главного потока окна:
+    // sync-команды Tauri живут на main, и любой чих там морозит UI.
+    tauri::async_runtime::spawn_blocking(move || {
+        audio_output_start_blocking(app, device, exclusive, buffer_frames)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn audio_output_start_blocking(
     app: AppHandle,
     device: Option<String>,
     exclusive: bool,
@@ -334,26 +349,34 @@ fn audio_output_start(
 }
 
 #[tauri::command]
-fn audio_output_stop(app: AppHandle) -> Result<(), String> {
-    let state: tauri::State<AudioState> = app.state();
-    let mut guard = state.output.lock().map_err(|e| e.to_string())?;
-    if let Some(old) = guard.take() {
-        old.stop();
-    }
-    Ok(())
+async fn audio_output_stop(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state: tauri::State<AudioState> = app.state();
+        let mut guard = state.output.lock().map_err(|e| e.to_string())?;
+        if let Some(old) = guard.take() {
+            old.stop();
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn audio_test_tone(app: AppHandle, on: bool) -> Result<(), String> {
-    let state: tauri::State<AudioState> = app.state();
-    let guard = state.output.lock().map_err(|e| e.to_string())?;
-    match guard.as_ref() {
-        Some(h) => {
-            h.set_tone(on);
-            Ok(())
+async fn audio_test_tone(app: AppHandle, on: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state: tauri::State<AudioState> = app.state();
+        let guard = state.output.lock().map_err(|e| e.to_string())?;
+        match guard.as_ref() {
+            Some(h) => {
+                h.set_tone(on);
+                Ok(())
+            }
+            None => Err("вывод не запущен".into()),
         }
-        None => Err("вывод не запущен".into()),
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -366,7 +389,21 @@ fn audio_output_status(app: AppHandle) -> Result<Option<audio::output::OutputInf
 // ---- Нативный live-движок (этап 9-10) ----
 
 #[tauri::command]
-fn audio_play(app: AppHandle, patch_json: String, scene_id: Option<String>) -> Result<(), String> {
+async fn audio_play(
+    app: AppHandle,
+    patch_json: String,
+    scene_id: Option<String>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || audio_play_blocking(app, patch_json, scene_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn audio_play_blocking(
+    app: AppHandle,
+    patch_json: String,
+    scene_id: Option<String>,
+) -> Result<(), String> {
     let native: tauri::State<NativeState> = app.state();
     let guard = native.engine.lock().map_err(|e| e.to_string())?;
     let Some(engine) = guard.as_ref() else {

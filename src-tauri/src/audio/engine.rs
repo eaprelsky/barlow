@@ -406,6 +406,7 @@ impl LiveEngine {
 
         let scene = st.patch.scenes.iter().find(|s| s.id == st.scene_id).cloned();
         let tracks = st.patch.tracks.clone();
+        let mut triggers: Vec<(super::patch::Track, f64, Vec<super::patch::Note>, f64)> = Vec::new();
         for track in &tracks {
             if track.enabled == Some(false) {
                 continue;
@@ -446,6 +447,9 @@ impl LiveEngine {
             // Локальная выноска часов: внутри цикла мутабельны голоса/цепочки.
             let mut next_time = clock.next_step_time;
             let mut next_idx = clock.next_step_index;
+            // Триггеры собираем под локом, голоса рендерим БЕЗ лока
+            // (сотни тысяч сэмплов на голос не должны голодать остальных).
+            let mut pending: Vec<(f64, Vec<super::patch::Note>)> = Vec::new();
             let mut guard = 0;
             while next_time < horizon && guard < 1024 {
                 guard += 1;
@@ -453,8 +457,12 @@ impl LiveEngine {
                 let idx = next_idx;
                 let step = pattern.steps.get(idx.rem_euclid(pattern.steps.len().max(1) as i64) as usize);
                 if let Some(step) = step {
-                    let notes: Vec<&super::patch::Note> =
-                        step.notes.iter().filter(|n| n.prob >= 1.0).collect();
+                    let notes: Vec<super::patch::Note> = step
+                        .notes
+                        .iter()
+                        .filter(|n| n.prob >= 1.0)
+                        .cloned()
+                        .collect();
                     if !notes.is_empty() {
                         if track.mono == Some(true) {
                             let new_start = (at * sr) as u64;
@@ -467,27 +475,7 @@ impl LiveEngine {
                                 }
                             }
                         }
-                        let sample = track
-                            .sample_id
-                            .as_ref()
-                            .and_then(|id| self.samples.lock().unwrap().get(id).cloned());
-                        let voice = render_osc_voice(track, &notes, at, step_dur, sr, sample.as_deref());
-                        st.voices.push(ActiveVoice {
-                            track_id: track.id.clone(),
-                            start_sample: (at * sr).round() as u64,
-                            data: Arc::new(voice.samples),
-                            pos: 0,
-                            duck_at: None,
-                        });
-                        for rt in st.patch.tracks.clone() {
-                            if let Some(sc) = &rt.sidechain {
-                                if sc.source_id == track.id {
-                                    if let Some(chain) = st.chains.get_mut(&rt.id) {
-                                        chain.push_duck(at, sc.amount, sc.release_sec);
-                                    }
-                                }
-                            }
-                        }
+                        pending.push((at, notes));
                     }
                 }
                 next_idx = (idx + 1).rem_euclid(pattern.length.max(1) as i64);
@@ -497,6 +485,44 @@ impl LiveEngine {
                 clock.next_step_time = next_time;
                 clock.next_step_index = next_idx;
             }
+            // Сайдчейны качают приёмников — тоже под локом, дёшево.
+            for (at, _) in &pending {
+                for rt in st.patch.tracks.clone() {
+                    if let Some(sc) = &rt.sidechain {
+                        if sc.source_id == track.id {
+                            if let Some(chain) = st.chains.get_mut(&rt.id) {
+                                chain.push_duck(*at, sc.amount, sc.release_sec);
+                            }
+                        }
+                    }
+                }
+            }
+            for (at, notes) in pending {
+                triggers.push((track.clone(), at, notes, step_dur));
+            }
+        }
+        // Голоса рендерим БЕЗ лока: сотни тысяч сэмплов на голос не
+        // должны голодать главный поток и соседние блоки.
+        drop(st);
+        let mut rendered: Vec<(String, f64, Vec<f32>)> = Vec::with_capacity(triggers.len());
+        for (track, at, notes, step_dur) in triggers {
+            let refs: Vec<&super::patch::Note> = notes.iter().collect();
+            let sample = track
+                .sample_id
+                .as_ref()
+                .and_then(|id| self.samples.lock().unwrap().get(id).cloned());
+            let voice = render_osc_voice(&track, &refs, at, step_dur, sr, sample.as_deref());
+            rendered.push((track.id.clone(), at, voice.samples));
+        }
+        let mut st = self.state.lock().unwrap();
+        for (track_id, at, data) in rendered {
+            st.voices.push(ActiveVoice {
+                track_id,
+                start_sample: (at * sr).round() as u64,
+                data: Arc::new(data),
+                pos: 0,
+                duck_at: None,
+            });
         }
         // Голоса, кончившиеся давно, убираем (потолок 16.4 с).
         st.voices

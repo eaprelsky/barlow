@@ -160,14 +160,16 @@ pub fn start(config: OutputConfig) -> Result<OutputHandle, String> {
             let _ = done_tx.send(());
         })
         .map_err(|e| e.to_string())?;
-    match rx.recv() {
+    // Таймаут инициализации: если драйвер виснет в Initialize, не тянем
+    // вызывающего дольше 3 с (поток добьёт очистку сам при drop JoinHandle).
+    match rx.recv_timeout(std::time::Duration::from_secs(3)) {
         // Ok — поток доложил параметры и ушёл в цикл событий
         Ok(Ok(info)) => Ok(OutputHandle { info, shared, join: Some(join), done: done_rx }),
         Ok(Err(e)) => {
             let _ = join.join();
             Err(e)
         }
-        Err(_) => Err("поток вывода умер до инициализации".into()),
+        Err(_) => Err("вывод не поднялся за 3 с — драйвер не отвечает (попробуйте shared-режим)".into()),
     }
 }
 
