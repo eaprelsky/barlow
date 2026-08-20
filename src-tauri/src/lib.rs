@@ -63,16 +63,19 @@ fn load_samples_into_engine(app: &AppHandle, engine: &std::sync::Arc<audio::engi
         for t in tracks {
             let Some(id) = t["sampleId"].as_str() else { continue };
             let mut found = false;
-            // Имя файла в библиотеке: <slug>-<sha256-8>.<ext> — сверяем
-            // суффикс из первых 8 символов id, полный SHA в имени не живёт.
+            // Имена в библиотеке бывают двух видов: <slug>-<sha256-8>.<ext>
+            // и просто <полный sha>.<ext> — ищем вхождение первых 8
+            // символов id в имени файла.
             let sha8: String = id.chars().take(8).collect();
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
                     let stem = name.split('.').next().unwrap_or("");
-                    if stem.ends_with(&format!("-{sha8}")) {
+                    if stem.contains(&sha8) {
                         if let Ok(bytes) = std::fs::read(e.path()) {
-                            if let Some(sd) = audio::samples::decode_wav(&bytes) {
+                            let decoded = audio::samples::decode_wav(&bytes)
+                                .or_else(|| audio::samples::decode_mp3(&bytes));
+                            if let Some(sd) = decoded {
                                 let mono = audio::samples::resample(&sd, sr);
                                 engine.put_sample(id.to_string(), audio::samples::SampleData { mono, rate: sr as u32 });
                                 loaded += 1;

@@ -60,3 +60,60 @@ pub fn resample(sd: &SampleData, target: f64) -> Vec<f32> {
 pub fn matches_id(file_name: &str, id: &str) -> bool {
     file_name.starts_with(id)
 }
+
+/// Декод MP3 через symphonia → моно-микс (частота — из файла).
+pub fn decode_mp3(bytes: &[u8]) -> Option<SampleData> {
+    use symphonia::core::audio::{AudioBufferRef, Signal};
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let mss = MediaSourceStream::new(
+        Box::new(std::io::Cursor::new(bytes.to_vec())),
+        Default::default(),
+    );
+    let mut probed = symphonia::default::get_probe()
+        .format(
+            &Hint::new(),
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let track = probed.format.tracks().first()?.clone();
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .ok()?;
+    let rate = track.codec_params.sample_rate.unwrap_or(44100);
+    let mut mono: Vec<f32> = Vec::new();
+    loop {
+        let packet = match probed.format.next_packet() {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        let decoded = match decoder.decode(&packet) {
+            Ok(d) => d,
+            Err(_) => break,
+        };
+        let spec = *decoded.spec();
+        let n = decoded.frames();
+        let ch_count = spec.channels.count();
+        let buf: AudioBufferRef = decoded.into();
+        let mut f32buf = buf.make_equivalent::<f32>();
+        buf.convert(&mut f32buf);
+        for i in 0..n {
+            let v: f32 = (0..ch_count)
+                .map(|c| f32buf.chan(c)[i])
+                .sum::<f32>()
+                / ch_count.max(1) as f32;
+            mono.push(v);
+        }
+    }
+    if mono.is_empty() {
+        return None;
+    }
+    Some(SampleData { mono, rate })
+}
+

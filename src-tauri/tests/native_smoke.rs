@@ -147,3 +147,41 @@ fn engine_loop_without_wasapi() {
     let ticks = main_thread.join().unwrap();
     eprintln!("OK: блоков {n}, main-тиков {ticks}");
 }
+
+#[test]
+fn reverb_tail_is_audible() {
+    let mut rv = barlow_lib::audio::chain::Schroeder::new(2.5, 48000.0);
+    // Импульс → хвост: RMS первых 50 мс после импульса заметно выше нуля
+    rv.process(1.0);
+    rv.process(0.0);
+    let mut sum = 0.0f64;
+    for _ in 0..2400 {
+        let (l, r) = rv.process(0.0);
+        sum += l * l + r * r;
+    }
+    let rms = (sum / 4800.0).sqrt();
+    assert!(rms > 0.005, "хвост реверба тихий: {rms}");
+}
+
+#[test]
+fn decode_user_mp3() {
+    let dir = std::path::Path::new(
+        r"C:\Users\eaprelsky\AppData\Roaming\ru.eaprelsky.barlow\samples",
+    );
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        eprintln!("библиотеки нет — пропускаю");
+        return;
+    };
+    for e in entries.flatten() {
+        if e.path().extension().map(|x| x == "mp3").unwrap_or(false) {
+            let bytes = std::fs::read(e.path()).unwrap();
+            match barlow_lib::audio::samples::decode_mp3(&bytes) {
+                Some(sd) => {
+                    eprintln!("mp3: {} сэмплов, {} Гц", sd.mono.len(), sd.rate);
+                    assert!(!sd.mono.is_empty());
+                }
+                None => panic!("mp3 не декодировался: {:?}", e.path()),
+            }
+        }
+    }
+}

@@ -76,7 +76,7 @@ struct EffectChain {
 /// Реверб Шрёдера: 8 гребёнок + 4 allpass на канал — быстрая замена
 /// конволюции с процедурным IR web-движка (там случайный IR; здесь
 /// детерминированный, той же природы «шумовое пространство»).
-struct Schroeder {
+pub struct Schroeder {
     combs_l: Vec<(Vec<f32>, usize)>,
     combs_r: Vec<(Vec<f32>, usize)>,
     aps_l: Vec<(Vec<f32>, usize)>,
@@ -84,7 +84,7 @@ struct Schroeder {
 }
 
 impl Schroeder {
-    fn new(size_sec: f64, sr: f64) -> Schroeder {
+    pub fn new(size_sec: f64, sr: f64) -> Schroeder {
         // База Freeverb (сэмплы при 44.1 к): растягиваем по sizeSec.
         let base = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
         let ap = [556, 441, 341, 225];
@@ -125,7 +125,7 @@ impl Schroeder {
         out
     }
 
-    fn process(&mut self, x: f64) -> (f64, f64) {
+    pub fn process(&mut self, x: f64) -> (f64, f64) {
         let xl = x as f32;
         // лёгкая декорреляция каналов
         let xr = (x * 0.98) as f32;
