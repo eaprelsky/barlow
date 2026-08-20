@@ -63,10 +63,14 @@ fn load_samples_into_engine(app: &AppHandle, engine: &std::sync::Arc<audio::engi
         for t in tracks {
             let Some(id) = t["sampleId"].as_str() else { continue };
             let mut found = false;
+            // Имя файла в библиотеке: <slug>-<sha256-8>.<ext> — сверяем
+            // суффикс из первых 8 символов id, полный SHA в имени не живёт.
+            let sha8: String = id.chars().take(8).collect();
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
-                    if name.starts_with(id) {
+                    let stem = name.split('.').next().unwrap_or("");
+                    if stem.ends_with(&format!("-{sha8}")) {
                         if let Ok(bytes) = std::fs::read(e.path()) {
                             if let Some(sd) = audio::samples::decode_wav(&bytes) {
                                 let mono = audio::samples::resample(&sd, sr);
@@ -323,7 +327,11 @@ fn audio_output_start_blocking(
     let engine = audio::engine::LiveEngine::new(rate as f64);
     {
         let app2 = app.clone();
+        let engine_cb = engine.clone();
         engine.set_clock_callback(Box::new(move |now, scene, pos, playing| {
+            // Snapshot здесь безопасен: render_block отпускает локи до
+            // вызова callback. Часы треков нужны playhead'у (бегунок).
+            let clocks = engine_cb.snapshot().4;
             let _ = app2.emit(
                 "audio-clock",
                 NativeClock {
@@ -331,7 +339,7 @@ fn audio_output_start_blocking(
                     now,
                     scene_id: scene.to_string(),
                     chain_pos: pos,
-                    clocks: Default::default(),
+                    clocks,
                 },
             );
         }));

@@ -70,6 +70,81 @@ struct EffectChain {
     delay_r: Vec<f32>,
     write: usize,
     lfo_phase: f64,
+    reverb: Option<Schroeder>,
+}
+
+/// Реверб Шрёдера: 8 гребёнок + 4 allpass на канал — быстрая замена
+/// конволюции с процедурным IR web-движка (там случайный IR; здесь
+/// детерминированный, той же природы «шумовое пространство»).
+struct Schroeder {
+    combs_l: Vec<(Vec<f32>, usize)>,
+    combs_r: Vec<(Vec<f32>, usize)>,
+    aps_l: Vec<(Vec<f32>, usize)>,
+    aps_r: Vec<(Vec<f32>, usize)>,
+}
+
+impl Schroeder {
+    fn new(size_sec: f64, sr: f64) -> Schroeder {
+        // База Freeverb (сэмплы при 44.1 к): растягиваем по sizeSec.
+        let base = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
+        let ap = [556, 441, 341, 225];
+        let scale = ((size_sec / 2.8).clamp(0.25, 4.0) * sr / 44100.0) as usize;
+        let mut rng = super::dsp::XorShift::new(0x5EED_5EED);
+        let jitter = |rng: &mut super::dsp::XorShift, x: usize| {
+            (x as f64 * (1.0 + (rng.next_f64() - 0.5) * 0.05)) as usize
+        };
+        let mk = |rng: &mut super::dsp::XorShift, xs: &[usize], feedback_len: usize| -> Vec<(Vec<f32>, usize)> {
+            xs.iter()
+                .map(|&x| (vec![0.0; (jitter(rng, x) * scale).max(4) + 1], feedback_len))
+                .collect()
+        };
+        let mut rng2 = super::dsp::XorShift::new(0x5EED_5EED);
+        let combs_l = mk(&mut rng, &base, 0);
+        let combs_r = mk(&mut rng2, &base, 0);
+        let aps_l = mk(&mut rng, &ap, 0);
+        let aps_r = mk(&mut rng2, &ap, 0);
+        Schroeder { combs_l, combs_r, aps_l, aps_r }
+    }
+
+    #[inline]
+    fn comb(buf: &mut Vec<f32>, idx: &mut usize, input: f32) -> f32 {
+        let n = buf.len();
+        let out = buf[*idx];
+        buf[*idx] = input + out * 0.84; // feedback
+        *idx = (*idx + 1) % n;
+        out
+    }
+
+    #[inline]
+    fn allpass(buf: &mut Vec<f32>, idx: &mut usize, input: f32) -> f32 {
+        let n = buf.len();
+        let bufout = buf[*idx];
+        let out = -input + bufout;
+        buf[*idx] = input + bufout * 0.5;
+        *idx = (*idx + 1) % n;
+        out
+    }
+
+    fn process(&mut self, x: f64) -> (f64, f64) {
+        let xl = x as f32;
+        // лёгкая декорреляция каналов
+        let xr = (x * 0.98) as f32;
+        let mut l = 0.0f32;
+        let mut r = 0.0f32;
+        for (buf, idx) in self.combs_l.iter_mut() {
+            l += Self::comb(buf, idx, xl * 0.125);
+        }
+        for (buf, idx) in self.combs_r.iter_mut() {
+            r += Self::comb(buf, idx, xr * 0.125);
+        }
+        for (buf, idx) in self.aps_l.iter_mut() {
+            l = Self::allpass(buf, idx, l);
+        }
+        for (buf, idx) in self.aps_r.iter_mut() {
+            r = Self::allpass(buf, idx, r);
+        }
+        (l as f64, r as f64)
+    }
 }
 
 struct ModChain {
@@ -89,12 +164,19 @@ impl TrackChain {
                     Effect::Delay { time_sec, .. } => ((time_sec * 1.05) * sr).ceil() as usize + 2,
                     _ => 2,
                 };
+                let reverb = match &effect {
+                    Effect::Reverb { size_sec, .. } => {
+                        Some(Schroeder::new(*size_sec, sr))
+                    }
+                    _ => None,
+                };
                 EffectChain {
                     effect,
                     delay_l: vec![0.0; max_len],
                     delay_r: vec![0.0; max_len],
                     write: 0,
                     lfo_phase: 0.0,
+                    reverb,
                 }
             })
             .collect();
@@ -271,10 +353,10 @@ impl TrackChain {
                 ec.write = (ec.write + 1) % ec.delay_l.len();
                 (yl, yr)
             }
-            Effect::Reverb { .. } => {
-                // Конволюция с процедурным IR — этап 6 (в эталон не входит).
-                (0.0, 0.0)
-            }
+            Effect::Reverb { .. } => match ec.reverb.as_mut() {
+                Some(rv) => rv.process(xl),
+                None => (0.0, 0.0),
+            },
         }
     }
 
