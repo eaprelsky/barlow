@@ -29,6 +29,7 @@ import { putSample } from './audio/library';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
+import { invoke } from '@tauri-apps/api/core';
 import { slugify } from './utils/slug';
 import { Library } from './components/Library';
 import { AudioPanel } from './components/AudioPanel';
@@ -294,12 +295,36 @@ export default function App() {
     if (engine.playing) {
       engine.stop();
       setPlaying(false);
-    } else {
-      void engine.ensureSamples(patch).then(() => {
-        engine.play(patch, sceneId);
-        setPlaying(true);
-      });
+      return;
     }
+    void engine.ensureSamples(patch).then(() => {
+      const started = engine.play(patch, sceneId);
+      setPlaying(true);
+      // Нативный запуск сообщает о неполадках — показываем, а не молчим.
+      if (started && typeof (started as Promise<number>).then === 'function') {
+        void (started as Promise<number>)
+          .then(async (sampleTracks) => {
+            if (sampleTracks > 0) {
+              // Фоновая загрузка сэмплов успевает за полторы секунды
+              await new Promise((r) => setTimeout(r, 1500));
+              const loaded = await invoke<number>('audio_sample_count').catch(() => -1);
+              if (loaded === 0) {
+                await alertDialog(
+                  'Сэмплер-треки в патче есть, но ни один файл библиотеки не загрузился в нативный движок (поддерживаются WAV и MP3). Проверьте папку библиотеки в панели сэмплов.',
+                  'сэмплы не загрузились',
+                );
+              }
+            }
+          })
+          .catch(async (e) => {
+            setPlaying(false);
+            await alertDialog(
+              `Нативный вывод не поднялся: ${String(e)}`,
+              'воспроизведение',
+            );
+          });
+      }
+    });
   }, [engine, patch, sceneId]);
 
   // Пока играем — прогреваем кэш сэмплов (загрузил новый — заиграл без рестарта).

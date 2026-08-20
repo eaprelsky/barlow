@@ -57,6 +57,8 @@ pub struct LiveEngine {
     pub debug_phase: AtomicU8,
     /// Диагностика: сэмпл в теле блока (фаза 8).
     pub debug_i: std::sync::atomic::AtomicU32,
+    /// Сколько сэмплов библиотеки загружено (диагностика UI).
+    pub loaded_samples: std::sync::atomic::AtomicUsize,
     state: Mutex<LiveState>,
     meters: Mutex<HashMap<String, f32>>,
     samples: Mutex<HashMap<String, Arc<super::samples::SampleData>>>,
@@ -74,6 +76,7 @@ impl LiveEngine {
             render_blocks: AtomicU64::new(0),
             debug_phase: AtomicU8::new(0),
             debug_i: std::sync::atomic::AtomicU32::new(0),
+            loaded_samples: std::sync::atomic::AtomicUsize::new(0),
             state: Mutex::new(LiveState {
                 patch: empty_patch(),
                 scene_id: String::new(),
@@ -429,9 +432,17 @@ impl LiveEngine {
         let scene = st.patch.scenes.iter().find(|s| s.id == st.scene_id).cloned();
         let tracks = st.patch.tracks.clone();
         let mut triggers: Vec<(super::patch::Track, f64, Vec<super::patch::Note>, f64)> = Vec::new();
+        // Порт audibleSet: соло сцены оставляет только свою дорожку,
+        // мьют партии и выключенный трек молчат.
+        let solo_track = scene.as_ref().and_then(|s| s.solo_track_id.clone());
         for track in &tracks {
             if track.enabled == Some(false) {
                 continue;
+            }
+            if let Some(solo) = &solo_track {
+                if &track.id != solo {
+                    continue;
+                }
             }
             let Some(pattern) = pattern_in_scene(track, scene.as_ref()) else {
                 continue;

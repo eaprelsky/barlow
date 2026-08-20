@@ -404,7 +404,7 @@ async fn audio_play(
     app: AppHandle,
     patch_json: String,
     scene_id: Option<String>,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || audio_play_blocking(app, patch_json, scene_id))
         .await
         .map_err(|e| e.to_string())?
@@ -414,7 +414,7 @@ fn audio_play_blocking(
     app: AppHandle,
     patch_json: String,
     scene_id: Option<String>,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     let native: tauri::State<NativeState> = app.state();
     let guard = native.engine.lock().map_err(|e| e.to_string())?;
     let Some(engine) = guard.as_ref() else {
@@ -425,14 +425,24 @@ fn audio_play_blocking(
     // Декод сэмплов — в фон: чтение/разбор WAV-библиотеки на главном
     // потоке замораживало окно; сэмплеры подхватят файлы через мгновение.
     let patch_val = serde_json::to_value(&patch).unwrap_or_default();
+    let sample_tracks = patch_val["tracks"]
+        .as_array()
+        .map(|ts| {
+            ts.iter()
+                .filter(|t| t["waveform"].as_str() == Some("sample"))
+                .count()
+        })
+        .unwrap_or(0);
     let app2 = app.clone();
     let engine2 = engine.clone();
     std::thread::spawn(move || {
         let n = load_samples_into_engine(&app2, &engine2, &patch_val);
-        let _ = n;
+        engine2
+            .loaded_samples
+            .fetch_add(n, std::sync::atomic::Ordering::Relaxed);
     });
     engine.play(patch, scene_id);
-    Ok(())
+    Ok(sample_tracks)
 }
 
 #[tauri::command]
@@ -513,6 +523,16 @@ fn audio_track_levels(app: AppHandle) -> Result<std::collections::HashMap<String
 }
 
 #[tauri::command]
+fn audio_sample_count(app: AppHandle) -> Result<usize, String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    Ok(guard
+        .as_ref()
+        .map(|e| e.loaded_samples.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(0))
+}
+
+#[tauri::command]
 fn audio_scratch_begin(app: AppHandle, sample_id: Option<String>) -> Result<(), String> {
     let native: tauri::State<NativeState> = app.state();
     let guard = native.engine.lock().map_err(|e| e.to_string())?;
@@ -583,6 +603,7 @@ pub fn run() {
             audio_set_bpm,
             audio_state,
             audio_track_levels,
+            audio_sample_count,
             audio_scratch_begin,
             audio_scratch_move,
             audio_scratch_end,

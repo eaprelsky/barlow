@@ -70,26 +70,30 @@ export class RustAudioBackend implements AudioBackend {
     return this.snap.now;
   }
 
-  play(patch: Patch, sceneId: string): void {
-    void (async () => {
+  /** Запуск воспроизведения; резолвится числом сэмплер-треков в патче,
+   *  либо reject с причиной (вывод не поднялся и т.п.) — UI показывает. */
+  play(patch: Patch, sceneId: string): Promise<number> {
+    return (async () => {
       try {
-        await invoke('audio_play', { patchJson: JSON.stringify(patch), sceneId });
+        return await invoke<number>('audio_play', {
+          patchJson: JSON.stringify(patch),
+          sceneId,
+        });
       } catch {
         // Вывод не поднят (после перезапуска приложения) — поднимаем с
         // сохранёнными настройками и повторяем.
-        try {
-          const st = await invoke<{ device: string | null; exclusive: boolean; buffer: number }>(
-            'audio_settings',
-          );
-          await invoke('audio_output_start', {
-            device: st.device,
-            exclusive: st.exclusive,
-            bufferFrames: st.buffer,
-          });
-          await invoke('audio_play', { patchJson: JSON.stringify(patch), sceneId });
-        } catch (e) {
-          console.error('нативный вывод не поднялся:', e);
-        }
+        const st = await invoke<{ device: string | null; exclusive: boolean; buffer: number }>(
+          'audio_settings',
+        );
+        await invoke('audio_output_start', {
+          device: st.device,
+          exclusive: st.exclusive,
+          bufferFrames: st.buffer,
+        });
+        return await invoke<number>('audio_play', {
+          patchJson: JSON.stringify(patch),
+          sceneId,
+        });
       }
     })();
   }
