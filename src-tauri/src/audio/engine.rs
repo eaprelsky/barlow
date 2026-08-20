@@ -50,6 +50,7 @@ pub struct LiveEngine {
     pub sr: f64,
     playing: AtomicBool,
     counter: AtomicU64,
+    last_sched: AtomicU64,
     state: Mutex<LiveState>,
     meters: Mutex<HashMap<String, f32>>,
     samples: Mutex<HashMap<String, Arc<super::samples::SampleData>>>,
@@ -63,6 +64,7 @@ impl LiveEngine {
             sr,
             playing: AtomicBool::new(false),
             counter: AtomicU64::new(0),
+            last_sched: AtomicU64::new(0),
             state: Mutex::new(LiveState {
                 patch: empty_patch(),
                 scene_id: String::new(),
@@ -210,68 +212,86 @@ impl LiveEngine {
     }
 
     /// Рендер блока: планирование + голоса + цепочки + мастер.
+    /// Без аллокаций на сэмпл: голоса проходятся один раз на блок,
+    /// миксы накапливаются в переиспользуемые буферы.
     pub fn render_block(&self, out: &mut [f32], frames: usize, channels: usize, block_start: u64) {
-        if self.playing.load(Ordering::Relaxed) {
+        let block_end = block_start + frames as u64;
+        // Планировщик — не чаще ~6 мс (как lookahead-проход web-движка).
+        if self.playing.load(Ordering::Relaxed)
+            && block_start.saturating_sub(self.last_sched.load(Ordering::Relaxed))
+                >= (self.sr / 160.0) as u64
+        {
             self.schedule(block_start);
+            self.last_sched.store(block_start, Ordering::Relaxed);
         }
         let sr = self.sr;
         let mut st = self.state.lock().unwrap();
         let master_pan = st.patch.master_pan.unwrap_or(0.5);
         let mut meters = self.meters.lock().unwrap();
-        let alpha_scratch = 1.0 - (-1.0 / (0.004 * sr)).exp();
-        for i in 0..frames {
-            let t = (block_start + i as u64) as f64 / sr;
-            let mut mix: HashMap<String, f32> = HashMap::new();
-            let now_abs = block_start + i as u64;
-            let mut alive = Vec::with_capacity(st.voices.len());
-            for mut v in st.voices.drain(..) {
-                let end = v.start_sample + v.data.len() as u64;
-                if now_abs >= end
-                    || now_abs >= v.start_sample.saturating_add((16.4 * sr) as u64)
-                {
-                    continue;
-                }
-                if now_abs >= v.start_sample && v.pos < v.data.len() {
-                    let mut amp = 1.0f64;
-                    if let Some(d) = v.duck_at {
-                        if now_abs >= d {
-                            amp = 1e-5f64.max((-((now_abs - d) as f64 / sr) / 0.004).exp());
-                        }
-                    }
-                    *mix.entry(v.track_id.clone()).or_insert(0.0) +=
-                        v.data[v.pos] as f32 * amp as f32;
-                    v.pos += 1;
-                }
-                alive.push(v);
+
+        // 1) Голоса → моно-микс на трек (один проход на блок).
+        let mut mix: HashMap<String, Vec<f32>> = HashMap::new();
+        st.voices.retain(|v| v.start_sample + v.data.len() as u64 > block_start);
+        for v in st.voices.iter_mut() {
+            let v_start = v.start_sample;
+            let v_end = v_start + v.data.len() as u64;
+            if v_end <= block_start || v_start >= block_end {
+                continue;
             }
-            st.voices = alive;
-            // Живой скрэтч: прямо в мастер, мимо цепочек.
-            let mut scratch_s = 0.0f64;
-            {
-                let mut sc = self.scratch.lock().unwrap();
-                if sc.active {
-                    if let Some(buf) = sc.sample.clone() {
-                        sc.smooth += (sc.pos - sc.smooth) * alpha_scratch;
+            let from = block_start.saturating_sub(v_start) as usize;
+            let mut di = v_start.saturating_sub(block_start) as usize;
+            let mut k = from;
+            let duck_dt = 1.0 / (0.004 * sr as f32);
+            let entry = mix.entry(v.track_id.clone()).or_insert_with(|| vec![0.0; frames]);
+            while di < frames && k < v.data.len() {
+                let mut amp = 1.0f32;
+                if let Some(d) = v.duck_at {
+                    let abs = v_start + k as u64;
+                    if abs >= d {
+                        amp = (-((abs - d) as f32 * duck_dt)).exp().max(1e-5);
+                    }
+                }
+                entry[di] += v.data[k] * amp;
+                di += 1;
+                k += 1;
+            }
+        }
+
+        // 2) Живой скрэтч: буфер на блок, прямо в мастер.
+        let mut scratch_buf = vec![0.0f32; frames];
+        {
+            let mut sc = self.scratch.lock().unwrap();
+            if sc.active {
+                if let Some(buf) = sc.sample.clone() {
+                    let alpha = 1.0 - (-1.0 / (0.004 * sr)).exp();
+                    for slot in scratch_buf.iter_mut() {
+                        sc.smooth += (sc.pos - sc.smooth) * alpha;
                         let p = sc.smooth.clamp(0.0, 1.0) * (buf.mono.len().saturating_sub(2)) as f64;
                         let idx = p.floor() as usize;
                         let frac = (p - idx as f64) as f32;
-                        scratch_s = (buf.mono[idx] + (buf.mono[idx + 1] - buf.mono[idx]) * frac) as f64 * 0.9;
+                        *slot = (buf.mono[idx] + (buf.mono[idx + 1] - buf.mono[idx]) * frac) * 0.9;
                     }
                 }
             }
-            let mut l = scratch_s;
-            let mut r = scratch_s;
-            let ids: Vec<String> = st.chains.keys().cloned().collect();
-            for tid in ids {
-                let mono = mix.get(tid.as_str()).copied().unwrap_or(0.0) as f64;
-                if let Some(chain) = st.chains.get_mut(&tid) {
+        }
+
+        // 3) Цепочки треков + мастер, посэмплово.
+        let ids: Vec<String> = st.chains.keys().cloned().collect();
+        let scratch_get = |i: usize| scratch_buf.get(i).copied().unwrap_or(0.0);
+        for i in 0..frames {
+            let t = (block_start + i as u64) as f64 / sr;
+            let mut l = scratch_get(i) as f64;
+            let mut r = l;
+            for tid in &ids {
+                let mono = mix
+                    .get(tid.as_str())
+                    .and_then(|m| m.get(i).copied())
+                    .unwrap_or(0.0) as f64;
+                if let Some(chain) = st.chains.get_mut(tid) {
                     chain.tick_mods(sr);
                     let (cl, cr) = chain.process(mono, t, sr);
                     l += cl;
                     r += cr;
-                    let lvl = ((cl * cl + cr * cr) * 0.5).sqrt() as f32;
-                    let e = meters.entry(tid.clone()).or_insert(0.0);
-                    *e = if lvl > *e { lvl } else { *e * 0.86 + lvl * 0.14 };
                 }
             }
             let (ml, mr) = st.master.process(l, r, master_pan);
@@ -283,14 +303,29 @@ impl LiveEngine {
                 out[off] = ((ml + mr) * 0.5) as f32;
             }
         }
+        // Тумбометры: RMS по блоку на трек.
+        for tid in &ids {
+            let mut sum = 0.0f64;
+            if let Some(m) = mix.get(tid.as_str()) {
+                for v in m {
+                    sum += (*v as f64) * (*v as f64);
+                }
+            }
+            let lvl = (sum / frames.max(1) as f64).sqrt() as f32;
+            let e = meters.entry(tid.clone()).or_insert(0.0);
+            *e = if lvl > *e { lvl } else { *e * 0.86 + lvl * 0.14 };
+        }
         // Часы наружу ~30 Гц
         let tick = (self.sr / 30.0) as u64;
-        if block_start / tick != (block_start + frames as u64) / tick {
+        if block_start / tick != block_end / tick {
             let (playing, now, scene, pos, _) = self.snapshot();
             if playing {
                 (self.on_clock.lock().unwrap())(now, &scene, pos, playing);
             }
         }
+        drop(meters);
+        drop(st);
+        let _ = self.counter.load(Ordering::Relaxed);
     }
 
     /// Планировщик: ноты до горизонта (порт scheduler() движка TS).

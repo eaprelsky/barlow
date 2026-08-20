@@ -5,7 +5,9 @@
 
 use super::chain::TrackChain;
 use super::master::MasterChain;
-use super::patch::{pattern_in_scene, step_freqs, Patch, Track};
+use super::patch::{pattern_in_scene, Patch, Track};
+#[cfg(test)]
+use super::patch::step_freqs;
 use super::timing::{start_step_index, step_duration, tick_duration, BAR_TICKS};
 use super::voices::render_osc_voice;
 

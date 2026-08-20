@@ -296,6 +296,19 @@ fn run_stream(config: &OutputConfig, shared: &Shared, tx: mpsc::Sender<Result<Ou
             pcm.resize(frames * channels, 0.0);
             engine.render_block(&mut pcm, frames, channels, block_start);
             engine.advance_clock(frames as u64);
+            if tone {
+                // Тон работает и поверх движка — тракт проверяется в любом режиме.
+                for frame in pcm.chunks_exact_mut(channels) {
+                    phase += step;
+                    if phase >= 1.0 {
+                        phase -= 1.0;
+                    }
+                    let s = (phase * std::f64::consts::TAU).sin() as f32 * 0.2;
+                    for ch in frame.iter_mut() {
+                        *ch += s;
+                    }
+                }
+            }
         } else {
             for _ in 0..frames {
                 phase += step;
