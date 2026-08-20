@@ -59,6 +59,10 @@ pub struct LiveEngine {
     pub debug_i: std::sync::atomic::AtomicU32,
     /// Сколько сэмплов библиотеки загружено (диагностика UI).
     pub loaded_samples: std::sync::atomic::AtomicUsize,
+    /// Диагностика: активных голосов в последнем блоке.
+    pub debug_voices: std::sync::atomic::AtomicUsize,
+    /// Диагностика планировщика: вызовы/треки/итерации/триггеры.
+    pub debug_sched: [std::sync::atomic::AtomicUsize; 4],
     state: Mutex<LiveState>,
     meters: Mutex<HashMap<String, f32>>,
     samples: Mutex<HashMap<String, Arc<super::samples::SampleData>>>,
@@ -77,6 +81,8 @@ impl LiveEngine {
             debug_phase: AtomicU8::new(0),
             debug_i: std::sync::atomic::AtomicU32::new(0),
             loaded_samples: std::sync::atomic::AtomicUsize::new(0),
+            debug_voices: std::sync::atomic::AtomicUsize::new(0),
+            debug_sched: Default::default(),
             state: Mutex::new(LiveState {
                 patch: empty_patch(),
                 scene_id: String::new(),
@@ -359,6 +365,7 @@ impl LiveEngine {
         let horizon = now + SCHEDULE_AHEAD;
         let sr = self.sr;
         let mut st = self.state.lock().unwrap();
+        self.debug_sched[0].fetch_add(1, Ordering::Relaxed);
 
         // Ручная сцена: применяется на ближайшей границе такта.
         if let Some(pending) = st.pending_scene.clone() {
@@ -439,6 +446,7 @@ impl LiveEngine {
             tracks.iter().any(|t| &t.id == solo)
         });
         for track in &tracks {
+            self.debug_sched[1].fetch_add(1, Ordering::Relaxed);
             if track.enabled == Some(false) {
                 continue;
             }
@@ -489,6 +497,7 @@ impl LiveEngine {
             let mut guard = 0;
             while next_time < horizon && guard < 1024 {
                 guard += 1;
+                self.debug_sched[2].fetch_add(1, Ordering::Relaxed);
                 let at = next_time;
                 let idx = next_idx;
                 let step = pattern.steps.get(idx.rem_euclid(pattern.steps.len().max(1) as i64) as usize);
@@ -533,6 +542,7 @@ impl LiveEngine {
                     }
                 }
             }
+            self.debug_sched[3].fetch_add(pending.len(), Ordering::Relaxed);
             for (at, notes) in pending {
                 triggers.push((track.clone(), at, notes, step_dur));
             }

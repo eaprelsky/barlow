@@ -512,7 +512,10 @@ fn render_grain_cloud(
                 }
                 // Ханн-окно
                 let w = (std::f64::consts::PI * k as f64 / grain_len as f64).sin();
-                let pos01 = start01 + k as f64 / sr / sr * ratio;
+                // Порт web: позиция зерна в СЕКУНДАХ (offset = center·room,
+                // полёт со скоростью ratio), read_at ждёт долю сэмпла.
+                let pos_sec = start01 + k as f64 / sr * ratio;
+                let pos01 = pos_sec / sample_dur;
                 out[di] += read_at(pos01) * (w * w * grain_amp * nt.vel) as f32;
             }
             last_end = last_end.max(at + size_sec);

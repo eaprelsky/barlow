@@ -1,0 +1,1534 @@
+{
+ "version": 29,
+ "bpm": 118,
+ "masterVolume": 1,
+ "masterNoise": "off",
+ "masterNoiseLevel": 0.03,
+ "masterPan": 0.5,
+ "masterComp": 0.45,
+ "followChain": false,
+ "scenes": [
+  {
+   "id": "smt0fkwula",
+   "name": "сцена 1",
+   "slots": {
+    "tmt0fnq5cd": "pmt0fnq5ce",
+    "tmt0frk6ef": "pmt0g0wt3k",
+    "tmt0g3skol": "pmt0g4etkn",
+    "tmt0g85s6p": "pmt0gfr37r",
+    "tmt0glxzps": "pmt0gnpqdu",
+    "tmt0gqjwkw": "pmt0gqjwkx"
+   },
+   "soloTrackId": "tmt0gqjwkw"
+  }
+ ],
+ "chain": [
+  {
+   "sceneId": "smt0fkwula",
+   "bars": 8
+  }
+ ],
+ "tracks": [
+  {
+   "rate": 4,
+   "phase": 0,
+   "waveform": "sine",
+   "scale": [
+    1
+   ],
+   "freq": 48,
+   "pitchDrop": 3.5,
+   "noteSteps": 1,
+   "pitchTime": 0.1,
+   "filterLow": 20,
+   "filterFreq": 1400,
+   "attack": 0.03,
+   "decay": 0.3,
+   "volume": 0.9,
+   "pan": 0.5,
+   "mods": [],
+   "patterns": [
+    {
+     "id": "pmt0fnq5ce",
+     "name": "A",
+     "length": 16,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    }
+   ],
+   "id": "tmt0fnq5cd",
+   "name": "пульс",
+   "filterQ": 0.8,
+   "sustain": 0,
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": false,
+   "effects": [],
+   "scaleOctUp": 0,
+   "scaleOctDown": 0
+  },
+  {
+   "rate": 4,
+   "phase": 0,
+   "waveform": "sine",
+   "scale": [
+    1,
+    1.2,
+    1.5,
+    2
+   ],
+   "freq": 41.2,
+   "pitchDrop": 1,
+   "noteSteps": 1,
+   "pitchTime": 0.08,
+   "filterLow": 20,
+   "filterFreq": 320,
+   "attack": 0.004,
+   "decay": 0.7,
+   "sustain": 0.8,
+   "volume": 0.8,
+   "pan": 0.5,
+   "mods": [],
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": true,
+   "effects": [],
+   "scaleOctUp": 0,
+   "scaleOctDown": 0,
+   "patterns": [
+    {
+     "id": "pmt0frk6fg",
+     "name": "A",
+     "length": 16,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0g0wt3k",
+     "name": "A′",
+     "length": 16,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "forkedFrom": "pmt0frk6fg",
+     "muted": false
+    }
+   ],
+   "id": "tmt0frk6ef",
+   "name": "трек",
+   "filterQ": 0.8
+  },
+  {
+   "rate": 1,
+   "phase": 0,
+   "waveform": "noise",
+   "scale": [
+    1
+   ],
+   "freq": 440,
+   "pitchDrop": 1,
+   "noteSteps": 1,
+   "pitchTime": 0.08,
+   "filterLow": 80,
+   "filterFreq": 4000,
+   "attack": 0.002,
+   "decay": 0.05,
+   "volume": 0.45,
+   "pan": 0.5,
+   "mods": [],
+   "effects": [
+    {
+     "type": "reverb",
+     "sizeSec": 0.4,
+     "mix": 0.3
+    }
+   ],
+   "patterns": [
+    {
+     "id": "pmt0g3skom",
+     "name": "A",
+     "length": 11,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0g4etkn",
+     "name": "B",
+     "length": 11,
+     "steps": [
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0g658go",
+     "name": "C",
+     "length": 11,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.5,
+         "prob": 0.5,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    }
+   ],
+   "id": "tmt0g3skol",
+   "name": "хэт",
+   "filterQ": 0.8,
+   "sustain": 0,
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": false,
+   "scaleOctUp": 0,
+   "scaleOctDown": 0
+  },
+  {
+   "rate": 2,
+   "phase": 0,
+   "waveform": "square",
+   "scale": [
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
+   ],
+   "freq": 220,
+   "pitchDrop": 1,
+   "noteSteps": 8,
+   "pitchTime": 0.08,
+   "filterLow": 20,
+   "filterFreq": 9000,
+   "attack": 0.002,
+   "decay": 0.6,
+   "sustain": 0.55,
+   "volume": 0.4,
+   "pan": 0.5,
+   "mods": [],
+   "fmRatio": 4.61,
+   "fmIndex": 3,
+   "vibratoRate": 10,
+   "vibratoDepth": 50,
+   "effects": [
+    {
+     "type": "reverb",
+     "sizeSec": 2.5,
+     "mix": 0.3
+    }
+   ],
+   "scaleOctDown": 1,
+   "patterns": [
+    {
+     "id": "pmt0g85s6q",
+     "name": "A",
+     "length": 32,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 7,
+         "vel": 0.45,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.4,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 1,
+         "prob": 1,
+         "gate": 0.3
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 1,
+         "prob": 1,
+         "gate": 0.3
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0gfr37r",
+     "name": "A′",
+     "length": 32,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 7,
+         "vel": 0.4,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 0.5
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 0.6
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.8999999999999999,
+         "prob": 1,
+         "gate": 0.3
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 7,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 0.1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.3,
+         "prob": 1,
+         "gate": 0.1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.9000000000000001,
+         "prob": 1,
+         "gate": 0.2
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "forkedFrom": "pmt0g85s6q",
+     "muted": false
+    }
+   ],
+   "id": "tmt0g85s6p",
+   "name": "звон",
+   "sidechain": {
+    "sourceId": "tmt0fnq5cd",
+    "amount": 0.5,
+    "releaseSec": 0.25
+   },
+   "filterQ": 0.8,
+   "voiceMorph": 0.5,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": false,
+   "scaleOctUp": 0
+  },
+  {
+   "rate": 2,
+   "phase": 0,
+   "waveform": "formant",
+   "scale": [
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
+   ],
+   "freq": 220,
+   "pitchDrop": 1,
+   "noteSteps": 1,
+   "pitchTime": 0.08,
+   "filterLow": 20,
+   "filterFreq": 8000,
+   "attack": 0.06,
+   "decay": 0.7,
+   "volume": 0.7,
+   "pan": 0.5,
+   "mods": [],
+   "voiceMorph": 0.35,
+   "effects": [
+    {
+     "type": "lofi",
+     "bits": 2,
+     "mix": 0
+    },
+    {
+     "type": "dist",
+     "drive": 6,
+     "mix": 0.35
+    },
+    {
+     "type": "reverb",
+     "sizeSec": 1,
+     "mix": 0.3
+    }
+   ],
+   "patterns": [
+    {
+     "id": "pmt0glxzpt",
+     "name": "A",
+     "length": 12,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0gnpqdu",
+     "name": "A′",
+     "length": 12,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      }
+     ],
+     "forkedFrom": "pmt0glxzpt",
+     "muted": false
+    }
+   ],
+   "id": "tmt0glxzps",
+   "name": "вокал",
+   "filterQ": 0.8,
+   "sustain": 0,
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": false,
+   "scaleOctUp": 0,
+   "scaleOctDown": 0
+  },
+  {
+   "rate": 1,
+   "phase": 0,
+   "waveform": "sample",
+   "scale": [
+    1
+   ],
+   "freq": 220,
+   "pitchDrop": 1,
+   "noteSteps": 1,
+   "pitchTime": 0.08,
+   "filterLow": 20,
+   "filterFreq": 12000,
+   "attack": 0.001,
+   "decay": 1.2,
+   "sustain": 0,
+   "volume": 1,
+   "pan": 0.5,
+   "mods": [],
+   "sampleId": "f7dc35c973bac1a9c687ac5ee45148e16691b8f8f755c9af3a1ca565d1450f5f",
+   "sampleName": "bass water splash",
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "grain",
+   "grainSizeMs": 10,
+   "grainCount": 32,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "effects": [],
+   "scaleOctUp": 0,
+   "scaleOctDown": 0,
+   "patterns": [
+    {
+     "id": "pmt0gqjwkx",
+     "name": "A",
+     "length": 9,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0guvaiy",
+     "name": "B",
+     "length": 9,
+     "steps": [
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmt0gvwi9z",
+     "name": "C",
+     "length": 9,
+     "steps": [
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1,
+         "gate": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    }
+   ],
+   "id": "tmt0gqjwkw",
+   "name": "колокол",
+   "filterQ": 0.8,
+   "mono": false
+  }
+ ]
+}

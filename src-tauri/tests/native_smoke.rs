@@ -185,3 +185,75 @@ fn decode_user_mp3() {
         }
     }
 }
+
+#[test]
+fn user_patch_renders() {
+    // Патч Егора из localStorage: соло на сэмпла-треке, 6 дорожек.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../fixtures/user-patch.json");
+    let Ok(json) = std::fs::read_to_string(path) else {
+        eprintln!("user-patch.json нет — пропускаю");
+        return;
+    };
+    let patch: barlow_lib::audio::patch::Patch = serde_json::from_str(&json).unwrap();
+    eprintln!(
+        "парс: сцен {} цепочка {} треков {}",
+        patch.scenes.len(),
+        patch.chain.len(),
+        patch.tracks.len()
+    );
+    for t in &patch.tracks {
+        eprintln!(
+            "  {} rate={} паттернов={} нот={}",
+            t.name,
+            t.rate,
+            t.patterns.len(),
+            t.patterns.iter().map(|p| p.steps.iter().map(|s| s.notes.len()).sum::<usize>()).sum::<usize>()
+        );
+    }
+    let engine = LiveEngine::new(48000.0);
+    // Сэмпл колокола — из библиотеки
+    let dir = r"C:\Users\eaprelsky\AppData\Roaming\ru.eaprelsky.barlow\samples";
+    for t in &patch.tracks {
+        if let Some(id) = &t.sample_id {
+            let sha8: String = id.chars().take(8).collect();
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for e in entries.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    let stem = name.split('.').next().unwrap_or("").to_string();
+                    if stem.contains(&sha8) {
+                        if let Ok(bytes) = std::fs::read(e.path()) {
+                            if let Some(sd) = barlow_lib::audio::samples::decode_wav(&bytes)
+                                .or_else(|| barlow_lib::audio::samples::decode_mp3(&bytes))
+                            {
+                                engine.put_sample(id.clone(), sd);
+                                eprintln!("сэмпл {stem}: загружен");
+                            } else {
+                                eprintln!("сэмпл {stem}: НЕ декодировался");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    engine.play(patch, None);
+    let mut block = vec![0.0f32; 480 * 2];
+    let mut t: u64 = 0;
+    let mut peak = 0.0f32;
+    for sec in 0..5u64 {
+        for _ in 0..(48000 / 480) {
+            engine.render_block(&mut block, 480, 2, t);
+            engine.advance_clock(480);
+            t += 480;
+            peak = peak.max(block.iter().fold(0.0f32, |a, v| a.max(v.abs())));
+        }
+        eprintln!(
+            "сек {sec}: пик {peak:.4}, голосов {}, блоков {}, sched={:?}",
+            engine.debug_voices.load(Ordering::Relaxed),
+            engine.render_blocks.load(Ordering::Relaxed),
+            [0,1,2,3].map(|i| engine.debug_sched[i].load(Ordering::Relaxed))
+        );
+    }
+    assert!(peak > 0.01, "патч юзера молчит: пик {peak}");
+}
