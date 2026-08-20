@@ -9,6 +9,28 @@ use super::patch::{scale_of, Note};
 
 pub const HEADROOM: f64 = 0.55;
 
+// Вокальные форманты: пять гласных (F1, F2, F3), морф интерполирует.
+const VOWELS: [(f64, f64, f64); 5] = [
+    (800.0, 1150.0, 2800.0), // А
+    (500.0, 1900.0, 2550.0), // Э
+    (280.0, 2250.0, 2890.0), // И
+    (550.0, 950.0, 2400.0),  // О
+    (350.0, 800.0, 2300.0),  // У
+];
+
+fn vowel_of(m: f64) -> [f64; 3] {
+    let pos = m.clamp(0.0, 0.9999) * (VOWELS.len() - 1) as f64;
+    let i = pos.floor() as usize;
+    let frac = pos - i as f64;
+    let a = VOWELS[i];
+    let b = VOWELS[i + 1];
+    [
+        a.0 + (b.0 - a.0) * frac,
+        a.1 + (b.1 - a.1) * frac,
+        a.2 + (b.2 - a.2) * frac,
+    ]
+}
+
 #[derive(Debug)]
 pub struct NoteGate {
     pub note_idx: usize,
@@ -175,6 +197,135 @@ pub fn render_osc_voice(
                     s
                 });
             }
+            Waveform::Supersaw => {
+                // 7 расстроенных пил (порт voices.ts): морф = ширина в центах.
+                let det = 4.0 + track.voice_morph.unwrap_or(0.5) * 36.0;
+                let voices7: [(f64, f64); 7] = [
+                    (0.0, 1.0),
+                    (-det * 0.33, 0.7),
+                    (det * 0.33, 0.7),
+                    (-det * 0.66, 0.5),
+                    (det * 0.66, 0.5),
+                    (-det, 0.32),
+                    (det, 0.32),
+                ];
+                let norm: f64 = voices7.iter().map(|v| v.1).sum();
+                let table = WaveTable::build(Waveform::Sawtooth, base_freq, sr).unwrap();
+                let mut phases = [0.0f64; 7];
+                render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                    let f = note_freq(track, base_freq, t);
+                    let mut s = 0.0;
+                    for (i, (dc, g)) in voices7.iter().enumerate() {
+                        let p = phases[i] - phases[i].floor();
+                        s += table.sample(p) * g;
+                        phases[i] += f * 2f64.powf(dc / 1200.0) / sr;
+                    }
+                    s / norm
+                });
+            }
+            Waveform::Karplus => {
+                // Струна Karplus-Strong в буфер (порт karplusBuffer).
+                let life = track.ks_life.unwrap_or(2.5).max(0.05);
+                let n = ((sr / base_freq).round() as usize).max(2);
+                let len = (((sh.voice_len + 0.05) * sr).ceil() as usize).max(2 * n);
+                let mut rng = super::dsp::XorShift::new((base_freq * 1000.0) as u64);
+                let mut buf: Vec<f64> = Vec::with_capacity(len);
+                for _ in 0..n {
+                    buf.push(rng.next_f64() * 2.0 - 1.0);
+                }
+                let g = (-6.9078 * n as f64 / (sr * life)).exp();
+                for i in n..len {
+                    let a = buf[i - n];
+                    let b = if i + 1 >= n { buf[i + 1 - n] } else { a };
+                    buf.push(g * 0.5 * (a + b));
+                }
+                render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                    let i = (t * sr) as usize;
+                    buf.get(i).copied().unwrap_or(0.0)
+                });
+            }
+            Waveform::Noise => {
+                let mut rng = super::dsp::XorShift::new(((t0 * 1e6) as u64) ^ 0x9E37_79B9);
+                render_note(&mut out, t0, sr, &sh, gate, |_, _| {
+                    rng.next_f64() * 2.0 - 1.0
+                });
+            }
+            Waveform::Additive | Waveform::Organ => {
+                let m = track.voice_morph.unwrap_or(0.5);
+                let amps: Vec<f64> = if matches!(track.waveform, Waveform::Organ) {
+                    // Регистры 1,2,3,4,6,8 открываются по одному.
+                    let regs = [1usize, 2, 3, 4, 6, 8];
+                    let mut full = vec![0.0f64; 9];
+                    for (i, r) in regs.iter().enumerate() {
+                        full[*r] = (m * regs.len() as f64 * 1.15 - i as f64).clamp(0.15, 1.0);
+                    }
+                    full[1..].to_vec()
+                } else {
+                    let n = 2 + (m * 14.0).round() as usize;
+                    (1..=n).map(|k| (k as f64).powf(-1.5)).collect()
+                };
+                let table = WaveTable::build_harmonics(&amps);
+                let mut phase = 0.0f64;
+                render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                    let p = phase - phase.floor();
+                    let s = table.sample(p);
+                    phase += note_freq(track, base_freq, t) / sr;
+                    s
+                });
+            }
+            Waveform::Formant => {
+                // Пила сквозь три формантных полосовых + немного сухой.
+                let [f1, f2, f3] = vowel_of(track.voice_morph.unwrap_or(0.5));
+                let table = WaveTable::build(Waveform::Sawtooth, base_freq, sr).unwrap();
+                let mut phase = 0.0f64;
+                let mut bp: Vec<super::dsp::Biquad> = [(f1, 10.0, 1.0), (f2, 12.0, 0.55), (f3, 14.0, 0.3)]
+                    .iter()
+                    .map(|(ff, q, _)| super::dsp::Biquad::new("bandpass", *ff, *q, sr))
+                    .collect();
+                render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                    let p = phase - phase.floor();
+                    let osc = table.sample(p);
+                    phase += note_freq(track, base_freq, t) / sr;
+                    let mut s = osc * 0.12;
+                    for (i, (ff, _, g)) in [(f1, 10.0, 1.0), (f2, 12.0, 0.55), (f3, 14.0, 0.3)]
+                        .iter()
+                        .enumerate()
+                    {
+                        let _ = ff;
+                        s += bp[i].process(osc) * g;
+                    }
+                    s
+                });
+            }
+            Waveform::Modal => {
+                // Шумовой щелчок 4 мс в банк резонаторов (порт PARTIALS).
+                const PARTIALS_A: [f64; 4] = [1.0, 3.9, 9.2, 13.4];
+                const PARTIALS_B: [f64; 4] = [1.0, 2.32, 4.25, 6.63];
+                let m = track.voice_morph.unwrap_or(0.5);
+                let q0 = 30.0 + m * 130.0;
+                let mut bp: Vec<super::dsp::Biquad> = PARTIALS_A
+                    .iter()
+                    .enumerate()
+                    .map(|(i, pa)| {
+                        let ratio = pa + (PARTIALS_B[i] - pa) * m;
+                        super::dsp::Biquad::new(
+                            "bandpass",
+                            (base_freq * ratio).min(17000.0),
+                            q0 / (1.0 + i as f64 * 0.55),
+                            sr,
+                        )
+                    })
+                    .collect();
+                let mut rng = super::dsp::XorShift::new((base_freq * 7777.0) as u64);
+                render_note(&mut out, t0, sr, &sh, gate, |t, _| {
+                    let x = if t < 0.004 { rng.next_f64() * 2.0 - 1.0 } else { 0.0 };
+                    let mut s = 0.0;
+                    for (i, f) in bp.iter_mut().enumerate() {
+                        s += f.process(x) * (0.9 / (i as f64 + 1.0));
+                    }
+                    s
+                });
+            }
             Waveform::Fm => {
                 let ratio = track.fm_ratio.unwrap_or(2.0);
                 let index = track.fm_index.unwrap_or(3.0);
@@ -268,5 +419,35 @@ mod tests {
         let mid = &v.samples[1000..2000];
         let peak = mid.iter().fold(0.0f32, |a, s| a.max(s.abs()));
         assert!(peak > 0.3 * HEADROOM as f32, "пик середины {peak}");
+    }
+
+    #[test]
+    fn every_voice_model_is_audible() {
+        // Каждая модель рендерится и звучит (смоук портreta моделей).
+        for wf in [
+            Waveform::Sine,
+            Waveform::Square,
+            Waveform::Triangle,
+            Waveform::Sawtooth,
+            Waveform::Supersaw,
+            Waveform::Karplus,
+            Waveform::Noise,
+            Waveform::Additive,
+            Waveform::Organ,
+            Waveform::Formant,
+            Waveform::Modal,
+            Waveform::Fm,
+        ] {
+            let mut t = track_json("sine");
+            t.waveform = wf;
+            let note = Note { n: 0, vel: 1.0, prob: 1.0, gate: None };
+            let notes = [&note];
+            let v = render_osc_voice(&t, &notes, 0.1, 0.125, 44100.0);
+            let mid = &v.samples[200..4410];
+            let peak = mid.iter().fold(0.0f32, |a, s| a.max(s.abs()));
+            // Модальный — тихая по природе модель (шумовой щелчок в
+            // высокодобротные резонаторы): web-партиал даёт ~0.002 (зонд).
+            assert!(peak > 0.002, "{wf:?}: пик {peak}");
+        }
     }
 }

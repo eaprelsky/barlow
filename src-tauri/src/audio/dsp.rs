@@ -82,6 +82,49 @@ impl WaveTable {
         let j = (i + 1) % TABLE_LEN;
         self.data[i] + (self.data[j] - self.data[i]) * frac
     }
+
+    /// Таблица из амплитуд гармоник (аналог PeriodicWave с imag=amps):
+    /// волна = Σ aₖ·sin(2πkx), пик нормализован к 1 (как
+    /// disableNormalization=false у Chromium).
+    pub fn build_harmonics(amps: &[f64]) -> WaveTable {
+        let n = TABLE_LEN;
+        let mut data = vec![0.0f64; n];
+        let mut peak = 0.0f64;
+        for j in 0..n {
+            let x = j as f64 / n as f64;
+            let mut v = 0.0;
+            for (k, a) in amps.iter().enumerate() {
+                v += a * (2.0 * std::f64::consts::PI * (k as f64 + 1.0) * x).sin();
+            }
+            data[j] = v;
+            peak = peak.max(v.abs());
+        }
+        if peak > 1e-9 {
+            for v in &mut data {
+                *v /= peak;
+            }
+        }
+        WaveTable { data }
+    }
+}
+
+/// Детерминированный ГПСЧ для шума/Karplus (зерно — от ноты: рендер
+/// воспроизводим; live-звуку безразлично, web там Math.random).
+pub struct XorShift(u64);
+
+impl XorShift {
+    pub fn new(seed: u64) -> Self {
+        XorShift(seed | 1)
+    }
+
+    pub fn next_f64(&mut self) -> f64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        (x >> 11) as f64 / (1u64 << 53) as f64
+    }
 }
 
 /// Biquad-фильтр (low/high/band pass) по формулам Web Audio-спеки (RBJ
