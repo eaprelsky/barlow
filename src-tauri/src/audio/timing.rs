@@ -45,7 +45,7 @@ pub fn step_index_at(
 
 /// Часы трека планировщика: следующий шаг, его время и время последнего
 /// сброса (границы сцены).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct TrackClock {
     pub next_step_index: i64,
     pub next_step_time: f64,

@@ -3,7 +3,7 @@ pub mod audio;
 
 use std::sync::Mutex;
 use tauri::AppHandle;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 fn default_true() -> bool {
@@ -34,6 +34,55 @@ struct AudioSettings {
 /// Живой поток вывода (этап 1 кампании: WASAPI exclusive/shared, тест-тон).
 struct AudioState {
     output: Mutex<Option<audio::output::OutputHandle>>,
+}
+
+/// Нативный live-движок (этап 9-10): создаётся при запуске вывода.
+struct NativeState {
+    engine: Mutex<Option<std::sync::Arc<audio::engine::LiveEngine>>>,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct NativeClock {
+    playing: bool,
+    now: f64,
+    scene_id: String,
+    chain_pos: usize,
+    clocks: std::collections::HashMap<String, audio::timing::TrackClock>,
+}
+
+/// Загрузить сэмплы патча в нативный движок (WAV из папки библиотеки,
+/// ресемплинг к частоте вывода). Возвращает число загруженных.
+fn load_samples_into_engine(app: &AppHandle, engine: &std::sync::Arc<audio::engine::LiveEngine>, patch: &serde_json::Value) -> usize {
+    let sr = engine.sr;
+    let dir = match samples_dir(app) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+    let mut loaded = 0;
+    if let Some(tracks) = patch["tracks"].as_array() {
+        for t in tracks {
+            let Some(id) = t["sampleId"].as_str() else { continue };
+            let mut found = false;
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for e in entries.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if name.starts_with(id) {
+                        if let Ok(bytes) = std::fs::read(e.path()) {
+                            if let Some(sd) = audio::samples::decode_wav(&bytes) {
+                                let mono = audio::samples::resample(&sd, sr);
+                                engine.put_sample(id.to_string(), audio::samples::SampleData { mono, rate: sr as u32 });
+                                loaded += 1;
+                            }
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            let _ = found;
+        }
+    }
+    loaded
 }
 
 fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -225,6 +274,8 @@ fn audio_settings(app: AppHandle) -> AudioSettings {
 }
 
 /// Запустить вывод (предыдущий поток останавливается) и запомнить выбор.
+/// Создаёт нативный live-движок на частоте устройства; часы идут наружу
+/// событием audio-clock (~30 Гц).
 #[tauri::command]
 fn audio_output_start(
     app: AppHandle,
@@ -239,15 +290,53 @@ fn audio_output_start(
         st.audio_buffer = buffer_frames;
         write_settings(&app, &st)?;
     }
-    let state: tauri::State<AudioState> = app.state();
-    let mut guard = state.output.lock().map_err(|e| e.to_string())?;
+    let native: tauri::State<NativeState> = app.state();
+    {
+        let mut guard = native.engine.lock().map_err(|e| e.to_string())?;
+        if let Some(old) = guard.take() {
+            old.stop();
+        }
+    }
+    let audio_state: tauri::State<AudioState> = app.state();
+    let mut guard = audio_state.output.lock().map_err(|e| e.to_string())?;
     if let Some(old) = guard.take() {
         old.stop();
     }
+    let probe = audio::output::start(audio::output::OutputConfig {
+        device_id: None,
+        exclusive,
+        buffer_frames,
+        engine: None,
+    });
+    // Двухфазный старт: пробным запуском узнаём частоту/каналы, создаём
+    // движок и стартуем окончательно (probe-поток умирает по Drop).
+    let (rate, channels) = match &probe {
+        Ok(h) => (h.info.rate, h.info.channels),
+        Err(e) => return Err(e.clone()),
+    };
+    drop(probe);
+    let engine = audio::engine::LiveEngine::new(rate as f64);
+    {
+        let app2 = app.clone();
+        engine.set_clock_callback(Box::new(move |now, scene, pos, playing| {
+            let _ = app2.emit(
+                "audio-clock",
+                NativeClock {
+                    playing,
+                    now,
+                    scene_id: scene.to_string(),
+                    chain_pos: pos,
+                    clocks: Default::default(),
+                },
+            );
+        }));
+    }
+    *native.engine.lock().map_err(|e| e.to_string())? = Some(engine.clone());
     let handle = audio::output::start(audio::output::OutputConfig {
         device_id: device,
         exclusive,
         buffer_frames,
+        engine: Some(engine),
     })?;
     let info = handle.info.clone();
     *guard = Some(handle);
@@ -284,12 +373,138 @@ fn audio_output_status(app: AppHandle) -> Result<Option<audio::output::OutputInf
     Ok(guard.as_ref().map(|h| h.info.clone()))
 }
 
+// ---- Нативный live-движок (этап 9-10) ----
+
+#[tauri::command]
+fn audio_play(app: AppHandle, patch_json: String, scene_id: Option<String>) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    let Some(engine) = guard.as_ref() else {
+        return Err("вывод не запущен".into());
+    };
+    let patch: audio::patch::Patch =
+        serde_json::from_str(&patch_json).map_err(|e| e.to_string())?;
+    load_samples_into_engine(&app, engine, &serde_json::to_value(&patch).unwrap_or_default());
+    engine.play(patch, scene_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_engine_stop(app: AppHandle) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.stop();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_set_patch(app: AppHandle, patch_json: String) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    let Some(engine) = guard.as_ref() else {
+        return Ok(());
+    };
+    let patch: audio::patch::Patch =
+        serde_json::from_str(&patch_json).map_err(|e| e.to_string())?;
+    engine.set_patch(patch);
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_set_scene(app: AppHandle, id: String) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.set_scene(id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_set_follow(app: AppHandle, on: bool) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.set_follow_chain(on);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_set_bpm(app: AppHandle, bpm: f64) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.set_bpm(bpm);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_state(app: AppHandle) -> Result<NativeClock, String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    let Some(engine) = guard.as_ref() else {
+        return Ok(NativeClock {
+            playing: false,
+            now: 0.0,
+            scene_id: String::new(),
+            chain_pos: 0,
+            clocks: Default::default(),
+        });
+    };
+    let (playing, now, scene_id, chain_pos, clocks) = engine.snapshot();
+    Ok(NativeClock { playing, now, scene_id, chain_pos, clocks })
+}
+
+#[tauri::command]
+fn audio_track_levels(app: AppHandle) -> Result<std::collections::HashMap<String, f32>, String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    Ok(guard.as_ref().map(|e| e.levels()).unwrap_or_default())
+}
+
+#[tauri::command]
+fn audio_scratch_begin(app: AppHandle, sample_id: Option<String>) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.scratch_begin(sample_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_scratch_move(app: AppHandle, pos: f64) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.scratch_move(pos);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn audio_scratch_end(app: AppHandle) -> Result<(), String> {
+    let native: tauri::State<NativeState> = app.state();
+    let guard = native.engine.lock().map_err(|e| e.to_string())?;
+    if let Some(engine) = guard.as_ref() {
+        engine.scratch_end();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AudioState {
             output: Mutex::new(None),
+        })
+        .manage(NativeState {
+            engine: Mutex::new(None),
         })
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -314,6 +529,17 @@ pub fn run() {
             reveal_samples_dir,
             audio_devices,
             audio_settings,
+            audio_play,
+            audio_engine_stop,
+            audio_set_patch,
+            audio_set_scene,
+            audio_set_follow,
+            audio_set_bpm,
+            audio_state,
+            audio_track_levels,
+            audio_scratch_begin,
+            audio_scratch_move,
+            audio_scratch_end,
             audio_output_start,
             audio_output_stop,
             audio_test_tone,

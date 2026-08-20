@@ -34,6 +34,8 @@ pub struct OutputConfig {
     pub exclusive: bool,
     /// Желаемый период в фреймах; 0 — авто (~1.5× минимума драйвера).
     pub buffer_frames: u32,
+    /// Live-движок как источник звука (иначе тест-тон).
+    pub engine: Option<std::sync::Arc<super::engine::LiveEngine>>,
 }
 
 /// Активные рендер-устройства; дефолт первым.
@@ -78,6 +80,15 @@ pub struct OutputHandle {
     pub info: OutputInfo,
     shared: Arc<Shared>,
     join: Option<JoinHandle<()>>,
+}
+
+impl Drop for OutputHandle {
+    fn drop(&mut self) {
+        self.shared.running.store(false, Ordering::Relaxed);
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
 }
 
 impl OutputHandle {
@@ -228,22 +239,31 @@ fn run_stream(config: &OutputConfig, shared: &Shared, tx: mpsc::Sender<Result<Ou
     };
     report(Ok(info.clone()));
 
-    // Тест-тон: один осциллятор на канал (этап 1; дальше сюда встанет микс).
+    // Источник: live-движок или тест-тон (этап 1).
     let mut phase: f64 = 0.0;
     let step = 440.0 / rate as f64;
+    let mut counter: u64 = 0;
     let mut write = |frames: usize| -> bool {
         let mut pcm: Vec<f32> = Vec::with_capacity(frames * channels);
         let tone = shared.tone_on.load(Ordering::Relaxed);
-        for _ in 0..frames {
-            phase += step;
-            if phase >= 1.0 {
-                phase -= 1.0;
-            }
-            let s = if tone { (phase * std::f64::consts::TAU).sin() as f32 * 0.2 } else { 0.0 };
-            for _ in 0..channels {
-                pcm.push(s);
+        if let Some(engine) = &config.engine {
+            let block_start = counter;
+            pcm.resize(frames * channels, 0.0);
+            engine.render_block(&mut pcm, frames, channels, block_start);
+            engine.advance_clock(frames as u64);
+        } else {
+            for _ in 0..frames {
+                phase += step;
+                if phase >= 1.0 {
+                    phase -= 1.0;
+                }
+                let s = if tone { (phase * std::f64::consts::TAU).sin() as f32 * 0.2 } else { 0.0 };
+                for _ in 0..channels {
+                    pcm.push(s);
+                }
             }
         }
+        counter += frames as u64;
         let bytes = samples_to_bytes(&pcm, is_float, bits, valid);
         render_client.write_to_device(frames, &bytes, None).is_ok()
     };

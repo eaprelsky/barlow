@@ -35,7 +35,16 @@ const BUFFERS: [number, string][] = [
   [1024, '1024'],
 ];
 
-export function AudioPanel({ onClose }: { onClose: () => void }) {
+export function AudioPanel({
+  onClose,
+  native,
+  onNativeChange,
+}: {
+  onClose: () => void;
+  /** Нативный движок: звук рендерит Rust напрямую в WASAPI. */
+  native: boolean;
+  onNativeChange: (on: boolean) => void;
+}) {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [device, setDevice] = useState('');
   const [exclusive, setExclusive] = useState(true);
@@ -116,6 +125,16 @@ export function AudioPanel({ onClose }: { onClose: () => void }) {
     >
       <div className="modal audio-panel" role="dialog" aria-modal="true">
         <h3>звуковой вывод</h3>
+        <label
+          title="Нативный движок: синтез и планировщик в Rust, вывод напрямую в устройство (exclusive/shared выше). Выкл — WebAudio внутри окна. Переключение пересоздаёт движок"
+        >
+          <input
+            type="checkbox"
+            checked={native}
+            onChange={(e) => onNativeChange(e.target.checked)}
+          />
+          нативный движок (бета)
+        </label>
         <label title="Устройство, на которое играет нативный движок. «По умолчанию» — системное">
           устройство
           <select value={device} onChange={(e) => setDevice(e.target.value)}>

@@ -32,6 +32,7 @@ import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { slugify } from './utils/slug';
 import { Library } from './components/Library';
 import { AudioPanel } from './components/AudioPanel';
+import { RustAudioBackend } from './audio/native';
 
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
@@ -204,9 +205,50 @@ export default function App() {
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioBackend | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  // Нативный движок (десктоп): выбирается в панели вывода. Переключение
+  // пересоздаёт бэкенд — транспорт и патч переносятся.
+  const [nativeAudio, setNativeAudio] = useState(
+    () => isDesktop && localStorage.getItem('barlow.nativeAudio') === '1',
+  );
 
-  const engine = (engineRef.current ??= new AudioEngine());
+  useEffect(() => {
+    let cancelled = false;
+    const swap = async () => {
+      const wasPlaying = engineRef.current?.playing ?? false;
+      engineRef.current?.stop();
+      if (engineRef.current instanceof RustAudioBackend) {
+        engineRef.current.dispose();
+      }
+      if (nativeAudio) {
+        const native = new RustAudioBackend();
+        try {
+          await native.init();
+        } catch {
+          /* вывод не поднят — бэкенд молчит, панель вывода объяснит */
+        }
+        if (cancelled) {
+          native.dispose();
+          return;
+        }
+        engineRef.current = native;
+      } else {
+        engineRef.current = new AudioEngine();
+      }
+      const eng = engineRef.current;
+      eng.setPatch(patch);
+      if (wasPlaying) eng.play(patch, sceneId);
+      setFrame((f) => f + 1);
+    };
+    void swap();
+    localStorage.setItem('barlow.nativeAudio', nativeAudio ? '1' : '0');
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeAudio]);
+
+  const engine: AudioBackend = engineRef.current ?? new AudioEngine();
 
   // Движок всегда видит актуальный патч — редактирование без остановки.
   useEffect(() => {
@@ -1230,7 +1272,13 @@ export default function App() {
         </div>
       )}
 
-      {showAudio && <AudioPanel onClose={() => setShowAudio(false)} />}
+      {showAudio && (
+        <AudioPanel
+          onClose={() => setShowAudio(false)}
+          native={nativeAudio}
+          onNativeChange={setNativeAudio}
+        />
+      )}
 
       {showInstruments && (
         <InstrumentBrowser

@@ -6,6 +6,7 @@
 
 pub mod chain;
 pub mod dsp;
+pub mod engine;
 pub mod master;
 pub mod output;
 pub mod patch;

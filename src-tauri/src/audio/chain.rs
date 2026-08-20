@@ -57,6 +57,9 @@ pub struct TrackChain {
     pan: f64,    // панорама трека (эффективная) −1..1
     gain: f64,   // эффективная громкость
     mods: Vec<ModChain>,
+    /// Сигнатура набора модуляций/эффектов (порт modSig) — при смене
+    /// цепочка пересобирается движком.
+    sig: String,
     /// Дак-события (t_abs, amount, release): применяются поверх gain.
     pub ducks: Vec<(f64, f64, f64)>,
 }
@@ -95,6 +98,23 @@ impl TrackChain {
                 }
             })
             .collect();
+        let sig = format!(
+            "{}|{}",
+            eff_mods
+                .iter()
+                .map(|m| format!("{}:{:?}:{:?}", m.target, m.source, m.shape))
+                .collect::<Vec<_>>()
+                .join(","),
+            track
+                .effects
+                .as_ref()
+                .map(|fx| fx
+                    .iter()
+                    .map(|e| serde_json::to_string(e).unwrap_or_default())
+                    .collect::<Vec<_>>()
+                    .join(","))
+                .unwrap_or_default()
+        );
         TrackChain {
             hp: Biquad::new("highpass", track.filter_low, 0.7, sr),
             filter: Biquad::new("lowpass", track.filter_freq, filter_q, sr),
@@ -107,8 +127,25 @@ impl TrackChain {
                 .iter()
                 .map(|m| ModChain { m: m.clone(), phase: 0.0 })
                 .collect(),
+            sig,
             ducks: vec![],
         }
+    }
+
+    /// Сигнатура набора модуляций/эффектов (сравнивает движок).
+    pub fn sig(&self) -> &str {
+        &self.sig
+    }
+
+    /// Обновить эффективные громкость/панораму без пересборки.
+    pub fn set_params(&mut self, volume: f64, pan: f64) {
+        self.gain = volume;
+        self.pan = pan * 2.0 - 1.0;
+    }
+
+    /// Добавить событие сайдчейн-дака.
+    pub fn push_duck(&mut self, at: f64, amount: f64, release: f64) {
+        self.ducks.push((at, amount, release));
     }
 
     /// Сигнал LFO-источника модуляции в момент t (от старта рендера):
