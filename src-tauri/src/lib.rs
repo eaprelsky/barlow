@@ -24,6 +24,29 @@ struct Settings {
     audio_buffer: u32,
 }
 
+
+/// Простой файловый лог нативного слоя (релиз без plugin-log): пишет в
+/// <appData>/native.log — телеметрия запуска вывода/play/сэмплов.
+fn nlog(app: &AppHandle, msg: &str) {
+    use std::io::Write;
+    let Ok(dir) = app.path().app_data_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("native.log"))
+    {
+        let _ = writeln!(f, "[{}] {msg}", chrono_like_now());
+    }
+}
+
+fn chrono_like_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| format!("{:+.3}", d.as_secs_f64()))
+        .unwrap_or_default()
+}
+
 #[derive(serde::Serialize)]
 struct AudioSettings {
     device: Option<String>,
@@ -56,8 +79,12 @@ fn load_samples_into_engine(app: &AppHandle, engine: &std::sync::Arc<audio::engi
     let sr = engine.sr;
     let dir = match samples_dir(app) {
         Ok(d) => d,
-        Err(_) => return 0,
+        Err(e) => {
+            nlog(app, &format!("samples_dir error: {e}"));
+            return 0;
+        }
     };
+    nlog(app, &format!("samples dir: {}", dir.display()));
     let mut loaded = 0;
     if let Some(tracks) = patch["tracks"].as_array() {
         for t in tracks {
@@ -327,6 +354,7 @@ fn audio_output_start_blocking(
     // Формат устройства — лёгким запросом (без открытия вывода): probe-старт
     // конкурировал бы за устройство с финальным запуском.
     let (rate, _channels) = audio::output::query_format(device.clone())?;
+    nlog(&app, &format!("output_start: rate={rate} ch={_channels} exclusive={exclusive}"));
     let engine = audio::engine::LiveEngine::new(rate as f64);
     {
         let app2 = app.clone();
@@ -418,6 +446,7 @@ fn audio_play_blocking(
     let native: tauri::State<NativeState> = app.state();
     let guard = native.engine.lock().map_err(|e| e.to_string())?;
     let Some(engine) = guard.as_ref() else {
+        nlog(&app, "audio_play: ДВИЖКА НЕТ — вывод не поднят");
         return Err("вывод не запущен".into());
     };
     let patch: audio::patch::Patch =
@@ -435,13 +464,16 @@ fn audio_play_blocking(
         .unwrap_or(0);
     let app2 = app.clone();
     let engine2 = engine.clone();
+    nlog(&app, &format!("audio_play: sample_tracks={sample_tracks}"));
     std::thread::spawn(move || {
         let n = load_samples_into_engine(&app2, &engine2, &patch_val);
+        nlog(&app2, &format!("samples loaded: {n}"));
         engine2
             .loaded_samples
             .fetch_add(n, std::sync::atomic::Ordering::Relaxed);
     });
     engine.play(patch, scene_id);
+    nlog(&app, "engine.play: ok");
     Ok(sample_tracks)
 }
 

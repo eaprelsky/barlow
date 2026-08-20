@@ -1,65 +1,203 @@
 {
- "version": 29,
+ "version": 24,
  "bpm": 118,
  "masterVolume": 1,
- "masterNoise": "off",
+ "masterNoise": "pink",
  "masterNoiseLevel": 0.03,
- "masterPan": 0.5,
- "masterComp": 0.45,
+ "masterPan": 0.4,
+ "masterComp": 0.6,
  "followChain": false,
  "scenes": [
   {
-   "id": "smt0fkwula",
-   "name": "сцена 1",
+   "id": "smsuuehet0",
+   "name": "бит",
    "slots": {
-    "tmt0fnq5cd": "pmt0fnq5ce",
-    "tmt0frk6ef": "pmt0g0wt3k",
-    "tmt0g3skol": "pmt0g4etkn",
-    "tmt0g85s6p": "pmt0gfr37r",
-    "tmt0glxzps": "pmt0gnpqdu",
-    "tmt0gqjwkw": "pmt0gqjwkx"
-   },
-   "soloTrackId": "tmt0gqjwkw"
+    "tmsvc0jqa4": "pmsvc0jqa5",
+    "tmsvkcs4ja": "pmsvkcs4jb",
+    "tmsvksan73": "pmsvksan74",
+    "tmsvlaxxjb": "pmsvlaxxjc"
+   }
+  },
+  {
+   "id": "smsvkb6za6",
+   "name": "сцена",
+   "slots": {
+    "tmsvc0jqa4": "pmsvc0jqa5",
+    "tmsvkcs4ja": "pmsvkd2bzd",
+    "tmsvksan73": "pmsvksan74",
+    "tmsvlaxxjb": "pmsvlaxxjc"
+   }
+  },
+  {
+   "id": "smsvkchwa7",
+   "name": "сцена 2",
+   "slots": {
+    "tmsvc0jqa4": "pmsvc0jqa5",
+    "tmsvkcs4ja": "pmsvkjlab1",
+    "tmsvksan73": "pmsvksan74",
+    "tmsvlaxxjb": "pmsvlaxxjc"
+   }
+  },
+  {
+   "id": "smsvkrxk70",
+   "name": "сцена 3",
+   "slots": {
+    "tmsvc0jqa4": "pmsvc0jqa5",
+    "tmsvkcs4ja": "pmsvkd2bzd",
+    "tmsvksan73": "pmsvkuert6",
+    "tmsvlaxxjb": "pmsvlp9q91"
+   }
+  },
+  {
+   "id": "smsvl7q650",
+   "name": "сцена 4",
+   "slots": {
+    "tmsvc0jqa4": "pmsvc0jqa5",
+    "tmsvkcs4ja": "pmsvkd2bzd",
+    "tmsvksan73": "pmsvl7zj64",
+    "tmsvlaxxjb": "pmsvlaxxjc"
+   }
+  },
+  {
+   "id": "smsvlrqrk2",
+   "name": "сцена 5",
+   "slots": {
+    "tmsvc0jqa4": "pmsvcxa7d2",
+    "tmsvkcs4ja": "pmsvkcs4jb",
+    "tmsvksan73": "pmsvl7zj64",
+    "tmsvlaxxjb": "pmsvlaxxjc"
+   }
   }
  ],
  "chain": [
   {
-   "sceneId": "smt0fkwula",
+   "sceneId": "smsuuehet0",
+   "bars": 8
+  },
+  {
+   "sceneId": "smsvkb6za6",
+   "bars": 4
+  },
+  {
+   "sceneId": "smsvkchwa7",
+   "bars": 4
+  },
+  {
+   "sceneId": "smsvkrxk70",
+   "bars": 4
+  },
+  {
+   "sceneId": "smsvl7q650",
+   "bars": 8
+  },
+  {
+   "sceneId": "smsvlrqrk2",
    "bars": 8
   }
  ],
  "tracks": [
   {
-   "rate": 4,
+   "rate": 1,
    "phase": 0,
-   "waveform": "sine",
+   "waveform": "sawtooth",
    "scale": [
-    1
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
    ],
-   "freq": 48,
-   "pitchDrop": 3.5,
-   "noteSteps": 1,
-   "pitchTime": 0.1,
+   "freq": 329.6,
+   "pitchDrop": 4.5,
+   "pitchTime": 0.22,
    "filterLow": 20,
-   "filterFreq": 1400,
-   "attack": 0.03,
-   "decay": 0.3,
-   "volume": 0.9,
+   "filterFreq": 4500,
+   "attack": 0.005,
+   "decay": 0.5,
+   "volume": 0.5,
    "pan": 0.5,
    "mods": [],
+   "effects": [],
+   "scaleOctDown": 0,
    "patterns": [
     {
-     "id": "pmt0fnq5ce",
+     "id": "pmsvc0jqa5",
      "name": "A",
-     "length": 16,
+     "length": 32,
      "steps": [
       {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
        "notes": [
         {
          "n": 0,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
         }
        ]
       },
@@ -71,10 +209,67 @@
         {
          "n": 0,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "mods": [
+      {
+       "target": "pan",
+       "shape": "sine",
+       "rate": 2,
+       "depth": 0.6
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmsvcxa7d2",
+     "name": "B",
+     "length": 36,
+     "steps": [
+      {
+       "notes": []
       },
       {
        "notes": []
@@ -84,8 +279,7 @@
         {
          "n": 0,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
       },
@@ -93,12 +287,14 @@
        "notes": []
       },
       {
+       "notes": []
+      },
+      {
        "notes": [
         {
-         "n": 0,
+         "n": 3,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
       },
@@ -106,12 +302,14 @@
        "notes": []
       },
       {
+       "notes": []
+      },
+      {
        "notes": [
         {
-         "n": 0,
+         "n": 1,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
       },
@@ -119,14 +317,7 @@
        "notes": []
       },
       {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
+       "notes": []
       },
       {
        "notes": []
@@ -134,10 +325,9 @@
       {
        "notes": [
         {
-         "n": 0,
+         "n": 3,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
       },
@@ -145,14 +335,103 @@
        "notes": []
       },
       {
+       "notes": []
+      },
+      {
        "notes": [
         {
-         "n": 0,
+         "n": 2,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
       },
       {
        "notes": []
@@ -161,15 +440,10 @@
      "muted": false
     }
    ],
-   "id": "tmt0fnq5cd",
-   "name": "пульс",
-   "filterQ": 0.8,
-   "sustain": 0,
+   "id": "tmsvc0jqa4",
+   "name": "пиу-пиу",
    "fmRatio": 2,
    "fmIndex": 3,
-   "voiceMorph": 0.5,
-   "vibratoRate": 5,
-   "vibratoDepth": 0,
    "ksLife": 2.5,
    "sampleMode": "plain",
    "grainSizeMs": 120,
@@ -177,1233 +451,74 @@
    "grainPos": 0.3,
    "grainScatter": 0.15,
    "mono": false,
-   "effects": [],
    "scaleOctUp": 0,
-   "scaleOctDown": 0
-  },
-  {
-   "rate": 4,
-   "phase": 0,
-   "waveform": "sine",
-   "scale": [
-    1,
-    1.2,
-    1.5,
-    2
-   ],
-   "freq": 41.2,
-   "pitchDrop": 1,
-   "noteSteps": 1,
-   "pitchTime": 0.08,
-   "filterLow": 20,
-   "filterFreq": 320,
-   "attack": 0.004,
-   "decay": 0.7,
-   "sustain": 0.8,
-   "volume": 0.8,
-   "pan": 0.5,
-   "mods": [],
-   "fmRatio": 2,
-   "fmIndex": 3,
    "voiceMorph": 0.5,
    "vibratoRate": 5,
-   "vibratoDepth": 0,
-   "ksLife": 2.5,
-   "sampleMode": "plain",
-   "grainSizeMs": 120,
-   "grainCount": 10,
-   "grainPos": 0.3,
-   "grainScatter": 0.15,
-   "mono": true,
-   "effects": [],
-   "scaleOctUp": 0,
-   "scaleOctDown": 0,
-   "patterns": [
-    {
-     "id": "pmt0frk6fg",
-     "name": "A",
-     "length": 16,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    },
-    {
-     "id": "pmt0g0wt3k",
-     "name": "A′",
-     "length": 16,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 3,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 3,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      }
-     ],
-     "forkedFrom": "pmt0frk6fg",
-     "muted": false
-    }
-   ],
-   "id": "tmt0frk6ef",
-   "name": "трек",
-   "filterQ": 0.8
+   "vibratoDepth": 0
   },
   {
    "rate": 1,
    "phase": 0,
    "waveform": "noise",
    "scale": [
-    1
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
    ],
-   "freq": 440,
+   "freq": 55,
    "pitchDrop": 1,
-   "noteSteps": 1,
    "pitchTime": 0.08,
-   "filterLow": 80,
-   "filterFreq": 4000,
-   "attack": 0.002,
-   "decay": 0.05,
-   "volume": 0.45,
-   "pan": 0.5,
+   "filterLow": 4000,
+   "filterFreq": 6500,
+   "attack": 0.01,
+   "decay": 0.5,
+   "volume": 0.1,
+   "pan": 0.15,
    "mods": [],
-   "effects": [
-    {
-     "type": "reverb",
-     "sizeSec": 0.4,
-     "mix": 0.3
-    }
-   ],
-   "patterns": [
-    {
-     "id": "pmt0g3skom",
-     "name": "A",
-     "length": 11,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    },
-    {
-     "id": "pmt0g4etkn",
-     "name": "B",
-     "length": 11,
-     "steps": [
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    },
-    {
-     "id": "pmt0g658go",
-     "name": "C",
-     "length": 11,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.5,
-         "prob": 0.5,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    }
-   ],
-   "id": "tmt0g3skol",
-   "name": "хэт",
-   "filterQ": 0.8,
-   "sustain": 0,
    "fmRatio": 2,
    "fmIndex": 3,
-   "voiceMorph": 0.5,
-   "vibratoRate": 5,
-   "vibratoDepth": 0,
+   "voiceMorph": 0.65,
+   "vibratoRate": 12,
+   "vibratoDepth": 100,
    "ksLife": 2.5,
    "sampleMode": "plain",
    "grainSizeMs": 120,
    "grainCount": 10,
    "grainPos": 0.3,
    "grainScatter": 0.15,
-   "mono": false,
-   "scaleOctUp": 0,
-   "scaleOctDown": 0
-  },
-  {
-   "rate": 2,
-   "phase": 0,
-   "waveform": "square",
-   "scale": [
-    1,
-    1.2,
-    1.3333333333333333,
-    1.5,
-    1.8,
-    2
-   ],
-   "freq": 220,
-   "pitchDrop": 1,
-   "noteSteps": 8,
-   "pitchTime": 0.08,
-   "filterLow": 20,
-   "filterFreq": 9000,
-   "attack": 0.002,
-   "decay": 0.6,
-   "sustain": 0.55,
-   "volume": 0.4,
-   "pan": 0.5,
-   "mods": [],
-   "fmRatio": 4.61,
-   "fmIndex": 3,
-   "vibratoRate": 10,
-   "vibratoDepth": 50,
    "effects": [
-    {
-     "type": "reverb",
-     "sizeSec": 2.5,
-     "mix": 0.3
-    }
-   ],
-   "scaleOctDown": 1,
-   "patterns": [
-    {
-     "id": "pmt0g85s6q",
-     "name": "A",
-     "length": 32,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 7,
-         "vel": 0.45,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 3,
-         "vel": 0.4,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 1,
-         "prob": 1,
-         "gate": 0.3
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 1,
-         "prob": 1,
-         "gate": 0.3
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    },
-    {
-     "id": "pmt0gfr37r",
-     "name": "A′",
-     "length": 32,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 7,
-         "vel": 0.4,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 0.5
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 3,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 0.6
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 0.8999999999999999,
-         "prob": 1,
-         "gate": 0.3
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 7,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 0.1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 0.3,
-         "prob": 1,
-         "gate": 0.1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 5,
-         "vel": 0.9000000000000001,
-         "prob": 1,
-         "gate": 0.2
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      }
-     ],
-     "forkedFrom": "pmt0g85s6q",
-     "muted": false
-    }
-   ],
-   "id": "tmt0g85s6p",
-   "name": "звон",
-   "sidechain": {
-    "sourceId": "tmt0fnq5cd",
-    "amount": 0.5,
-    "releaseSec": 0.25
-   },
-   "filterQ": 0.8,
-   "voiceMorph": 0.5,
-   "ksLife": 2.5,
-   "sampleMode": "plain",
-   "grainSizeMs": 120,
-   "grainCount": 10,
-   "grainPos": 0.3,
-   "grainScatter": 0.15,
-   "mono": false,
-   "scaleOctUp": 0
-  },
-  {
-   "rate": 2,
-   "phase": 0,
-   "waveform": "formant",
-   "scale": [
-    1,
-    1.2,
-    1.3333333333333333,
-    1.5,
-    1.8,
-    2
-   ],
-   "freq": 220,
-   "pitchDrop": 1,
-   "noteSteps": 1,
-   "pitchTime": 0.08,
-   "filterLow": 20,
-   "filterFreq": 8000,
-   "attack": 0.06,
-   "decay": 0.7,
-   "volume": 0.7,
-   "pan": 0.5,
-   "mods": [],
-   "voiceMorph": 0.35,
-   "effects": [
-    {
-     "type": "lofi",
-     "bits": 2,
-     "mix": 0
-    },
     {
      "type": "dist",
-     "drive": 6,
-     "mix": 0.35
+     "drive": 4,
+     "mix": 0.85
+    },
+    {
+     "type": "chorus",
+     "rate": 0.4,
+     "mix": 0.8
     },
     {
      "type": "reverb",
-     "sizeSec": 1,
+     "sizeSec": 0.8,
      "mix": 0.3
     }
    ],
-   "patterns": [
-    {
-     "id": "pmt0glxzpt",
-     "name": "A",
-     "length": 12,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      }
-     ],
-     "muted": false
-    },
-    {
-     "id": "pmt0gnpqdu",
-     "name": "A′",
-     "length": 12,
-     "steps": [
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 1,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
-       "notes": []
-      },
-      {
-       "notes": [
-        {
-         "n": 2,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      }
-     ],
-     "forkedFrom": "pmt0glxzpt",
-     "muted": false
-    }
-   ],
-   "id": "tmt0glxzps",
-   "name": "вокал",
-   "filterQ": 0.8,
-   "sustain": 0,
-   "fmRatio": 2,
-   "fmIndex": 3,
-   "vibratoRate": 5,
-   "vibratoDepth": 0,
-   "ksLife": 2.5,
-   "sampleMode": "plain",
-   "grainSizeMs": 120,
-   "grainCount": 10,
-   "grainPos": 0.3,
-   "grainScatter": 0.15,
-   "mono": false,
-   "scaleOctUp": 0,
-   "scaleOctDown": 0
-  },
-  {
-   "rate": 1,
-   "phase": 0,
-   "waveform": "sample",
-   "scale": [
-    1
-   ],
-   "freq": 220,
-   "pitchDrop": 1,
-   "noteSteps": 1,
-   "pitchTime": 0.08,
-   "filterLow": 20,
-   "filterFreq": 12000,
-   "attack": 0.001,
-   "decay": 1.2,
-   "sustain": 0,
-   "volume": 1,
-   "pan": 0.5,
-   "mods": [],
-   "sampleId": "f7dc35c973bac1a9c687ac5ee45148e16691b8f8f755c9af3a1ca565d1450f5f",
-   "sampleName": "bass water splash",
-   "fmRatio": 2,
-   "fmIndex": 3,
-   "voiceMorph": 0.5,
-   "vibratoRate": 5,
-   "vibratoDepth": 0,
-   "ksLife": 2.5,
-   "sampleMode": "grain",
-   "grainSizeMs": 10,
-   "grainCount": 32,
-   "grainPos": 0.3,
-   "grainScatter": 0.15,
-   "effects": [],
    "scaleOctUp": 0,
    "scaleOctDown": 0,
    "patterns": [
     {
-     "id": "pmt0gqjwkx",
+     "id": "pmsvkcs4jb",
      "name": "A",
-     "length": 9,
+     "length": 8,
      "steps": [
-      {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
       {
        "notes": []
       },
       {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
+       "notes": []
       },
       {
        "notes": []
@@ -1427,9 +542,9 @@
      "muted": false
     },
     {
-     "id": "pmt0guvaiy",
+     "id": "pmsvkd2bzd",
      "name": "B",
-     "length": 9,
+     "length": 8,
      "steps": [
       {
        "notes": []
@@ -1438,30 +553,13 @@
        "notes": []
       },
       {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
-      },
-      {
        "notes": []
       },
       {
        "notes": []
       },
       {
-       "notes": [
-        {
-         "n": 0,
-         "vel": 0.8,
-         "prob": 1,
-         "gate": 1
-        }
-       ]
+       "notes": []
       },
       {
        "notes": []
@@ -1476,20 +574,300 @@
      "muted": false
     },
     {
-     "id": "pmt0gvwi9z",
+     "id": "pmsvkd33ff",
      "name": "C",
-     "length": 9,
+     "length": 8,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 4,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 4,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 5,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "rate": 16,
+     "muted": false
+    },
+    {
+     "id": "pmsvkjlab1",
+     "name": "D",
+     "length": 16,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "mods": [
+      {
+       "target": "pan",
+       "source": "perlin",
+       "shape": "sine",
+       "rate": 0.2,
+       "depth": 0.5
+      },
+      {
+       "target": "pan",
+       "shape": "sine",
+       "rate": 0.2,
+       "depth": 0.5
+      }
+     ],
+     "muted": false
+    }
+   ],
+   "id": "tmsvkcs4ja",
+   "name": "хихат",
+   "mono": false
+  },
+  {
+   "rate": 2,
+   "phase": 0,
+   "waveform": "triangle",
+   "scale": [
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
+   ],
+   "freq": 329.6,
+   "pitchDrop": 1,
+   "pitchTime": 0.08,
+   "filterLow": 20,
+   "filterFreq": 4500,
+   "attack": 0.002,
+   "decay": 0.18,
+   "volume": 0.3,
+   "pan": 0.5,
+   "mods": [],
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "effects": [
+    {
+     "type": "reverb",
+     "sizeSec": 1.8,
+     "mix": 0.3
+    }
+   ],
+   "scaleOctUp": 0,
+   "scaleOctDown": 0,
+   "patterns": [
+    {
+     "id": "pmsvksan74",
+     "name": "A",
+     "length": 16,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmsvkuert6",
+     "name": "B",
+     "length": 16,
      "steps": [
       {
        "notes": []
       },
       {
+       "notes": []
+      },
+      {
        "notes": [
         {
-         "n": 0,
+         "n": 3,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 1
         }
        ]
       },
@@ -1500,17 +878,114 @@
        "notes": []
       },
       {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
        "notes": []
       },
       {
        "notes": [
         {
-         "n": 0,
+         "n": 3,
          "vel": 0.8,
-         "prob": 1,
-         "gate": 1
+         "prob": 0.25
         }
        ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmsvl7zj64",
+     "name": "C",
+     "length": 16,
+     "steps": [
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
       },
       {
        "notes": []
@@ -1525,10 +1000,324 @@
      "muted": false
     }
    ],
-   "id": "tmt0gqjwkw",
-   "name": "колокол",
-   "filterQ": 0.8,
+   "id": "tmsvksan73",
+   "name": "звон",
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
    "mono": false
+  },
+  {
+   "rate": 2,
+   "phase": 0,
+   "waveform": "sample",
+   "scale": [
+    1,
+    1.2,
+    1.3333333333333333,
+    1.5,
+    1.8,
+    2
+   ],
+   "freq": 220,
+   "pitchDrop": 1,
+   "pitchTime": 2,
+   "filterLow": 20,
+   "filterFreq": 12000,
+   "attack": 0.0008,
+   "decay": 1.2,
+   "volume": 0.8,
+   "pan": 0.5,
+   "mods": [],
+   "sampleId": "5346ad3aff971be38cfcba26505689cb455675a1d8e6782001fe65f7441d1163",
+   "sampleName": "ы.wav",
+   "effects": [],
+   "patterns": [
+    {
+     "id": "pmsvlaxxjc",
+     "name": "A",
+     "length": 32,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 4,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 4,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 4,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 2,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": [
+        {
+         "n": 3,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ],
+     "mods": [
+      {
+       "target": "pan",
+       "shape": "sine",
+       "rate": 0.2,
+       "depth": 0.5
+      }
+     ],
+     "muted": false
+    },
+    {
+     "id": "pmsvlp9q91",
+     "name": "B",
+     "length": 24,
+     "steps": [
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      }
+     ]
+    }
+   ],
+   "id": "tmsvlaxxjb",
+   "name": "сэмпл",
+   "fmRatio": 2,
+   "fmIndex": 3,
+   "voiceMorph": 0.5,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "ksLife": 2.5,
+   "sampleMode": "plain",
+   "grainSizeMs": 120,
+   "grainCount": 10,
+   "grainPos": 0.3,
+   "grainScatter": 0.15,
+   "mono": false,
+   "scaleOctUp": 0,
+   "scaleOctDown": 0
   }
  ]
 }
