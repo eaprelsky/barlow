@@ -374,7 +374,15 @@ fn audio_play(app: AppHandle, patch_json: String, scene_id: Option<String>) -> R
     };
     let patch: audio::patch::Patch =
         serde_json::from_str(&patch_json).map_err(|e| e.to_string())?;
-    load_samples_into_engine(&app, engine, &serde_json::to_value(&patch).unwrap_or_default());
+    // Декод сэмплов — в фон: чтение/разбор WAV-библиотеки на главном
+    // потоке замораживало окно; сэмплеры подхватят файлы через мгновение.
+    let patch_val = serde_json::to_value(&patch).unwrap_or_default();
+    let app2 = app.clone();
+    let engine2 = engine.clone();
+    std::thread::spawn(move || {
+        let n = load_samples_into_engine(&app2, &engine2, &patch_val);
+        let _ = n;
+    });
     engine.play(patch, scene_id);
     Ok(())
 }

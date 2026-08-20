@@ -71,12 +71,27 @@ export class RustAudioBackend implements AudioBackend {
   }
 
   play(patch: Patch, sceneId: string): void {
-    void invoke('audio_play', {
-      patchJson: JSON.stringify(patch),
-      sceneId,
-    }).catch(() => {
-      /* вывод не запущен — панель вывода скажет подробнее */
-    });
+    void (async () => {
+      try {
+        await invoke('audio_play', { patchJson: JSON.stringify(patch), sceneId });
+      } catch {
+        // Вывод не поднят (после перезапуска приложения) — поднимаем с
+        // сохранёнными настройками и повторяем.
+        try {
+          const st = await invoke<{ device: string | null; exclusive: boolean; buffer: number }>(
+            'audio_settings',
+          );
+          await invoke('audio_output_start', {
+            device: st.device,
+            exclusive: st.exclusive,
+            bufferFrames: st.buffer,
+          });
+          await invoke('audio_play', { patchJson: JSON.stringify(patch), sceneId });
+        } catch (e) {
+          console.error('нативный вывод не поднялся:', e);
+        }
+      }
+    })();
   }
 
   stop(): void {
