@@ -115,11 +115,10 @@ export class RustAudioBackend implements AudioBackend {
     await this.webRenderer.ensureSamples(patch).catch(() => undefined);
   }
 
-  scratchBegin(track: Track, pos0?: number): void {
+  scratchBegin(track: Track, _pos0?: number): void {
     void invoke('audio_scratch_begin', { sampleId: track.sampleId ?? null }).catch(
       () => undefined,
     );
-    const _ = pos0;
   }
 
   scratchMove(pos: number): void {
