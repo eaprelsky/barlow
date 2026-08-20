@@ -433,8 +433,11 @@ impl LiveEngine {
         let tracks = st.patch.tracks.clone();
         let mut triggers: Vec<(super::patch::Track, f64, Vec<super::patch::Note>, f64)> = Vec::new();
         // Порт audibleSet: соло сцены оставляет только свою дорожку,
-        // мьют партии и выключенный трек молчат.
-        let solo_track = scene.as_ref().and_then(|s| s.solo_track_id.clone());
+        // мьют партии и выключенный трек молчат. Соло на удалённую
+        // дорожку игнорируем — иначе фильтр глушил бы всё подряд.
+        let solo_track = scene.as_ref().and_then(|s| s.solo_track_id.clone()).filter(|solo| {
+            tracks.iter().any(|t| &t.id == solo)
+        });
         for track in &tracks {
             if track.enabled == Some(false) {
                 continue;
