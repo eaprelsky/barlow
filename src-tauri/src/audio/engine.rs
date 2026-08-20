@@ -5,7 +5,7 @@
 // замена цепочки не рвёт хвосты — стыки мягкие по построению.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::chain::TrackChain;
@@ -51,6 +51,12 @@ pub struct LiveEngine {
     playing: AtomicBool,
     counter: AtomicU64,
     last_sched: AtomicU64,
+    /// Диагностика: сколько блоков отрендерено (смоук-тест/отладка).
+    pub render_blocks: AtomicU64,
+    /// Диагностика: фаза последнего блока (1..11), см. render_block.
+    pub debug_phase: AtomicU8,
+    /// Диагностика: сэмпл в теле блока (фаза 8).
+    pub debug_i: std::sync::atomic::AtomicU32,
     state: Mutex<LiveState>,
     meters: Mutex<HashMap<String, f32>>,
     samples: Mutex<HashMap<String, Arc<super::samples::SampleData>>>,
@@ -65,6 +71,9 @@ impl LiveEngine {
             playing: AtomicBool::new(false),
             counter: AtomicU64::new(0),
             last_sched: AtomicU64::new(0),
+            render_blocks: AtomicU64::new(0),
+            debug_phase: AtomicU8::new(0),
+            debug_i: std::sync::atomic::AtomicU32::new(0),
             state: Mutex::new(LiveState {
                 patch: empty_patch(),
                 scene_id: String::new(),
@@ -215,17 +224,21 @@ impl LiveEngine {
     /// Без аллокаций на сэмпл: голоса проходятся один раз на блок,
     /// миксы накапливаются в переиспользуемые буферы.
     pub fn render_block(&self, out: &mut [f32], frames: usize, channels: usize, block_start: u64) {
+        self.debug_phase.store(1, Ordering::Relaxed);
         let block_end = block_start + frames as u64;
         // Планировщик — не чаще ~6 мс (как lookahead-проход web-движка).
         if self.playing.load(Ordering::Relaxed)
             && block_start.saturating_sub(self.last_sched.load(Ordering::Relaxed))
                 >= (self.sr / 160.0) as u64
         {
+            self.debug_phase.store(2, Ordering::Relaxed);
             self.schedule(block_start);
             self.last_sched.store(block_start, Ordering::Relaxed);
         }
+        self.debug_phase.store(7, Ordering::Relaxed);
         let sr = self.sr;
         let mut st = self.state.lock().unwrap();
+        self.debug_phase.store(8, Ordering::Relaxed);
         let master_pan = st.patch.master_pan.unwrap_or(0.5);
         let mut meters = self.meters.lock().unwrap();
 
@@ -279,6 +292,7 @@ impl LiveEngine {
         let ids: Vec<String> = st.chains.keys().cloned().collect();
         let scratch_get = |i: usize| scratch_buf.get(i).copied().unwrap_or(0.0);
         for i in 0..frames {
+            self.debug_i.store(i as u32, Ordering::Relaxed);
             let t = (block_start + i as u64) as f64 / sr;
             let mut l = scratch_get(i) as f64;
             let mut r = l;
@@ -315,17 +329,25 @@ impl LiveEngine {
             let e = meters.entry(tid.clone()).or_insert(0.0);
             *e = if lvl > *e { lvl } else { *e * 0.86 + lvl * 0.14 };
         }
+        // Данные для события часов — под локами; сами локи отпускаем ДО
+        // вызова callback: раньше здесь звался snapshot() и намертво
+        // вешал поток рекурсивным state.lock() (render_block его держал).
+        let scene_id_now = st.scene_id.clone();
+        let chain_pos_now = st.chain_pos;
+        drop(meters);
+        drop(st);
+        self.debug_phase.store(9, Ordering::Relaxed);
         // Часы наружу ~30 Гц
         let tick = (self.sr / 30.0) as u64;
         if block_start / tick != block_end / tick {
-            let (playing, now, scene, pos, _) = self.snapshot();
+            let playing = self.playing.load(Ordering::Relaxed);
             if playing {
-                (self.on_clock.lock().unwrap())(now, &scene, pos, playing);
+                let now = block_end as f64 / self.sr;
+                (self.on_clock.lock().unwrap())(now, &scene_id_now, chain_pos_now, playing);
             }
         }
-        drop(meters);
-        drop(st);
-        let _ = self.counter.load(Ordering::Relaxed);
+        self.render_blocks.fetch_add(1, Ordering::Relaxed);
+        self.debug_phase.store(11, Ordering::Relaxed);
     }
 
     /// Планировщик: ноты до горизонта (порт scheduler() движка TS).
@@ -503,6 +525,7 @@ impl LiveEngine {
         }
         // Голоса рендерим БЕЗ лока: сотни тысяч сэмплов на голос не
         // должны голодать главный поток и соседние блоки.
+        self.debug_phase.store(5, Ordering::Relaxed);
         drop(st);
         let mut rendered: Vec<(String, f64, Vec<f32>)> = Vec::with_capacity(triggers.len());
         for (track, at, notes, step_dur) in triggers {
@@ -514,6 +537,7 @@ impl LiveEngine {
             let voice = render_osc_voice(&track, &refs, at, step_dur, sr, sample.as_deref());
             rendered.push((track.id.clone(), at, voice.samples));
         }
+        self.debug_phase.store(6, Ordering::Relaxed);
         let mut st = self.state.lock().unwrap();
         for (track_id, at, data) in rendered {
             st.voices.push(ActiveVoice {
