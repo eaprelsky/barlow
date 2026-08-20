@@ -162,6 +162,8 @@ impl TrackChain {
             .map(|effect| {
                 let max_len = match &effect {
                     Effect::Delay { time_sec, .. } => ((time_sec * 1.05) * sr).ceil() as usize + 2,
+                    // Хорус: базовая задержка 26 мс ± 5 мс качания.
+                    Effect::Chorus { .. } => (0.033 * sr).ceil() as usize + 2,
                     _ => 2,
                 };
                 let reverb = match &effect {

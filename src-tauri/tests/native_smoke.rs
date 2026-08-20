@@ -257,3 +257,35 @@ fn user_patch_renders() {
     }
     assert!(peak > 0.01, "патч юзера молчит: пик {peak}");
 }
+
+#[test]
+fn user_patch_reverb_audible() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../fixtures/user-patch.json");
+    let Ok(json) = std::fs::read_to_string(path) else { return };
+    let mut patch: barlow_lib::audio::patch::Patch = serde_json::from_str(&json).unwrap();
+    // Реверб есть только на «звоне» и «хихате»: сравним полную энергию
+    // с эффектами и с вырезанными — wet-хвост должен добавлять энергию.
+    let engine = LiveEngine::new(48000.0);
+    engine.play(patch.clone(), None);
+    let mut block = vec![0.0f32; 960 * 2];
+    let mut with_rms = 0.0f64;
+    for t in 0..(48000 / 960 * 3) {
+        engine.render_block(&mut block, 960, 2, t as u64 * 960);
+        engine.advance_clock(960);
+        with_rms += block.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+    }
+    for tr in patch.tracks.iter_mut() {
+        tr.effects = None;
+    }
+    let engine2 = LiveEngine::new(48000.0);
+    engine2.play(patch, None);
+    let mut without_rms = 0.0f64;
+    for t in 0..(48000 / 960 * 3) {
+        engine2.render_block(&mut block, 960, 2, t as u64 * 960);
+        engine2.advance_clock(960);
+        without_rms += block.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+    }
+    eprintln!("энергия: с эффектами {with_rms:.3} без {without_rms:.3}");
+    assert!(with_rms > without_rms * 1.05, "эффекты не добавляют энергию: {with_rms} vs {without_rms}");
+}
