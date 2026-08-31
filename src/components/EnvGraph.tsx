@@ -18,6 +18,10 @@ interface EnvProps {
   stepSec: number | null;
   // Длина ноты в шагах (нота по сетке); null — «авто» по огибающей.
   steps: number | null;
+  // Ручки на изломах: драг меняет атаку/плато/спад. decayEditable —
+  // длина ноты свободная (без сетки), спадом можно тянуть хвост.
+  onEdit?: (upd: { attack?: number; sustain?: number; decay?: number }) => void;
+  decayEditable?: boolean;
 }
 
 interface PitchProps {
@@ -45,7 +49,18 @@ function stepsLabel(n: number): string {
   return `${rounded} шага`;
 }
 
-export function EnvGraph({ attack, decay, sustain, voiceLen, stepSec, steps }: EnvProps) {
+export function EnvGraph({
+  attack,
+  decay,
+  sustain,
+  voiceLen,
+  stepSec,
+  steps,
+  onEdit,
+  decayEditable,
+}: EnvProps) {
+  const ref = useRef<SVGSVGElement | null>(null);
+  const drag = useRef<'a' | 's' | 'd' | null>(null);
   const attackClamped = Math.max(attack, 0.0005);
   const total = Math.max(voiceLen, attackClamped + 0.02) * 1.04;
   const x = (t: number) => (t / total) * W;
@@ -84,9 +99,78 @@ export function EnvGraph({ attack, decay, sustain, voiceLen, stepSec, steps }: E
   const wS = x(holdEnd) - wA;
   const wD = x(voiceLen) - x(holdEnd);
 
+  // ---- Ручки на изломах: горизонтальный драг меняет параметр ----
+  const xToT = (clientX: number): number => {
+    const el = ref.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return ((clientX - r.left) / r.width) * total;
+  };
+  const applyDrag = (clientX: number) => {
+    if (!onEdit || !drag.current) return;
+    const t = Math.max(0, xToT(clientX));
+    if (drag.current === 'a') {
+      onEdit({ attack: +Math.min(0.5, Math.max(0.0005, t)).toFixed(4) });
+    } else if (drag.current === 's') {
+      const frac = (t - attackClamped) / Math.max(0.001, voiceLen - attackClamped);
+      onEdit({ sustain: +Math.min(1, Math.max(0, frac)).toFixed(3) });
+    } else if (drag.current === 'd' && decayEditable) {
+      onEdit({ decay: +Math.min(4, Math.max(0.01, t - attackClamped)).toFixed(3) });
+    }
+  };
+  const down = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!onEdit) return;
+    // Ближайшая ручка по горизонтали (в px), порог схвата ~12px.
+    const el = ref.current;
+    if (!el) return;
+    const pxPerT = el.getBoundingClientRect().width / total;
+    const cands: { id: 'a' | 's' | 'd'; t: number; on: boolean }[] = [
+      { id: 'a', t: attackClamped, on: true },
+      { id: 's', t: holdEnd, on: true },
+      { id: 'd', t: voiceLen, on: !!decayEditable },
+    ];
+    let best: { id: 'a' | 's' | 'd' } | null = null;
+    let bestD = Infinity;
+    for (const c of cands) {
+      if (!c.on) continue;
+      const d = Math.abs(xToT(e.clientX) - c.t) * pxPerT;
+      if (d < 12 && d < bestD) {
+        best = { id: c.id };
+        bestD = d;
+      }
+    }
+    if (!best) return;
+    drag.current = best.id;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    applyDrag(e.clientX);
+  };
+  const move = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (drag.current) applyDrag(e.clientX);
+  };
+  const up = () => {
+    drag.current = null;
+  };
+  const yTop = 16;
+  const yEnd = H - 6;
+
   return (
-    <svg className="env-graph" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
-      <title>{`нота ${cap}, атака ${(attackClamped * 1000).toFixed(0)} мс, плато ${Math.round(sus * 100)}%, спад ${decay.toFixed(2)} с`}</title>
+    <svg
+      className={'env-graph' + (onEdit ? ' editable' : '')}
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      role="img"
+      ref={ref}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+    >
+      <title>
+        {onEdit
+          ? 'Тяни ручки: атака — левый верх, плато — конец полки, спад — правый нижний (конец ноты)'
+          : `нота ${cap}, атака ${(attackClamped * 1000).toFixed(0)} мс, плато ${Math.round(sus * 100)}%, спад ${decay.toFixed(2)} с`}
+      </title>
       {lines.map((t, i) => (
         <line key={i} x1={x(t)} y1={4} x2={x(t)} y2={H - 6} className="env-grid" />
       ))}
@@ -113,6 +197,15 @@ export function EnvGraph({ attack, decay, sustain, voiceLen, stepSec, steps }: E
         >
           {`спад ${decay.toFixed(2)} с`}
         </text>
+      )}
+      {onEdit && (
+        <g className="env-handles">
+          <circle cx={x(attackClamped)} cy={yTop} r={3.5} className="env-handle" />
+          <circle cx={x(holdEnd)} cy={yTop + 9} r={3.5} className="env-handle" />
+          {decayEditable && (
+            <circle cx={x(voiceLen)} cy={yEnd - 5} r={3.5} className="env-handle" />
+          )}
+        </g>
       )}
     </svg>
   );

@@ -9,6 +9,8 @@ interface Props {
   currentId?: string;
   onPick: (meta: SampleMeta) => void;
   onClose: () => void;
+  /** Открыть полную библиотеку (скачать/удалить) из пикера. */
+  onOpenLibrary?: () => void;
 }
 
 function fmtSize(bytes: number): string {
@@ -16,7 +18,7 @@ function fmtSize(bytes: number): string {
   return `${Math.round(bytes / 1024)} КБ`;
 }
 
-export function SamplePicker({ currentId, onPick, onClose }: Props) {
+export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Props) {
   const [samples, setSamples] = useState<SampleMeta[] | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [err, setErr] = useState('');
@@ -111,6 +113,14 @@ export function SamplePicker({ currentId, onPick, onClose }: Props) {
           <button onClick={() => fileRef.current?.click()} title="Файл сохранится в библиотеку и ляжет в слот">
             загрузить файл…
           </button>
+          {onOpenLibrary && (
+            <button
+              title="Вся библиотека: прослушать, скачать, удалить"
+              onClick={onOpenLibrary}
+            >
+              библиотека…
+            </button>
+          )}
           <span className="spacer" />
           <button onClick={onClose}>закрыть</button>
           <input

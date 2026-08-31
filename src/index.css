@@ -1021,10 +1021,12 @@ header button.on {
 }
 
 .env-tab {
+  display: flex;
   flex-direction: row;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 20px;
+  margin-top: 8px;
 }
 
 .env-graph {
@@ -1285,10 +1287,15 @@ header button.on {
 }
 
 /* Переключатель сущности карточки: эскиз (партия) / трек (общий звук).
-   Живёт в правом хвосте шапки — отступ до угловых кнопок считает он. */
+   Стоит слева, у имени дорожки — основная работа идёт слева. */
+.mode-seg {
+  align-self: center;
+  flex: 0 0 auto;
+}
+
 .mode-seg button {
   font-size: 12px;
-  padding: 4px 14px;
+  padding: 4px 12px;
 }
 
 .mode-seg button.on {
@@ -1296,9 +1303,8 @@ header button.on {
   background: rgba(255, 168, 60, 0.08);
 }
 
-/* Правый хвост шапки трека: переключатель «эскиз/трек» + «?».
-   Прижат вправо и поднята к первой строке, но отступом справа не
-   заезжает на угловые кнопки «копировать/удалить» (12..65px от края). */
+/* Правый хвост шапки трека: «?» — с отступом от угловых кнопок
+   «копировать/удалить» (12..65px от края), по их оптической строке. */
 .head-tail {
   margin-left: auto;
   align-self: flex-start;
@@ -2584,4 +2590,81 @@ button.danger:hover {
 /* «?» внутри заголовков модалок */
 .modal h3 .ob-hint {
   margin-left: 8px;
+}
+
+
+/* Подгруппа внутри вкладки: заголовок на всю строку группы */
+.group.sub {
+  position: relative;
+}
+
+.sub-cap {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-bottom: 2px;
+  border-bottom: 1px dashed var(--border);
+}
+
+/* Огибающая: две колонки — «форма ноты» и «падение тона»,
+   поля живут под своим графиком */
+.env-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.env-col .env-fields {
+  align-items: flex-end;
+}
+
+.env-graph.editable {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.env-handle {
+  fill: var(--accent);
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 1;
+}
+
+/* Разделители групп в шапке приложения */
+.tb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  align-self: center;
+  flex: 0 0 auto;
+}
+
+header button svg {
+  vertical-align: -2px;
+  margin-right: 5px;
+}
+
+/* Пресеты гранулярного режима */
+.grain-presets button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+/* Быстрый скрэтч в строке эскиза (сэмпловые дорожки) */
+.scratch-quick {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.scratch-quick.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Заголовки колонок строки гармоники в редакторе волны */
+.partial-row.head .ph-cap {
+  font-size: 10px;
+  color: var(--text-dim);
 }

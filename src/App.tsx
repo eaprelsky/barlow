@@ -292,6 +292,10 @@ export default function App() {
     [engine],
   );
   const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
+  const openLibrary = useCallback(() => {
+    setShowLib(true);
+    if (showAi) setShowAi(false);
+  }, [showAi]);
 
   // Режим редактора гаснет сам, когда его дорожка исчезла (очистить всё,
   // удаление, undo, импорт): стухший id иначе держал бы все новые треки
@@ -1042,20 +1046,58 @@ export default function App() {
         >
           + трек
         </button>
+        <span className="tb-sep" />
         <button
-          className="undo-btn"
-          disabled={undoStack.current.length === 0}
-          onClick={undo}
-          title="Отменить (Ctrl+Z)"
-        >↶</button>
+          className={showChain ? 'on' : ''}
+          data-ob="chain-btn"
+          onClick={() => setShowChain((v) => !v)}
+          title="Цепочка: порядок сцен и их длины — арранжмент от начала до конца"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+            {/* два звена цепочки */}
+            <path d="M5.6 8.4 8.4 5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            <path d="M4.2 6.3 2.9 7.6a2.5 2.5 0 0 0 3.5 3.5l1.3-1.3M9.8 7.7l1.3-1.3a2.5 2.5 0 0 0-3.5-3.5L6.3 4.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          цепочка
+        </button>
         <button
-          className="undo-btn"
-          disabled={redoStack.current.length === 0}
-          onClick={redo}
-          title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
-        >↷</button>
+          className={showMix ? 'on' : ''}
+          data-ob="mixer-btn"
+          onClick={() => setShowMix((v) => !v)}
+          title="Микшер-рэк: громкости дорожек и глобальные выключатели — не зависят от сцен и эскизов"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+            {/* рэк: три вертикальных фейдера */}
+            <path d="M3 1.5v11M7 1.5v11M11 1.5v11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            <rect x="1.6" y="4" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
+            <rect x="5.6" y="8" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
+            <rect x="9.6" y="3" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
+          </svg>
+          микшер
+        </button>
+        <span className="tb-sep" />
+        <button
+          className={showLib ? 'on' : ''}
+          data-ob="library-btn"
+          onClick={() => { setShowLib((v) => !v); if (showAi) setShowAi(false); }}
+          title="Библиотека сэмплов: прослушать, скачать, удалить"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+            {/* волна в рамке */}
+            <rect x="1.2" y="2.2" width="11.6" height="9.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M3 8.4c1-.2 1.4-3 2.2-3s.9 4 1.8 4 1.1-5 2-5 1 2.6 2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+          сэмплы
+        </button>
         <div className="menu">
-          <button data-ob="file-menu" onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">файл ▾</button>
+          <button data-ob="file-menu" onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">
+            <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+              {/* лист с загнутым углом */}
+              <path d="M3 1.5h5.2L11.5 5v7.5H3z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              <path d="M8 1.8V5.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+            </svg>
+            файл ▾
+          </button>
           {fileOpen && (
             <div className="menu-list">
               <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering}>
@@ -1086,30 +1128,19 @@ export default function App() {
             </div>
           )}
         </div>
+        <span className="tb-sep" />
         <button
-          className={showLib ? 'on' : ''}
-          data-ob="library-btn"
-          onClick={() => { setShowLib((v) => !v); if (showAi) setShowAi(false); }}
-          title="Библиотека сэмплов: прослушать, скачать, удалить"
-        >
-          сэмплы
-        </button>
+          className="undo-btn"
+          disabled={undoStack.current.length === 0}
+          onClick={undo}
+          title="Отменить (Ctrl+Z)"
+        >↶</button>
         <button
-          className={showMix ? 'on' : ''}
-          data-ob="mixer-btn"
-          onClick={() => setShowMix((v) => !v)}
-          title="Микшер-рэк: громкости дорожек и глобальные выключатели — не зависят от сцен и эскизов"
-        >
-          микшер
-        </button>
-        <button
-          className={showChain ? 'on' : ''}
-          data-ob="chain-btn"
-          onClick={() => setShowChain((v) => !v)}
-          title="Цепочка: порядок сцен и их длины — арранжмент от начала до конца"
-        >
-          цепочка
-        </button>
+          className="undo-btn"
+          disabled={redoStack.current.length === 0}
+          onClick={redo}
+          title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
+        >↷</button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -1440,6 +1471,7 @@ export default function App() {
             onGetSampleBuffer={getSampleBuffer}
             onPreviewSampleRegion={previewSampleRegion}
             onPreviewNote={previewNote}
+            onOpenLibrary={openLibrary}
           />
         ))}
         {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}

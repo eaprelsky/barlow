@@ -371,6 +371,14 @@ export function WaveEditor({
           </div>
 
           <div className="we-partials" data-ob="we-partials">
+            {wave.partials.length > 0 && (
+              <div className="partial-row head" aria-hidden="true">
+                <span />
+                <span className="ph-cap">номер</span>
+                <span className="ph-cap">громкость</span>
+                <span className="ph-cap">форма</span>
+              </div>
+            )}
             {wave.partials.map((p, i) => (
               <div className="partial-row" key={i}>
                 <button className="remove" title="Убрать гармонику" onClick={() => removePartial(i)}>×</button>
