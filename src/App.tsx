@@ -279,6 +279,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [showHelp]);
   const [fileOpen, setFileOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   // Редактор волны: id дорожки в раздвижном режиме (остальные съёживаются).
   const [waveEditorTrack, setWaveEditorTrack] = useState<string | null>(null);
@@ -1138,7 +1139,11 @@ export default function App() {
           сэмплы
         </button>
         <div className="menu">
-          <button data-ob="file-menu" onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">
+          <button
+            data-ob="file-menu"
+            onClick={() => { setFileOpen((v) => !v); setExportOpen(false); }}
+            title="Файлы: новый, открыть, записать, экспорт"
+          >
             <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
               {/* лист с загнутым углом */}
               <path d="M3 1.5h5.2L11.5 5v7.5H3z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
@@ -1148,11 +1153,12 @@ export default function App() {
           </button>
           {fileOpen && (
             <div className="menu-list">
-              <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering}>
-                {rendering ? 'рендер…' : 'записать wav'}
+              <button
+                onClick={() => { clearAll(); setFileOpen(false); }}
+                title="Новый проект: пусто, одна сцена"
+              >
+                новый
               </button>
-              <button onClick={() => { exportPatch(); setFileOpen(false); }} title="Только патч JSON, без сэмплов — лёгкий обмен">экспорт патча (json)</button>
-              <button onClick={() => { void exportZip(); setFileOpen(false); }} title="Патч + все сэмплы одним zip — переезд на другую машину или в десктоп">экспорт проекта (zip)</button>
               <button
                 onClick={() => {
                   setFileOpen(false);
@@ -1162,17 +1168,33 @@ export default function App() {
                       .catch((e) => void alertDialog(`Открытие не удалось: ${errText(e)}`, 'импорт'));
                   else fileRef.current?.click();
                 }}
-                title="Zip-проект или json патча"
+                title="Открыть zip-проект или json патча"
               >
-                импорт проекта…
+                открыть…
               </button>
-              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Сбросить к дефолтному полиритму">сброс к демо</button>
+              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Открыть демо: дефолтный полиритм">
+                открыть демо
+              </button>
+              <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering} title="Записать аранжмент в wav">
+                {rendering ? 'рендер…' : 'записать wav'}
+              </button>
               <button
-                onClick={() => { clearAll(); setFileOpen(false); }}
-                title="Пустой проект: без треков, одна сцена"
+                className="has-sub"
+                onClick={(e) => { e.stopPropagation(); setExportOpen((v) => !v); }}
+                title="Экспорт пьесы"
               >
-                очистить всё
+                экспорт ▾
               </button>
+              {exportOpen && (
+                <div className="menu-sub">
+                  <button onClick={() => { exportPatch(); setFileOpen(false); }} title="Только патч JSON, без сэмплов — лёгкий обмен">
+                    патч (json)
+                  </button>
+                  <button onClick={() => { void exportZip(); setFileOpen(false); }} title="Патч + все сэмплы одним zip — переезд на другую машину или в десктоп">
+                    проект (zip)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

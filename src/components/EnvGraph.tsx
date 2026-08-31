@@ -68,11 +68,15 @@ export function EnvGraph({
   // Та же форма, что в triggerVoice: атака → плато (sus доли звуковой
   // части) → экспоненциальный спад к концу ноты.
   const holdEnd = attackClamped + (voiceLen - attackClamped) * sus;
+  // Спад как в triggerVoice: экспонента за decay секунд от конца
+  // плато (короче — догорает и держит тишину до конца ноты).
   const amp = (t: number): number => {
     if (t <= attackClamped) return t / attackClamped;
     if (t <= holdEnd) return 1;
-    const tail = Math.max(0.01, voiceLen - holdEnd);
-    return Math.exp(-4 * ((t - holdEnd) / tail));
+    const tail = Math.max(0.005, voiceLen - holdEnd);
+    const fall = Math.min(Math.max(decay, 0.01), tail);
+    const v = Math.exp(-4 * ((t - holdEnd) / fall));
+    return Math.max(0.0001, v);
   };
   const pts: string[] = [];
   const N = 96;

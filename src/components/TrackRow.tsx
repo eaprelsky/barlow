@@ -1130,60 +1130,65 @@ export const TrackRow = memo(function TrackRow({
       )}
 
       {!waveEditor && view === 'track' && (
-        <div className="track-head more-row" data-ob="sound-panel">
-          <div className="group common-row" data-ob="common-row">
-            <label
-              title={
-                track.noteSteps && track.noteSteps > 0
-                  ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
-                  : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
-              }
-            >
-              нота
-              <span className="inline">
-                <NumField
-                  value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
-                  onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
-                />
-                <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
-              </span>
-            </label>
-            <SliderField
-              variant="inline"
-              label="громкость"
-              title="Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число"
-              value={Math.round(track.volume * 100)}
-              min={0} max={100} step={5}
-              display={`${Math.round(track.volume * 100)}%`}
-              unit="%"
-              onChange={(v) => change({ volume: v / 100 })}
-            />
-            <SliderField
-              variant="inline"
-              label="пан"
-              title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
-              value={Math.round(track.pan * 100)}
-              min={0} max={100} step={5}
-              display={panLabel(track.pan)}
-              onChange={(v) => change({ pan: v / 100 })}
-            />
-            <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
-              фаза, шагов
-              <NumField
-                value={track.phase} min={-64} max={64}
-                onChange={(phase) => change({ phase: Math.round(phase) })}
+        <div className="track-head more-row panel" data-ob="sound-panel">
+          <div className="panel-row">
+            <span className="sub-cap">общее</span>
+            <div className="group" data-ob="common-row">
+              <label
+                title={
+                  track.noteSteps && track.noteSteps > 0
+                    ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
+                    : '«авто» — длина ноты по огибающей инструмента (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
+                }
+              >
+                нота
+                <span className="inline">
+                  <NumField
+                    value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
+                    onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
+                  />
+                  <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
+                </span>
+              </label>
+              <SliderField
+                variant="inline"
+                label="громкость"
+                title="Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число"
+                value={Math.round(track.volume * 100)}
+                min={0} max={100} step={5}
+                display={`${Math.round(track.volume * 100)}%`}
+                unit="%"
+                onChange={(v) => change({ volume: v / 100 })}
               />
-            </label>
-            <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
-              тоника, Гц
-              <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
-            </label>
+              <SliderField
+                variant="inline"
+                label="пан"
+                title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
+                value={Math.round(track.pan * 100)}
+                min={0} max={100} step={5}
+                display={panLabel(track.pan)}
+                onChange={(v) => change({ pan: v / 100 })}
+              />
+              <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
+                фаза, шагов
+                <NumField
+                  value={track.phase} min={-64} max={64}
+                  onChange={(phase) => change({ phase: Math.round(phase) })}
+                />
+              </label>
+              <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
+                тоника, Гц
+                <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
+              </label>
+            </div>
           </div>
-                    <div className="group mods-group" data-ob="fx-list">
-            <span className="scope-cap" title="Эффекты — общие для всех эскизов трека: комната одна, все партии в неё играют">
-              дорожка
-            </span>
-            {effects.map((fx, i) => (
+          <div className="panel-row">
+            <div className="sub-head">
+              <span className="sub-cap">комната — эффекты, одни для всех эскизов</span>
+              <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
+            </div>
+            <div className="group mods-group" data-ob="fx-list">
+                          {effects.map((fx, i) => (
               <div className="mod-row" key={i} {...rowDropProps('fx', i, moveEffect)}>
                 {rowGrip('fx', i)}
                 {/* Удаление — первым слева: крестики строк в одну колонку,
@@ -1263,109 +1268,114 @@ export const TrackRow = memo(function TrackRow({
               </div>
             ))}
             <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект">+ эффект</button>
-            <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
+            </div>
           </div>
-          <div className="group sub" data-ob="flow-group">
-            <span className="sub-cap">поток</span>
-                    <div className="group sub">
-            <span className="sub-cap">сайдчейн</span>
-            <label title="Сайдчейн: ноты выбранной дорожки приглушают эту («бас качается под бочку»). Дак живёт поверх громкости эскиза">
-              качается от
-              <select
-                value={track.sidechain?.sourceId ?? ''}
-                onChange={(e) =>
-                  change({
-                    sidechain: e.target.value
-                      ? {
-                          sourceId: e.target.value,
-                          amount: track.sidechain?.amount ?? 0.5,
-                          releaseSec: track.sidechain?.releaseSec ?? 0.25,
-                        }
-                      : undefined,
-                  })
-                }
-              >
-                <option value="">—</option>
-                {allTracks.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </label>
-            {track.sidechain && (
-              <>
-                <label title="Глубина приглушения при ударе источника">
-                  глубина, %
-                  <NumField
-                    value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
-                    onChange={(v) =>
-                      change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
-                    }
-                  />
-                </label>
-                <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
-                  восстановление, с
-                  <NumField
-                    value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
-                    onChange={(v) =>
-                      change({ sidechain: { ...track.sidechain!, releaseSec: v } })
-                    }
-                  />
-                </label>
-              </>
-            )}
-          </div>
-          <div className="group sub" data-ob="arp-group">
-            <span className="sub-cap">арпеджиатор</span>
-            <label
-              title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
-              data-ob="arp"
-            >
-              <input
-                type="checkbox"
-                checked={!!track.arp}
-                onChange={(e) =>
-                  change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
-                }
-              />
-              включить
-            </label>
-            <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
-            {track.arp && (
-              <>
-                <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
-                  тип
+          <div className="panel-cols">
+            <div className="panel-row">
+              <span className="sub-cap">сайдчейн</span>
+              <div className="group">
+                <label title="Сайдчейн: ноты выбранной дорожки приглушают эту («бас качается под бочку»). Дак живёт поверх громкости эскиза">
+                  качается от
                   <select
-                    value={track.arp.mode}
-                    onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
+                    value={track.sidechain?.sourceId ?? ''}
+                    onChange={(e) =>
+                      change({
+                        sidechain: e.target.value
+                          ? {
+                              sourceId: e.target.value,
+                              amount: track.sidechain?.amount ?? 0.5,
+                              releaseSec: track.sidechain?.releaseSec ?? 0.25,
+                            }
+                          : undefined,
+                      })
+                    }
                   >
-                    {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
-                      <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
+                    <option value="">—</option>
+                    {allTracks.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
                 </label>
-                <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
-                  дробление
-                  <NumField
-                    value={track.arp.div} min={0.25} max={8} step={0.25} narrow
-                    onChange={(div) => change({ arp: { ...track.arp!, div } })}
+                {track.sidechain && (
+                  <>
+                    <label title="Глубина приглушения при ударе источника">
+                      глубина, %
+                      <NumField
+                        value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
+                        onChange={(v) =>
+                          change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
+                        }
+                      />
+                    </label>
+                    <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
+                      восстановление, с
+                      <NumField
+                        value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
+                        onChange={(v) =>
+                          change({ sidechain: { ...track.sidechain!, releaseSec: v } })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="panel-row">
+              <div className="sub-head">
+                <span className="sub-cap">арпеджиатор</span>
+                <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
+              </div>
+              <div className="group" data-ob="arp-group">
+                <label
+                  title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
+                  data-ob="arp"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!track.arp}
+                    onChange={(e) =>
+                      change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
+                    }
                   />
+                  включить
                 </label>
-                <label title="Повтор фигуры по октавам — классика арпеджио">
-                  октавы
-                  <NumField
-                    value={track.arp.octaves} min={1} max={4} narrow
-                    onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
-                  />
-                </label>
-              </>
-            )}
-          </div>
+                {track.arp && (
+                  <>
+                    <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
+                      тип
+                      <select
+                        value={track.arp.mode}
+                        onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
+                      >
+                        {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
+                          <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
+                      дробление
+                      <NumField
+                        value={track.arp.div} min={0.25} max={8} step={0.25} narrow
+                        onChange={(div) => change({ arp: { ...track.arp!, div } })}
+                      />
+                    </label>
+                    <label title="Повтор фигуры по октавам — классика арпеджио">
+                      октавы
+                      <NumField
+                        value={track.arp.octaves} min={1} max={4} narrow
+                        onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {!waveEditor && view === 'inst' && (
-        <div className="track-head more-row" data-ob="inst-panel">
+        <div className="track-head more-row panel" data-ob="inst-panel">
           <div className="tabs">
             {(
               [
@@ -1591,7 +1601,7 @@ export const TrackRow = memo(function TrackRow({
                 <button
                   className="env-listen"
                   title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
-                  onClick={() => onPreviewNote(track)}
+                  onClick={() => onPreviewNote(st)}
                 >
                   ▶ послушать
                 </button>
@@ -1624,7 +1634,9 @@ export const TrackRow = memo(function TrackRow({
             </div>
           </div>
           )}
-                    <div className="group sub" data-ob="timbre-tab">
+                    {tab === 'timbre' && (
+          <>
+          <div className="group sub" data-ob="timbre-tab">
             <span className="sub-cap">фильтры</span>
             <label title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай">
               низ, Гц
@@ -1665,6 +1677,8 @@ export const TrackRow = memo(function TrackRow({
               />
             </label>
           </div>
+          </>
+          )}
         </div>
       )}
 

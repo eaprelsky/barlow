@@ -888,12 +888,15 @@ export function normalizePatch(p: Patch): Patch {
         );
       }
 
+      // v34-гигиена: с дорожки снимаются звуковые поля — они теперь
+      // живут только в инструменте. Иначе «мёртвые» значения из старого
+      // JSON забивают правки инструмента при слиянии в SoundingTrack.
+      const tr0 = { ...t, instrumentId, patterns } as Record<string, unknown>;
+      for (const f of INSTRUMENT_FIELDS) delete tr0[f];
+
       return {
-        ...t,
-        instrumentId,
-        patterns,
+        ...(tr0 as unknown as Track),
         scale,
-        rate: clamp(t.rate, 0.25, 32, 1),
         phase: Math.round(clamp(t.phase ?? 0, -64, 64, 0)),
         freq: clamp(t.freq, 20, 9000, 220),
         noteSteps:

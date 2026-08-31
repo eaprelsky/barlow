@@ -86,7 +86,7 @@ export function effectiveParams(track: Track, pattern: import('../types').Patter
 /** Дорожка со слитым инструментом: синтез видит только слитый вид. */
 function stOf(patch: Patch | null, track: Track): SoundingTrack {
   const inst = patch?.instruments?.find((i) => i.id === track.instrumentId);
-  return inst ? { ...inst, ...track } : (track as unknown as SoundingTrack);
+  return inst ? { ...track, ...inst } : (track as unknown as SoundingTrack);
 }
 
 function validSceneId(patch: Patch | null, want: string): string {

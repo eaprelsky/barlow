@@ -69,7 +69,7 @@ try {
   const clearAll = async () => {
     await page.locator('header button', { hasText: 'файл' }).click();
     await page.waitForTimeout(150);
-    await page.locator('.menu-list button', { hasText: 'очистить всё' }).click();
+    await page.locator('.menu-list button', { hasText: 'новый' }).click();
     await page.waitForTimeout(300);
   };
   const addTrack = async () => {

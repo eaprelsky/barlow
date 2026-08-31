@@ -367,10 +367,19 @@ export function triggerVoice(
   /** Куда подключать источник ноты i: через её гейт-гейн или сразу в amp. */
   const noteDest = (i: number): AudioNode => noteGainOf(i) ?? amp;
   // Огибающая: атака → плато (sustain, доля звуковой части) → спад.
+  // Спад управляется decay и при сеточной длине ноты: хвост падает до
+  // тишины за decay секунд (если помещается), иначе тянется до конца
+  // ноты и мягко досыпает в ноль.
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + attack);
-  amp.gain.setValueAtTime(peak, time + attack + (voiceLen - attack) * sus);
-  amp.gain.exponentialRampToValueAtTime(0.0001, time + voiceLen);
+  const plateauEnd = time + attack + (voiceLen - attack) * sus;
+  amp.gain.setValueAtTime(peak, plateauEnd);
+  const fallEnd = Math.min(plateauEnd + Math.max(track.decay, 0.01), time + voiceLen + 0.05);
+  amp.gain.exponentialRampToValueAtTime(0.0001, fallEnd);
+  if (fallEnd < time + voiceLen - 0.001) {
+    amp.gain.setValueAtTime(0.0001, fallEnd);
+    amp.gain.linearRampToValueAtTime(0.00002, time + voiceLen);
+  }
   stopAt = time + voiceLen + 0.05;
   const finish = (): Voice => ({ amp, sources, stopAt });
 

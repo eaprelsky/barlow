@@ -2668,3 +2668,47 @@ header button svg {
   font-size: 10px;
   color: var(--text-dim);
 }
+
+
+/* Панели вью «трек»/«инструмент»: вертикальные секции с заголовками —
+   каждая на всю ширину, линии групп выровнены между собой */
+.more-row.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.more-row.panel > .group,
+.more-row.panel .panel-row .group {
+  border-left: none;
+  padding: 0;
+  align-items: flex-end;
+}
+
+.panel-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sub-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px 28px;
+}
+
+/* Пункт-раздел меню «файл»: раскрытые подпункты с отступом */
+.menu-sub button {
+  padding-left: 30px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
