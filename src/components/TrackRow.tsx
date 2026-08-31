@@ -258,7 +258,9 @@ export const TrackRow = memo(function TrackRow({
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   // Нотка/звук/редактор — вкладки трека: открыта максимум одна.
   // Редактор живёт в App (он съёживает остальные треки), остальные две — здесь.
-  const [panel, setPanel] = useState<'roll' | 'sound' | null>('roll');
+  // Две сущности карточки: «эскиз» — партия (ноты и её ручки, вид по
+  // умолчанию), «трек» — общий звук отдельным компонентом настроек.
+  const [view, setView] = useState<'sketch' | 'track'>('sketch');
   const [showPicker, setShowPicker] = useState(false);
   const [showScales, setShowScales] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
@@ -308,7 +310,9 @@ export const TrackRow = memo(function TrackRow({
       ⠿
     </span>
   );
-  const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx' | 'mods'>('snd');
+  // Вкладки внутри «трека»; модуляции — раздел эскиза, свёрнут по умолчанию.
+  const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx'>('snd');
+  const [showMods, setShowMods] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
@@ -1042,81 +1046,37 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => onSolo(track.id)}
           >S</button>
         </span>
-        <div className="group ops" data-ob="ops">
+        <div className="group" data-ob="patterns">
+          {/* div, не label: label переносит hover/клики на первый
+              вложенный контрол — чип M загорался при наведении на любой эскиз */}
+          <div className="lbl" title="Эскизы дорожки: партии. Какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
+            эскизы
+            {patternChips}
+          </div>
+        </div>
+        {/* Переключатель сущности карточки: партия (эскиз) или общий звук
+            (трек). Заметный, отдельно от остальных ручек. */}
+        <div className="seg mode-seg" data-ob="mode">
           <button
-            className={panel === 'roll' && !waveEditor ? 'on' : ''}
-            data-ob="ops-roll"
-            onClick={() => {
-              if (waveEditor) onToggleWaveEditor(track.id);
-              setPanel((cur) => (waveEditor || cur !== 'roll' ? 'roll' : null));
-            }}
-            title={panel === 'roll' && !waveEditor ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
-            aria-label="нотный стан"
+            className={view === 'sketch' ? 'on' : ''}
+            data-ob="mode-sketch"
+            aria-label="эскиз"
+            title="Эскиз — партия: ноты и её ручки (длина, шаг, громкость/пан, вход/выход, модуляции)"
+            onClick={() => setView('sketch')}
           >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              {/* восьмая нота: головка, штиль, флажок */}
-              <ellipse cx="4.4" cy="10.8" rx="2.7" ry="2.2" fill="currentColor" transform="rotate(-14 4.4 10.8)" />
-              <rect x="6.6" y="1.6" width="1.4" height="9.6" rx="0.7" fill="currentColor" />
-              <path d="M8 1.8c2.7 1.3 4.2 3.4 3.4 6-.4 1.4-.3 2.4.4 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
+            эскиз
           </button>
           <button
-            className={panel === 'sound' && !waveEditor ? 'on' : ''}
-            data-ob="ops-sound"
-            onClick={() => {
-              if (waveEditor) onToggleWaveEditor(track.id);
-              setPanel((cur) => (waveEditor || cur !== 'sound' ? 'sound' : null));
-            }}
-            title="Звук дорожки: инструмент и волна, огибающая, тембр, эффекты, модуляции"
-            aria-label="звук дорожки"
+            className={view === 'track' ? 'on' : ''}
+            data-ob="mode-track"
+            aria-label="настройка трека"
+            title="Трек — общий звук: громкость и пан дорожки, длина ноты, фаза, инструмент, огибающая, тембр, эффекты"
+            onClick={() => setView('track')}
           >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              <rect x="0.9" y="5" width="2" height="4" rx="1" fill="currentColor" />
-              <rect x="3.7" y="2.5" width="2" height="9" rx="1" fill="currentColor" />
-              <rect x="6.5" y="1.5" width="2" height="11" rx="1" fill="currentColor" />
-              <rect x="9.3" y="4" width="2" height="6" rx="1" fill="currentColor" />
-              <rect x="12.1" y="5.5" width="2" height="3" rx="1" fill="currentColor" />
-            </svg>
+            трек
           </button>
-          <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
         </div>
-        <div className="group">
-          <label
-            title={
-              track.noteSteps && track.noteSteps > 0
-                ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
-                : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
-            }
-          >
-            нота
-            <span className="inline">
-              <NumField
-                value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
-                onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
-              />
-              <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
-            </span>
-          </label>
-          <SliderField
-            variant="inline"
-            label="громкость"
-            title="Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число"
-            value={Math.round(track.volume * 100)}
-            min={0} max={100} step={5}
-            display={`${Math.round(track.volume * 100)}%`}
-            unit="%"
-            onChange={(v) => change({ volume: v / 100 })}
-          />
-          <SliderField
-            variant="inline"
-            label="пан"
-            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
-            value={Math.round(track.pan * 100)}
-            min={0} max={100} step={5}
-            display={panLabel(track.pan)}
-            onChange={(v) => change({ pan: v / 100 })}
-          />
-        </div>
+        <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
       </div>
 
       {waveEditor && (
@@ -1125,7 +1085,7 @@ export const TrackRow = memo(function TrackRow({
           onChange={change}
           onClose={() => {
             onToggleWaveEditor(track.id);
-            setPanel('sound');
+            setView('track');
           }}
           getBuffer={onGetSampleBuffer}
           onPreviewRegion={onPreviewSampleRegion}
@@ -1135,16 +1095,60 @@ export const TrackRow = memo(function TrackRow({
         />
       )}
 
-      {!waveEditor && panel === 'sound' && (
+      {!waveEditor && view === 'track' && (
         <div className="track-head more-row" data-ob="sound-panel">
+          {/* Общие ручки трека: база для всех эскизов */}
+          <div className="group common-row" data-ob="common-row">
+            <label
+              title={
+                track.noteSteps && track.noteSteps > 0
+                  ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
+                  : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
+              }
+            >
+              нота
+              <span className="inline">
+                <NumField
+                  value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
+                  onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
+                />
+                <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
+              </span>
+            </label>
+            <SliderField
+              variant="inline"
+              label="громкость"
+              title="Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число"
+              value={Math.round(track.volume * 100)}
+              min={0} max={100} step={5}
+              display={`${Math.round(track.volume * 100)}%`}
+              unit="%"
+              onChange={(v) => change({ volume: v / 100 })}
+            />
+            <SliderField
+              variant="inline"
+              label="пан"
+              title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
+              value={Math.round(track.pan * 100)}
+              min={0} max={100} step={5}
+              display={panLabel(track.pan)}
+              onChange={(v) => change({ pan: v / 100 })}
+            />
+            <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
+              фаза, шагов
+              <NumField
+                value={track.phase} min={-64} max={64}
+                onChange={(phase) => change({ phase: Math.round(phase) })}
+              />
+            </label>
+          </div>
           <div className="tabs">
             {(
               [
-                ['snd', 'звук'],
+                ['snd', 'инструмент'],
                 ['env', 'огибающая'],
                 ['timbre', 'тембр'],
                 ['fx', 'эффекты'],
-                ['mods', 'модуляции'],
               ] as const
             ).map(([id, title]) => (
               <button
@@ -1299,7 +1303,7 @@ export const TrackRow = memo(function TrackRow({
               aria-label="редактор волны"
               title="Редактор волны: обрезать сэмпл, разложить его в гармоники, нарисовать или дообогатить свою волну"
               onClick={() => {
-                setPanel(null);
+                setView('track');
                 onToggleWaveEditor(track.id);
               }}
             >
@@ -1381,13 +1385,6 @@ export const TrackRow = memo(function TrackRow({
           {tab === 'timbre' && (
           <>
           <div className="group" data-ob="timbre-tab">
-            <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
-              фаза, шагов
-              <NumField
-                value={track.phase} min={-64} max={64}
-                onChange={(phase) => change({ phase: Math.round(phase) })}
-              />
-            </label>
             <label title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай">
               низ, Гц
               <NumField
@@ -1600,89 +1597,7 @@ export const TrackRow = memo(function TrackRow({
               </div>
             ))}
             <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект">+ эффект</button>
-            <HelpHint guide="effects" scope={scope} label="Гид: эффекты и модуляции" />
-          </div>
-          )}
-          {tab === 'mods' && (
-          <div className="group mods-group" data-ob="mods-list">
-            <span className="scope-cap" title="Модуляции живут на эскизе: от партии к партии — свои. Первая правка скопирует набор трека в этот эскиз">
-              эскиз
-            </span>
-            {(pattern.mods ?? track.mods).map((m, i) => (
-              <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
-                {rowGrip('mod', i)}
-                <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
-                <select
-                  value={m.source ?? 'lfo'}
-                  title="Источник: LFO — периодическая волна; ступени (S&H) — случайные значения с заданным темпом; перлин — плавные случайные холмы"
-                  onChange={(e) => updateMod(i, { source: e.target.value as Mod['source'] })}
-                >
-                  {Object.entries(MOD_SOURCE_LABELS).map(([id, title]) => (
-                    <option key={id} value={id}>{title}</option>
-                  ))}
-                </select>
-                <select
-                  value={m.target}
-                  title="Какой параметр качает LFO. Цели эффектов — на первый эффект в списке"
-                  onChange={(e) => updateMod(i, { target: e.target.value as string })}
-                >
-                  {modTargets.map((t) => (
-                    <option key={t} value={t}>
-                      {MOD_TARGET_LABELS[t as keyof typeof MOD_TARGET_LABELS] ?? t}
-                    </option>
-                  ))}
-                </select>
-                {(m.source ?? 'lfo') === 'lfo' && (
-                <select
-                  value={m.shape}
-                  title="Форма колебания"
-                  onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
-                >
-                  {LFO_SHAPES.map((sh) => (
-                    <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
-                  ))}
-                </select>
-                )}
-                <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
-                  <NumField
-                    value={m.rate} min={0.01} max={40} step={0.05}
-                    onChange={(rate) => updateMod(i, { rate })}
-                  />
-                  <i>Гц</i>
-                  <select
-                    className="sync-select"
-                    value=""
-                    title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
-                    onChange={(e) => {
-                      const k = Number(e.target.value);
-                      if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
-                      e.currentTarget.value = '';
-                    }}
-                  >
-                    <option value="">синхр</option>
-                    <option value="0.25">1/16</option>
-                    <option value="0.375">1/16 точ</option>
-                    <option value="0.5">1/8</option>
-                    <option value="0.75">1/8 точ</option>
-                    <option value="1">1/4</option>
-                    <option value="1.5">1/4 точ</option>
-                    <option value="2">1/2</option>
-                    <option value="4">1/1</option>
-                  </select>
-                </span>
-                <SliderField
-                  variant="mr"
-                  title="Глубина: насколько сильно LFO отклоняет параметр"
-                  value={Math.round(m.depth * 100)}
-                  min={0} max={100} step={5}
-                  display={`${Math.round(m.depth * 100)}%`}
-                  unit="%"
-                  onChange={(v) => updateMod(i, { depth: v / 100 })}
-                />
-              </div>
-            ))}
-            <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">+ модуляция</button>
-            <HelpHint guide="effects" step={5} scope={scope} label="Гид: модуляции" />
+            <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
           </div>
           )}
         </div>
@@ -1937,17 +1852,9 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-      {!waveEditor && (
+      {!waveEditor && view === 'sketch' && (
         <div className="sketch-box" data-ob="sketch-box">
           <div className="sketch-bar">
-            <span
-              className="sketch-cap"
-              title="Эскиз = партия дорожки: свой рисунок нот и свои ручки. Какой эскиз играет — решает сцена. Правый клик по эскизу — вариация (форк)"
-              data-ob="patterns"
-            >
-              эскиз
-            </span>
-            {patternChips}
             <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
               длина
               <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
@@ -2014,19 +1921,15 @@ export const TrackRow = memo(function TrackRow({
               />
             </label>
           </div>
-          {panel === 'roll' && (
-            <RollTools
-              track={track}
-              pattern={pattern}
-              onFillAxis={onFillAxis}
-              onMutate={onMutate}
-              onPatternCommand={onPatternCommand}
-              onPickScale={() => setShowScales(true)}
-            />
-          )}
-          {panel === 'roll' && (
-          <div className="roll" ref={rollRef} data-ob="roll">
-        <div className="roll-side" data-ob="scale-rows">
+          <RollTools
+            track={track}
+            pattern={pattern}
+            onFillAxis={onFillAxis}
+            onMutate={onMutate}
+            onPatternCommand={onPatternCommand}
+            onPickScale={() => setShowScales(true)}
+          />
+          <div className="roll" ref={rollRef} data-ob="roll">        <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
             <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
             <button
@@ -2165,9 +2068,8 @@ export const TrackRow = memo(function TrackRow({
           ))}
         </div>
       </div>
-      )}
 
-      {panel === 'roll' && selectedStep && selectedCol !== null && (
+      {selectedStep && selectedCol !== null && (
         <div className="step-panel" data-ob="step-panel">
           <span className="sp-label">шаг {selectedCol + 1}</span>
           {selectedStep.notes.length === 0 && (
@@ -2220,6 +2122,98 @@ export const TrackRow = memo(function TrackRow({
           )}
         </div>
       )}
+
+          {/* Модуляции — свойство партии: от эскиза к эскизу свои */}
+          <div className="mods-box">
+            <button
+              className={'mods-toggle' + (showMods ? ' on' : '')}
+              data-ob="mods-toggle"
+              title="Модуляции — авторучки-LFO. Живут на эскизе: у каждой партии свои. Первая правка скопирует набор трека в этот эскиз"
+              onClick={() => setShowMods((v) => !v)}
+            >
+              {showMods ? '▾' : '▸'} модуляции
+              <span className="scope-cap">эскиз</span>
+            </button>
+            {showMods && (
+            <div className="group mods-group" data-ob="mods-list">
+              {(pattern.mods ?? track.mods).map((m, i) => (
+                <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
+                  {rowGrip('mod', i)}
+                  <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
+                  <select
+                    value={m.source ?? 'lfo'}
+                    title="Источник: LFO — периодическая волна; ступени (S&H) — случайные значения с заданным темпом; перлин — плавные случайные холмы"
+                    onChange={(e) => updateMod(i, { source: e.target.value as Mod['source'] })}
+                  >
+                    {Object.entries(MOD_SOURCE_LABELS).map(([id, title]) => (
+                      <option key={id} value={id}>{title}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={m.target}
+                    title="Какой параметр качает LFO. Цели эффектов — на первый эффект в списке"
+                    onChange={(e) => updateMod(i, { target: e.target.value as string })}
+                  >
+                    {modTargets.map((t) => (
+                      <option key={t} value={t}>
+                        {MOD_TARGET_LABELS[t as keyof typeof MOD_TARGET_LABELS] ?? t}
+                      </option>
+                    ))}
+                  </select>
+                  {(m.source ?? 'lfo') === 'lfo' && (
+                  <select
+                    value={m.shape}
+                    title="Форма колебания"
+                    onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
+                  >
+                    {LFO_SHAPES.map((sh) => (
+                      <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
+                    ))}
+                  </select>
+                  )}
+                  <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
+                    <NumField
+                      value={m.rate} min={0.01} max={40} step={0.05}
+                      onChange={(rate) => updateMod(i, { rate })}
+                    />
+                    <i>Гц</i>
+                    <select
+                      className="sync-select"
+                      value=""
+                      title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
+                      onChange={(e) => {
+                        const k = Number(e.target.value);
+                        if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
+                        e.currentTarget.value = '';
+                      }}
+                    >
+                      <option value="">синхр</option>
+                      <option value="0.25">1/16</option>
+                      <option value="0.375">1/16 точ</option>
+                      <option value="0.5">1/8</option>
+                      <option value="0.75">1/8 точ</option>
+                      <option value="1">1/4</option>
+                      <option value="1.5">1/4 точ</option>
+                      <option value="2">1/2</option>
+                      <option value="4">1/1</option>
+                    </select>
+                  </span>
+                  <SliderField
+                    variant="mr"
+                    title="Глубина: насколько сильно LFO отклоняет параметр"
+                    value={Math.round(m.depth * 100)}
+                    min={0} max={100} step={5}
+                    display={`${Math.round(m.depth * 100)}%`}
+                    unit="%"
+                    onChange={(v) => updateMod(i, { depth: v / 100 })}
+                  />
+                </div>
+              ))}
+              <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">+ модуляция</button>
+              <HelpHint guide="effects" step={7} scope={scope} label="Гид: модуляции" />
+            </div>
+            )}
+          </div>
         </div>
       )}
 

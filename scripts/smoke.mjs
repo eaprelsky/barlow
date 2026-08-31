@@ -68,7 +68,7 @@ ok(
 );
 
 // 4. Блок эскиза: ручки партии (длина, шаг, вход/выход в сцену) — внутри
-// блока эскиза, а не на треке и не во вкладке «тембр».
+// блока эскиза, а не на треке и не во вкладке «тембр». По блоку на трек.
 const sbCount = await page.locator('.sketch-bar').count();
 const lenCount = await page.locator('[data-ob="length"]').count();
 const rateCount = await page.locator('[data-ob="rate"] select').count();
@@ -76,15 +76,28 @@ const fadeInField = await page.locator('[data-ob="fade-in"]').count();
 const fadeOutField = await page.locator('[data-ob="fade-out"]').count();
 ok(
   'sketch bar holds party controls',
-  sbCount === 1 && lenCount === 1 && rateCount === 1 && fadeInField === 1 && fadeOutField === 1,
+  sbCount >= 1 &&
+    sbCount === lenCount &&
+    lenCount === rateCount &&
+    rateCount === fadeInField &&
+    fadeInField === fadeOutField,
   `bar=${sbCount} len=${lenCount} rate=${rateCount} in=${fadeInField} out=${fadeOutField}`,
 );
-// Панель «звук» открывается, во вкладке «звук» есть вход в редактор волны.
-await page.locator('button[aria-label="звук дорожки"]').first().click();
+// Панель «трек» открывается переключателем сущности, во вкладке
+// «инструмент» есть вход в редактор волны.
+await page.locator('[data-ob="mode-track"]').first().click();
 await page.waitForTimeout(200);
-ok('wave editor entry in sound tab', (await page.locator('[data-ob="we-open"]').count()) === 1);
-await page.locator('button[aria-label="звук дорожки"]').first().click(); // закрыть панель
+ok('wave editor entry in track view', (await page.locator('[data-ob="we-open"]').count()) === 1);
+await page.locator('[data-ob="mode-sketch"]').first().click(); // обратно к эскизу
 await page.waitForTimeout(150);
+// Модуляции — свёрнутый раздел внутри эскиза.
+await page.locator('[data-ob="mods-toggle"]').first().click();
+await page.waitForTimeout(150);
+ok(
+  'mods live in sketch view',
+  (await page.locator('[data-ob="mods-list"]').count()) === 1 &&
+    (await page.locator('[data-ob="mods-add"]').count()) === 1,
+);
 
 // 5. Октавы: добавление вниз не двигает ноты (частота ноты сохраняется).
 const autosave = () => {

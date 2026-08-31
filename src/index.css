@@ -1265,6 +1265,51 @@ header button.on {
   cursor: help;
 }
 
+/* Переключатель сущности карточки: эскиз (партия) / трек (общий звук).
+   Уезжает вправо — отдельно от ручек, как вложенная вкладка. */
+.mode-seg {
+  margin-left: auto;
+  align-self: center;
+  flex: 0 0 auto;
+}
+
+.mode-seg button {
+  font-size: 12px;
+  padding: 4px 14px;
+}
+
+.mode-seg button.on {
+  color: var(--accent);
+  background: rgba(255, 168, 60, 0.08);
+}
+
+/* Раздел модуляций внутри эскиза: свёрнут — одна строка-оглавление */
+.mods-box {
+  margin-top: 8px;
+}
+
+.mods-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.mods-toggle:hover,
+.mods-toggle.on {
+  color: var(--text);
+}
+
+.mods-box .mods-group {
+  margin-top: 4px;
+  border-left: none;
+  padding-left: 4px;
+}
+
 /* Компактные строки модуляций/эффектов: юниты справа от полей */
 
 .mod-row .mr {

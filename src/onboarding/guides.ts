@@ -124,8 +124,8 @@ export const GUIDES: Guide[] = [
         side: 'bottom',
       },
       {
-        target: '[data-ob="ops"]',
-        say: 'Два лица карточки: ноты и звук. Волна живёт внутри «звука».',
+        target: '[data-ob="mode"]',
+        say: 'Переключатель «эскиз / трек»: эскиз — ноты партии, трек — общий звук.',
         side: 'bottom',
       },
       {
@@ -143,8 +143,9 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
       },
       {
@@ -298,10 +299,12 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        hint: 'Арпеджиатор живёт во вкладке «тембр».',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
+        hint: 'Арпеджиатор живёт во вкладке «тембр».',
+
       },
       {
         target: '[data-ob="tab-timbre"]',
@@ -376,8 +379,9 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
       },
       {
@@ -403,10 +407,16 @@ export const GUIDES: Guide[] = [
         side: 'bottom',
       },
       {
-        target: '[data-ob="tab-mods"]',
-        say: 'Вкладка «модуляции»: авторучки-LFO. Они — у каждого эскиза свои.',
+        target: '[data-ob="mode-sketch"]',
+        say: 'Вернись к «эскизу» — модуляции живут на партии.',
         expect: 'click',
         side: 'bottom',
+      },
+      {
+        target: '[data-ob="mods-toggle"]',
+        say: 'Раскрой «модуляции» — авторучки-LFO, свои у каждого эскиза.',
+        expect: 'click',
+        side: 'top',
       },
       {
         target: '[data-ob="mods-add"]',
@@ -490,10 +500,12 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        hint: 'Сэмплы живут у дорожек с волной «сэмпл».',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
+        hint: 'Сэмплы живут у дорожек с волной «сэмпл».',
+
       },
       {
         target: '[data-ob="snd-sample"]',
@@ -525,10 +537,12 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        hint: 'Нужна дорожка с волной «сэмпл».',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
+        hint: 'Нужна дорожка с волной «сэмпл».',
+
       },
       {
         target: '[data-ob="sample-mode"]',
@@ -562,8 +576,9 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
+        target: '[data-ob="mode-track"]',
+        expect: 'click',
+        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
         side: 'bottom',
       },
       {
