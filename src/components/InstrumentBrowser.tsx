@@ -83,7 +83,8 @@ export function InstrumentBrowser({ title, onPick, onClose }: Props) {
       <div className="modal browser" role="dialog" aria-modal="true" data-ob="inst-browser">
         <h3>
           {title}
-          <HelpHint guide="instruments" label="Гид: браузер инструментов" />
+          {/* Гид «добавить инструмент» с шага поиска: браузер уже открыт */}
+          <HelpHint guide="tracks" step={1} label="Гид: добавить инструмент" />
         </h3>
         <input
           className="browser-search"

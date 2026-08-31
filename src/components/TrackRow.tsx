@@ -933,6 +933,12 @@ export const TrackRow = memo(function TrackRow({
     track.noteSteps && track.noteSteps > 0
       ? track.noteSteps
       : (Math.max(track.attack, 0.0005) + track.decay) / ((pattern.rate ?? track.rate) * tickDuration(bpm));
+  // Длина ноты в секундах (без гейта) — как её посчитает triggerVoice:
+  // сетка («нота», шагов × шаг эскиза) или огибающая (атака + спад).
+  const noteSec =
+    track.noteSteps && track.noteSteps > 0
+      ? track.noteSteps * (pattern.rate ?? track.rate) * tickDuration(bpm)
+      : Math.max(track.attack, 0.0005) + track.decay;
   /** Начинается ли нота (col, row) поверх ещё звучащего хвоста предыдущей
    *  ноты той же высоты — только в этом случае рисуем тёмную головку. */
   const overlapsTail = (col: number, row: number): boolean => {
@@ -1061,7 +1067,7 @@ export const TrackRow = memo(function TrackRow({
               if (waveEditor) onToggleWaveEditor(track.id);
               setPanel((cur) => (waveEditor || cur !== 'sound' ? 'sound' : null));
             }}
-            title="Звук дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
+            title="Звук дорожки: инструмент и волна, огибающая, тембр, эффекты, модуляции"
             aria-label="звук дорожки"
           >
             <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
@@ -1072,69 +1078,14 @@ export const TrackRow = memo(function TrackRow({
               <rect x="12.1" y="5.5" width="2" height="3" rx="1" fill="currentColor" />
             </svg>
           </button>
-          <button
-            className={waveEditor ? 'on' : ''}
-            data-ob="ops-wave"
-            onClick={() => {
-              if (waveEditor) {
-                onToggleWaveEditor(track.id);
-                setPanel('roll');
-              } else {
-                setPanel(null);
-                onToggleWaveEditor(track.id);
-              }
-            }}
-            title="Редактор волны: обрезка сэмпла и свой тембр из гармоник. Нотка и звук — соседние вкладки"
-            aria-label="редактор волны"
-          >
-            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
-              {/* синусоида */}
-              <path
-                d="M1 7c1.4-4.5 2.9-4.5 4.3 0s2.9 4.5 4.3 0 2.9-4.5 4.4 0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-          <HelpHint guide="tracks" scope={scope} label="Гид: анатомия дорожки" />
+          <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
         </div>
         <div className="group">
-          {/* div, не label: label переносит :hover и клики на первый
-              вложенный контрол — чип M загорался при наведении на любой эскиз */}
-          <div className="lbl" title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)" data-ob="patterns">
-            эскизы
-            {patternChips}
-          </div>
-        </div>
-        <div className="group">
-          <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
-            длина
-            <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
-          </label>
-          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия" data-ob="rate">
-            шаг
-            <select
-              className="rate-sel"
-              value={RATE_OPTIONS.some((o) => o.v === track.rate) ? String(track.rate) : 'custom'}
-              onChange={(e) => {
-                if (e.target.value !== 'custom') change({ rate: Number(e.target.value) });
-              }}
-            >
-              {RATE_OPTIONS.map((o) => (
-                <option key={o.v} value={String(o.v)}>{o.label}</option>
-              ))}
-              {!RATE_OPTIONS.some((o) => o.v === track.rate) && (
-                <option value="custom">своя ×{track.rate}</option>
-              )}
-            </select>
-          </label>
           <label
             title={
               track.noteSteps && track.noteSteps > 0
                 ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
-                : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Роляет и для стана, и для звука'
+                : '«авто» — длина ноты по огибающей трека (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
             }
           >
             нота
@@ -1149,7 +1100,7 @@ export const TrackRow = memo(function TrackRow({
           <SliderField
             variant="inline"
             label="громкость"
-            title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр». Двойной клик по подписи — точное число вместо ползунка"
+            title="Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число"
             value={Math.round(track.volume * 100)}
             min={0} max={100} step={5}
             display={`${Math.round(track.volume * 100)}%`}
@@ -1159,7 +1110,7 @@ export const TrackRow = memo(function TrackRow({
           <SliderField
             variant="inline"
             label="пан"
-            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг. Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
+            title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
             value={Math.round(track.pan * 100)}
             min={0} max={100} step={5}
             display={panLabel(track.pan)}
@@ -1174,7 +1125,7 @@ export const TrackRow = memo(function TrackRow({
           onChange={change}
           onClose={() => {
             onToggleWaveEditor(track.id);
-            setPanel('roll');
+            setPanel('sound');
           }}
           getBuffer={onGetSampleBuffer}
           onPreviewRegion={onPreviewSampleRegion}
@@ -1301,7 +1252,7 @@ export const TrackRow = memo(function TrackRow({
                     />
                   </span>
                 </label>
-                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью) или гранулярно (нота = облако коротких осколков)" data-ob="sample-mode">
+                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью), гранулярно (нота = облако коротких осколков) или скрэтчем (нота = жест иглы)" data-ob="sample-mode">
                   режим
                   <select
                     value={track.sampleMode ?? 'plain'}
@@ -1342,6 +1293,18 @@ export const TrackRow = memo(function TrackRow({
                 </label>
               </>
             )}
+            <button
+              className="we-open"
+              data-ob="we-open"
+              aria-label="редактор волны"
+              title="Редактор волны: обрезать сэмпл, разложить его в гармоники, нарисовать или дообогатить свою волну"
+              onClick={() => {
+                setPanel(null);
+                onToggleWaveEditor(track.id);
+              }}
+            >
+              править волну…
+            </button>
           </div>
           )}
           {tab === 'env' && (
@@ -1351,19 +1314,24 @@ export const TrackRow = memo(function TrackRow({
                 attack={track.attack}
                 decay={track.decay}
                 sustain={track.sustain ?? 0}
-                gridSec={tickDuration(bpm)}
+                voiceLen={noteSec}
+                stepSec={tickDuration(bpm) * (pattern.rate ?? track.rate)}
+                steps={track.noteSteps && track.noteSteps > 0 ? track.noteSteps : null}
               />
-              <span className="env-info">
-                {track.noteSteps && track.noteSteps > 0
-                  ? `нота ≈ ${(track.noteSteps * track.rate * tickDuration(bpm)).toFixed(2)} с · ${track.noteSteps} шаг(ов) — по сетке`
-                  : `нота ≈ ${(Math.max(track.attack, 0.0005) + track.decay).toFixed(2)} с · ${((Math.max(track.attack, 0.0005) + track.decay) / tickDuration(bpm)).toFixed(1)} шестнадцатых`}
-              </span>
+              <button
+                className="env-listen"
+                title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
+                onClick={() => onPreviewNote(track)}
+              >
+                ▶ послушать
+              </button>
             </div>
             <div className="env-block">
               <PitchGraph
                 pitchDrop={track.pitchDrop}
                 pitchTime={track.pitchTime}
-                total={Math.max(track.attack, 0.0005) + track.decay}
+                total={noteSec}
+                onChange={(u) => change(u)}
               />
             </div>
             <div className="env-fields">
@@ -1500,90 +1468,6 @@ export const TrackRow = memo(function TrackRow({
               </>
             )}
           </div>
-          <div className="group">
-            <label title="Эскиз = партия: свои ручки, пока он играет (в этой и других сценах, где он звучит)">
-              громкость эскиза
-              <NumField
-                value={pattern.volume ?? track.volume} min={0} max={1} step={0.05}
-                onChange={(volume) => onPatternChange(track.id, pattern.id, { volume })}
-              />
-            </label>
-            <SliderField
-              variant="inline"
-              label="панорама эскиза"
-              title="Панорама этого эскиза: слева — центр — справа. Синус-LFO 0.2 Гц на панораме ниже — пинг-понг. Двойной клик по подписи — точное число"
-              value={Math.round((pattern.pan ?? track.pan) * 100)}
-              min={0} max={100} step={5}
-              display={panLabel(pattern.pan ?? track.pan)}
-              onChange={(pan) => onPatternChange(track.id, pattern.id, { pan: pan / 100 })}
-            />
-            <label
-              title={
-                pattern.rate === undefined
-                  ? `Скорость шагов этой партии. Сейчас — как у трека (×${track.rate}); выбор переопределит только для этого эскиза`
-                  : 'Скорость шагов этой партии — своя, пока играет эскиз. «с трека» вернёт общий шаг'
-              }
-            >
-              шаг эскиза
-              <span className="inline">
-                <select
-                  className="rate-sel"
-                  value={
-                    RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
-                      ? String(pattern.rate ?? track.rate)
-                      : 'custom'
-                  }
-                  onChange={(e) => {
-                    if (e.target.value === 'reset') onPatternChange(track.id, pattern.id, { rate: undefined });
-                    else if (e.target.value !== 'custom')
-                      onPatternChange(track.id, pattern.id, { rate: Number(e.target.value) });
-                  }}
-                >
-                  {RATE_OPTIONS.map((o) => (
-                    <option key={o.v} value={String(o.v)}>{o.label}</option>
-                  ))}
-                  {pattern.rate !== undefined && (
-                    <option value="reset">как у трека (×{track.rate})</option>
-                  )}
-                  {!RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate)) && (
-                    <option value="custom">своя ×{pattern.rate ?? track.rate}</option>
-                  )}
-                </select>
-                {pattern.rate !== undefined && (
-                  <button
-                    title="Убрать переопределение: этот эскиз будет играть с шагом трека"
-                    onClick={() => onPatternChange(track.id, pattern.id, { rate: undefined })}
-                  >
-                    с трека
-                  </button>
-                )}
-              </span>
-            </label>
-            <label
-              title={
-                'Как партия врывается в сцену, мс: 0 — обрыв (деклик), 100–500 — мягкое вступление, 1000+ — выплывает из тишины. ' +
-                  'Заодно это вход трека при старте игры и вливании на ходу'
-              }
-            >
-              вход в сцену, мс
-              <NumField
-                value={Math.round((pattern.fadeIn ?? 0.005) * 1000)} min={0} max={8000} step={5}
-                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeIn: ms / 1000 })}
-              />
-            </label>
-            <label
-              title={
-                'Как партия уходит из сцены, мс: 0 — резкий обрыв, 100–400 — хвост уплывает, 1000+ — длинное растворение. ' +
-                  'Действует на границе сцен и на остановке транспорта'
-              }
-            >
-              выход из сцены, мс
-              <NumField
-                value={Math.round((pattern.fadeOut ?? 0.05) * 1000)} min={0} max={8000} step={5}
-                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeOut: ms / 1000 })}
-              />
-            </label>
-          </div>
           <div className="group" data-ob="arp-group">
             <label
               title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
@@ -1612,8 +1496,8 @@ export const TrackRow = memo(function TrackRow({
                     ))}
                   </select>
                 </label>
-                <label title="Событий на шаг: 1 — фигура ложится на шаг, 2 — вдвое чаще (32-е), 0.5 — на два шага" data-ob="arp-speed">
-                  скорость ×
+                <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
+                  дробление
                   <NumField
                     value={track.arp.div} min={0.25} max={8} step={0.25} narrow
                     onChange={(div) => change({ arp: { ...track.arp!, div } })}
@@ -1633,6 +1517,9 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'fx' && (
           <div className="group mods-group" data-ob="fx-list">
+            <span className="scope-cap" title="Эффекты — общие для всех эскизов трека: комната одна, все партии в неё играют">
+              дорожка
+            </span>
             {effects.map((fx, i) => (
               <div className="mod-row" key={i} {...rowDropProps('fx', i, moveEffect)}>
                 {rowGrip('fx', i)}
@@ -1718,6 +1605,9 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'mods' && (
           <div className="group mods-group" data-ob="mods-list">
+            <span className="scope-cap" title="Модуляции живут на эскизе: от партии к партии — свои. Первая правка скопирует набор трека в этот эскиз">
+              эскиз
+            </span>
             {(pattern.mods ?? track.mods).map((m, i) => (
               <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
                 {rowGrip('mod', i)}
@@ -2047,18 +1937,95 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-      {!waveEditor && panel === 'roll' && (
-        <RollTools
-          track={track}
-          pattern={pattern}
-          onFillAxis={onFillAxis}
-          onMutate={onMutate}
-          onPatternCommand={onPatternCommand}
-          onPickScale={() => setShowScales(true)}
-        />
-      )}
-      {!waveEditor && panel === 'roll' && (
-      <div className="roll" ref={rollRef} data-ob="roll">
+      {!waveEditor && (
+        <div className="sketch-box" data-ob="sketch-box">
+          <div className="sketch-bar">
+            <span
+              className="sketch-cap"
+              title="Эскиз = партия дорожки: свой рисунок нот и свои ручки. Какой эскиз играет — решает сцена. Правый клик по эскизу — вариация (форк)"
+              data-ob="patterns"
+            >
+              эскиз
+            </span>
+            {patternChips}
+            <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
+              длина
+              <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+            </label>
+            <label title="Длительность шага этого эскиза. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия" data-ob="rate">
+              шаг
+              <select
+                className="rate-sel"
+                value={
+                  RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
+                    ? String(pattern.rate ?? track.rate)
+                    : 'custom'
+                }
+                onChange={(e) => {
+                  if (e.target.value !== 'custom')
+                    onPatternChange(track.id, pattern.id, { rate: Number(e.target.value) });
+                }}
+              >
+                {RATE_OPTIONS.map((o) => (
+                  <option key={o.v} value={String(o.v)}>{o.label}</option>
+                ))}
+                {!RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate)) && (
+                  <option value="custom">своя ×{(pattern.rate ?? track.rate).toFixed(2)}</option>
+                )}
+              </select>
+            </label>
+            <SliderField
+              variant="inline"
+              label="громкость"
+              title="Громкость этой партии — пока играет эскиз, в любой сцене с ним. База — громкость трека; здесь задаётся своя. Двойной клик по подписи — точное число"
+              value={Math.round((pattern.volume ?? track.volume) * 100)}
+              min={0} max={100} step={5}
+              display={`${Math.round((pattern.volume ?? track.volume) * 100)}%`}
+              unit="%"
+              onChange={(volume) => onPatternChange(track.id, pattern.id, { volume: volume / 100 })}
+            />
+            <SliderField
+              variant="inline"
+              label="пан"
+              title="Панорама этой партии: слева — центр — справа. Синус-LFO 0.2 Гц на панораме (вкладка «модуляции») — пинг-понг. Двойной клик по подписи — точное число"
+              value={Math.round((pattern.pan ?? track.pan) * 100)}
+              min={0} max={100} step={5}
+              display={panLabel(pattern.pan ?? track.pan)}
+              onChange={(pan) => onPatternChange(track.id, pattern.id, { pan: pan / 100 })}
+            />
+            <label
+              title="Как партия врывается в сцену, мс: 0 — обрыв (деклик), 100–500 — мягкое вступление, 1000+ — выплывает из тишины. Заодно это вход трека при старте игры"
+              data-ob="fade-in"
+            >
+              вход
+              <NumField
+                value={Math.round((pattern.fadeIn ?? 0.005) * 1000)} min={0} max={8000} step={5}
+                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeIn: ms / 1000 })}
+              />
+            </label>
+            <label
+              title="Как партия уходит из сцены, мс: 0 — резкий обрыв, 100–400 — хвост уплывает, 1000+ — длинное растворение. Действует на границе сцен"
+              data-ob="fade-out"
+            >
+              выход
+              <NumField
+                value={Math.round((pattern.fadeOut ?? 0.05) * 1000)} min={0} max={8000} step={5}
+                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeOut: ms / 1000 })}
+              />
+            </label>
+          </div>
+          {panel === 'roll' && (
+            <RollTools
+              track={track}
+              pattern={pattern}
+              onFillAxis={onFillAxis}
+              onMutate={onMutate}
+              onPatternCommand={onPatternCommand}
+              onPickScale={() => setShowScales(true)}
+            />
+          )}
+          {panel === 'roll' && (
+          <div className="roll" ref={rollRef} data-ob="roll">
         <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
             <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
@@ -2200,7 +2167,7 @@ export const TrackRow = memo(function TrackRow({
       </div>
       )}
 
-      {!waveEditor && selectedStep && selectedCol !== null && (
+      {panel === 'roll' && selectedStep && selectedCol !== null && (
         <div className="step-panel" data-ob="step-panel">
           <span className="sp-label">шаг {selectedCol + 1}</span>
           {selectedStep.notes.length === 0 && (
@@ -2235,7 +2202,7 @@ export const TrackRow = memo(function TrackRow({
               />
               <label
                 className="sp-field"
-                title="Длина ноты: множитель от огибающей трека (атака + спад). 1 — как у трека; 0.2–0.5 — короткие тычки; 2–4 — подтяжки поверх соседних шагов. Alt+колесо над нотой тоже крутит"
+                title="Длина ноты: множитель от ноты трека (сетка или огибающая). 1 — как у трека; 0.2–0.5 — короткие тычки; 2–4 — подтяжки поверх соседних шагов. Alt+колесо над нотой тоже крутит"
               >
                 длина ×
                 <NumField
@@ -2251,6 +2218,8 @@ export const TrackRow = memo(function TrackRow({
           {selectedStep.notes.length > 0 && (
             <button onClick={() => clearCell(selectedCol)}>стереть шаг</button>
           )}
+        </div>
+      )}
         </div>
       )}
 

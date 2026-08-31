@@ -67,15 +67,24 @@ ok(
   `${spNums0}→+1`,
 );
 
-// 4. Вкладка «тембр»: поля огибающей эскиза.
+// 4. Блок эскиза: ручки партии (длина, шаг, вход/выход в сцену) — внутри
+// блока эскиза, а не на треке и не во вкладке «тембр».
+const sbCount = await page.locator('.sketch-bar').count();
+const lenCount = await page.locator('[data-ob="length"]').count();
+const rateCount = await page.locator('[data-ob="rate"] select').count();
+const fadeInField = await page.locator('[data-ob="fade-in"]').count();
+const fadeOutField = await page.locator('[data-ob="fade-out"]').count();
+ok(
+  'sketch bar holds party controls',
+  sbCount === 1 && lenCount === 1 && rateCount === 1 && fadeInField === 1 && fadeOutField === 1,
+  `bar=${sbCount} len=${lenCount} rate=${rateCount} in=${fadeInField} out=${fadeOutField}`,
+);
+// Панель «звук» открывается, во вкладке «звук» есть вход в редактор волны.
 await page.locator('button[aria-label="звук дорожки"]').first().click();
 await page.waitForTimeout(200);
-const timbreTab = page.locator('.tabs .tab', { hasText: 'тембр' }).first();
-await timbreTab.click();
-await page.waitForTimeout(200);
-const fadeInField = await page.getByText('вход в сцену, мс').count();
-const fadeOutField = await page.getByText('выход из сцены, мс').count();
-ok('pattern fade fields in timbre tab', fadeInField === 1 && fadeOutField === 1, `in=${fadeInField} out=${fadeOutField}`);
+ok('wave editor entry in sound tab', (await page.locator('[data-ob="we-open"]').count()) === 1);
+await page.locator('button[aria-label="звук дорожки"]').first().click(); // закрыть панель
+await page.waitForTimeout(150);
 
 // 5. Октавы: добавление вниз не двигает ноты (частота ноты сохраняется).
 const autosave = () => {

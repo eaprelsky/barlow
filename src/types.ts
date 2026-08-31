@@ -65,7 +65,8 @@ export const ARP_MODE_LABELS: Record<ArpMode, string> = {
 
 export interface Arp {
   mode: ArpMode;
-  // Событий на шаг: 1 — по фигуре на шаг, 2 — вдвое чаще, 0.5 — реже.
+  // Долей на шаг сетки: нота дробится на равные доли, по ним идёт фигура —
+  // перелив короче самой ноты. 1 — доля = шаг, 2 — вдвое чаще.
   div: number;
   // Повтор фигуры по октавам (умножение частоты на 2^o), 1–4.
   octaves: number;
@@ -176,9 +177,10 @@ export interface Pattern {
   // Длина цикла в шагах. Не обязана делить такт — отсюда полиритмия.
   length: number;
   steps: Step[];
-  // Скорость шага этой партии (в базовых 1/16 тиках) — переопределяет
-  // шаг трека. Undefined — наследуется с трека.
-  rate?: number;
+  // Скорость шага этой партии (в базовых 1/16 тиках). Живёт на эскизе:
+  // партии одного трека могут идти в разных темпах. Нормализация
+  // заполняет всегда (наследуя трек у старых патчей).
+  rate: number;
   // Паттерн-родитель для форков (навигация «вариация от…»).
   forkedFrom?: string;
   // Партия = ноты + свои ручки. Undefined — берётся с трека.
@@ -248,6 +250,8 @@ export interface Track {
   name: string;
   // Скорость шага в базовых 1/16 тиках. Дробное значение даёт
   // фазовый дрейф относительно других треков (полиметрия).
+  // Дефолт для эскизов: у каждого эскиза свой rate (Pattern.rate),
+  // старые патчи наследуют его отсюда при нормализации.
   rate: number;
   // Сдвиг цикла в шагах: тот же ритм, но стартует позже/раньше.
   phase: number;
@@ -387,7 +391,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 32;
+export const PATCH_VERSION = 33;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -401,11 +405,12 @@ export function makeNote(n = 0, vel = 0.8, prob = 1): Note {
   return { n, vel, prob };
 }
 
-export function makePattern(name: string, length: number, steps?: Step[]): Pattern {
+export function makePattern(name: string, length: number, steps?: Step[], rate?: number): Pattern {
   return {
     id: uid('p'),
     name,
     length,
+    rate: rate ?? 1,
     steps:
       steps ??
       Array.from({ length }, () => makeStep()),
@@ -455,7 +460,7 @@ export function makeTrack(
     effects: partial.effects,
     scaleOctUp: partial.scaleOctUp,
     scaleOctDown: partial.scaleOctDown,
-    patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16)],
+    patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16, undefined, partial.rate ?? 1)],
     id: partial.id,
     name: partial.name,
   };
@@ -709,14 +714,12 @@ export function normalizePatch(p: Patch): Patch {
             id: pt.id!,
             name: typeof pt.name === 'string' && pt.name ? pt.name : '?',
             length,
+            // Шаг живёт на эскизе (v33): старые патчи наследуют шаг трека.
+            rate: clamp(typeof pt.rate === 'number' ? pt.rate : t.rate, 0.25, 32, 1),
             steps: normalizeSteps(pt.steps, length, rowsLen, scale),
             forkedFrom: pt.forkedFrom,
             volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
-            rate:
-              typeof pt.rate === 'number' && Number.isFinite(pt.rate)
-                ? clamp(pt.rate, 0.25, 32, 1)
-                : undefined,
             mods: mods.length > 0 ? mods : undefined,
             muted: !!(pt as { muted?: unknown }).muted,
             // Огибающая перехода сцен (v30): старые патчи получают

@@ -271,6 +271,8 @@ export default function App() {
   const [waveEditorTrack, setWaveEditorTrack] = useState<string | null>(null);
   // Прицел переноса сцены: подсветка вставки до/после кнопки.
   const [sceneDrop, setSceneDrop] = useState<{ id: string; side: 'before' | 'after' } | null>(null);
+  // Прицел переноса пункта цепочки.
+  const [chainDrop, setChainDrop] = useState<{ idx: number; side: 'before' | 'after' } | null>(null);
   const toggleWaveEditor = useCallback((id: string) => {
     setWaveEditorTrack((cur) => (cur === id ? null : id));
   }, []);
@@ -437,6 +439,19 @@ export default function App() {
       chain: p.chain.map((it, i) => (i === idx ? { ...it, ...item } : it)),
     }));
   }, []);
+
+  /** Переставить пункт цепочки драгом: порядок = арранжмент. */
+  const chainReorder = useCallback((from: number, to: number, place: 'before' | 'after') => {
+    setPatchStep((p) => {
+      const n = p.chain.length;
+      if (from === to || from < 0 || from >= n || to < 0 || to >= n) return p;
+      const item = p.chain[from];
+      const rest = p.chain.filter((_, i) => i !== from);
+      let at = place === 'after' ? to + 1 : to;
+      if (at > from) at--; // индекс считается в массиве с ещё не удалённым from
+      return { ...p, chain: [...rest.slice(0, at), item, ...rest.slice(at)] };
+    });
+  }, [setPatchStep]);
 
   // ---- Треки и паттерны ----
 
@@ -605,7 +620,7 @@ export default function App() {
     setPatchStep((p) => {
       const track = p.tracks.find((t) => t.id === trackId);
       if (!track) return p;
-      const pattern = makePattern(nextPatternName(track), track.patterns[0]?.length ?? 16);
+      const pattern = makePattern(nextPatternName(track), track.patterns[0]?.length ?? 16, undefined, track.rate);
       return {
         ...p,
         tracks: p.tracks.map((t) =>
@@ -630,6 +645,7 @@ export default function App() {
           src.steps.map((s) => ({ ...s, notes: [...s.notes] })),
         );
         copy.forkedFrom = src.id;
+        copy.rate = src.rate;
         copy.volume = src.volume;
         copy.pan = src.pan;
         copy.mods = src.mods?.map((m) => ({ ...m }));
@@ -1322,7 +1338,43 @@ export default function App() {
             const isPlaying =
               playing && patch.followChain && engine.currentChainPos === i;
             return (
-              <div key={i} className={isPlaying ? 'chain-item playing' : 'chain-item'}>
+              <div
+                key={i}
+                className={
+                  (isPlaying ? 'chain-item playing' : 'chain-item') +
+                  (chainDrop?.idx === i ? ` drop-${chainDrop.side}` : '')
+                }
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes('text/plain')) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setChainDrop({ idx: i, side: e.clientX < r.left + r.width / 2 ? 'before' : 'after' });
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setChainDrop((d) => (d?.idx === i ? null : d));
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const d = chainDrop;
+                  const side = d?.idx === i ? d.side : 'before';
+                  setChainDrop(null);
+                  const from = Number(e.dataTransfer.getData('text/plain'));
+                  if (Number.isInteger(from) && from !== i) chainReorder(from, i, side);
+                }}
+              >
+                <span
+                  className="chain-grip"
+                  title="Перетащи — пункт встанет на новое место в цепочке"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(i));
+                  }}
+                >
+                  ⠿
+                </span>
                 <select
                   value={it.sceneId}
                   onChange={(e) => chainSetItem(i, { sceneId: e.target.value })}
@@ -1343,7 +1395,7 @@ export default function App() {
             );
           })}
           <button onClick={chainAdd}>+</button>
-          <HelpHint guide="arrangement" step={4} label="Гид: цепочка сцен" />
+          <HelpHint guide="arrangement" step={5} label="Гид: цепочка сцен" />
         </div>
       )}
 

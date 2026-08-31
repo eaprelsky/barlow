@@ -175,6 +175,7 @@ export function WaveEditor({
         <span className="spacer" />
         <HelpHint
           guide="wave"
+          step={2}
           scope={`[data-track-id="${track.id}"]`}
           label="Гид: обрезка сэмпла и свой тембр"
         />

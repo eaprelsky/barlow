@@ -27,14 +27,22 @@ export interface Guide {
   title: string;
   /** Короткая задача — видно в меню «?». */
   goal: string;
+  /** Где в меню: путь музыканта (по порядку работы над треком) или
+   *  отдельные умения. */
+  section: 'path' | 'more';
   steps: GuideStep[];
 }
 
+// Гиды названы от задачи музыканта и идут в порядке работы над треком:
+// добавь инструмент → поменяй звук → заполни нотами → сделай вариации →
+// собери сцену → навесь эффекты («комната») → под конец сведение
+// (шум, компрессия). Отдельные умения (шкалы, сэмплы, ИИ…) — в конце меню.
 export const GUIDES: Guide[] = [
   {
     id: 'main',
     title: 'вводный: собери бит',
     goal: 'Пуск → нота → слушаешь. Минуту — и бит твой',
+    section: 'path',
     steps: [
       {
         // цели нет — карточка по центру
@@ -83,8 +91,9 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'tracks',
-    title: 'дорожка: анатомия',
-    goal: 'Добавить инструмент, имя, соло, свернуть',
+    title: '1. добавить инструмент',
+    goal: 'Первый звук в проекте: «+ трек» — и он играет',
+    section: 'path',
     steps: [
       {
         target: '[data-ob="add-track"]',
@@ -93,8 +102,13 @@ export const GUIDES: Guide[] = [
         side: 'bottom',
       },
       {
+        target: '[data-ob="inst-search"]',
+        say: 'Ищи слово: «бочка», «воббл», «пила»…',
+        side: 'bottom',
+      },
+      {
         target: '[data-ob="inst-cards"] .inst-card',
-        say: 'Кликни звук — добавится дорожка.',
+        say: 'Кликни звук — добавится дорожка и заиграет.',
         expect: 'click',
         side: 'top',
       },
@@ -111,7 +125,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="ops"]',
-        say: 'Три лица карточки: ноты, звук, волна.',
+        say: 'Два лица карточки: ноты и звук. Волна живёт внутри «звука».',
         side: 'bottom',
       },
       {
@@ -123,72 +137,50 @@ export const GUIDES: Guide[] = [
     ],
   },
   {
-    id: 'instruments',
-    title: 'браузер инструментов',
-    goal: 'Выбрать готовый тембр одним кликом',
+    id: 'sound',
+    title: '2. поменять звук',
+    goal: 'Другой тембр, огибающая, свой пресет',
+    section: 'path',
     steps: [
       {
-        target: '[data-ob="add-track"]',
-        say: 'Жми «+ трек» — откроется браузер звуков.',
+        target: '[data-ob="ops-sound"]',
+        say: 'Открой панель «звук» — иконка в дорожке.',
         side: 'bottom',
       },
       {
-        target: '[data-ob="inst-search"]',
-        say: 'Ищи слово: «бочка», «воббл», «пила»…',
+        target: '[data-ob="inst-pick"]',
+        say: 'Жми «выбрать…» — браузер звуков.',
+        expect: 'click',
         side: 'bottom',
       },
       {
         target: '[data-ob="inst-cards"] .inst-card',
-        say: 'Кликни карточку — звук применится. Услышь разницу!',
+        say: 'Кликни звук — дорожка заиграет иначе. Ноты останутся твоими.',
         expect: 'click',
         side: 'top',
       },
-    ],
-  },
-  {
-    id: 'sketches',
-    title: 'эскизы и вариации',
-    goal: 'Новый рисунок и копия-вариация за два клика',
-    steps: [
       {
-        target: '[data-ob="chips"]',
-        say: 'Чипы — рисунки дорожки. Активный играет.',
+        target: '[data-ob="tab-env"]',
+        say: 'Вкладка «огибающая»: удар, плато, спад — и график с кнопкой «послушать».',
         side: 'bottom',
       },
       {
-        target: '[data-ob="chip-add"]',
-        say: 'Жми + — пустой рисунок.',
-        expect: 'click',
+        target: '[data-ob="tab-timbre"]',
+        say: 'Вкладка «тембр»: фильтры, вибрато, сайдчейн, арпеджиатор.',
         side: 'bottom',
       },
       {
-        target: '[data-ob="chips"] .chip:not(.mute):not(.add):not(.del)',
-        say: 'Кликни чип правой кнопкой — будет копия-вариация.',
-        expect: 'contextmenu',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="length"]',
-        say: 'Длина — сколько шагов в цикле.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="rate"]',
-        say: 'Шаг — скорость ступеней.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="chip-mute"]',
-        say: 'Жми M — тишина на этот рисунок.',
-        expect: 'click',
+        target: '[data-ob="save-inst"]',
+        say: 'Дискета — твой звук в категорию «мои».',
         side: 'bottom',
       },
     ],
   },
   {
     id: 'roll',
-    title: 'нотный стан',
-    goal: 'Нарисовать ноты, аккорды, перенос',
+    title: '3. заполнить нотами',
+    goal: 'Нарисовать ноты, аккорды, перенести',
+    section: 'path',
     steps: [
       {
         target: '[data-ob="roll"] .cell',
@@ -228,8 +220,9 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'generators',
-    title: 'заполнить и мутировать',
-    goal: 'Узор одной кнопкой, доводка случайными правками',
+    title: '4. ноты без рисования',
+    goal: 'Узор одной кнопкой, доводка мутацией',
+    section: 'path',
     steps: [
       {
         target: '[data-ob="fill-btn"]',
@@ -245,7 +238,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="fill-mutate"]',
-        say: 'Жми «мутировать» — чуть случайных правок.',
+        say: 'Жми «мутировать» — чуть случайных правок. Слушай — оставляй или снова.',
         expect: 'click',
         side: 'bottom',
       },
@@ -258,9 +251,213 @@ export const GUIDES: Guide[] = [
     ],
   },
   {
+    id: 'sketches',
+    title: '5. сделать вариации',
+    goal: 'Копия-вариация, свой рисунок и ручки',
+    section: 'path',
+    steps: [
+      {
+        target: '[data-ob="chips"]',
+        say: 'Чипы — эскизы дорожки: партии. Активный играет.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="chip-add"]',
+        say: 'Жми + — пустой эскиз.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="chips"] .chip:not(.mute):not(.add):not(.del)',
+        say: 'Кликни чип правой кнопкой — будет копия-вариация.',
+        expect: 'contextmenu',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="length"]',
+        say: 'Длина — сколько шагов в цикле этой партии.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="rate"]',
+        say: 'Шаг — скорость ступеней этой партии.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="chip-mute"]',
+        say: 'Жми M — тишина на этот рисунок.',
+        expect: 'click',
+        side: 'bottom',
+      },
+    ],
+  },
+  {
+    id: 'arp',
+    title: '6. перелив: арпеджиатор',
+    goal: 'Нота дробится на доли — играет фигуру',
+    section: 'path',
+    steps: [
+      {
+        target: '[data-ob="ops-sound"]',
+        say: 'Открой панель «звук» — иконка в дорожке.',
+        hint: 'Арпеджиатор живёт во вкладке «тембр».',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="tab-timbre"]',
+        say: 'Жми вкладку «тембр».',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="arp"]',
+        say: 'Поставь аккорд из 2–3 нот и жми галку «арпеджиатор».',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="arp-mode"]',
+        say: 'Тип — фигура перелива: вверх, вниз, случайно…',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="arp-speed"]',
+        say: 'Дробление — на сколько долей делится шаг. Перелив умещается внутри ноты.',
+        side: 'bottom',
+      },
+    ],
+  },
+  {
+    id: 'arrangement',
+    title: '7. собрать сцену',
+    goal: 'Вариации партий — в часть пьесы',
+    section: 'path',
+    steps: [
+      {
+        target: '[data-ob="scenes"] .scene-btn',
+        say: 'Клик по сцене — играть её.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="scene-add"]',
+        say: 'Жми + — новая сцена, снимок текущей.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="scenes"] .scene-btn',
+        say: 'Перетащи сцену за кнопку — поменяешь их порядок.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="scene-edit"]',
+        say: 'Здесь имя сцены и удаление.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="follow-chain"]',
+        say: 'Жми «цепочка» — сцены пойдут по списку сами.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="chain-panel"]',
+        open: 'chain',
+        say: 'Цепочка: порядок сцен и такты. Пункты тоже перетаскиваются.',
+        side: 'bottom',
+      },
+    ],
+  },
+  {
+    id: 'effects',
+    title: '8. комната: эффекты',
+    goal: 'Эхо, реверб, перегруз; порядок = цепочка',
+    section: 'path',
+    steps: [
+      {
+        target: '[data-ob="ops-sound"]',
+        say: 'Открой панель «звук» — иконка в дорожке.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="tab-fx"]',
+        say: 'Жми вкладку «эффекты».',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="fx-add"]',
+        say: 'Жми «+ эффект» — добавится в цепочку.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="fx-list"] .mod-row',
+        say: 'Порядок строк — цепочка. Тяни за ⠿ — поменяется. Mix — сколько эффекта.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="fx-list"]',
+        say: 'Эффекты — общие для эскизов дорожки: комната одна.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="tab-mods"]',
+        say: 'Вкладка «модуляции»: авторучки-LFO. Они — у каждого эскиза свои.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="mods-add"]',
+        say: 'Жми «+ модуляция» — ручка поедет сама.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="mods-list"] .mod-row',
+        say: 'Цель — что качать. «синхр» — скорость по темпу.',
+        side: 'bottom',
+      },
+    ],
+  },
+  {
+    id: 'mix',
+    title: '9. сведение: шум, компрессия',
+    goal: 'Выровнять микс и дожать мастер',
+    section: 'path',
+    steps: [
+      {
+        target: '[data-ob="mixer-btn"]',
+        say: 'Жми «микшер» — откроется рэк.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="mix-track"]',
+        say: 'Дорожка: громкость, пан, полный выключатель.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="mix-master"]',
+        open: 'mix',
+        say: 'Мастер: шум — воздух и лента, компрессия — плотность.',
+        side: 'bottom',
+      },
+      {
+        target: '.master-vol',
+        say: 'В шапке — общая громкость и пан.',
+        side: 'bottom',
+      },
+    ],
+  },
+
+  // ---- Отдельные умения ----
+  {
     id: 'scales',
     title: 'шкала: свой строй',
-    goal: 'Выбрать строй: слендро, N-ET, свои дроби',
+    goal: 'Слендро, N-ET, свои дроби',
+    section: 'more',
     steps: [
       {
         target: '[data-ob="scale-btn"]',
@@ -287,194 +484,10 @@ export const GUIDES: Guide[] = [
     ],
   },
   {
-    id: 'sound',
-    title: 'звук дорожки',
-    goal: 'Сменить инструмент, огибающая, тембр',
-    steps: [
-      {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="inst-pick"]',
-        say: 'Жми «выбрать…» — браузер звуков.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="inst-cards"] .inst-card',
-        say: 'Кликни звук — дорожка заиграет иначе.',
-        expect: 'click',
-        side: 'top',
-      },
-      {
-        target: '[data-ob="tab-env"]',
-        say: 'Вкладка «огибающая»: удар, спад, плато.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="tab-timbre"]',
-        say: 'Вкладка «тембр»: фильтры, вибрато, сайдчейн.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="save-inst"]',
-        say: 'Дискета — твой звук в категорию «мои».',
-        side: 'bottom',
-      },
-    ],
-  },
-  {
-    id: 'effects',
-    title: 'эффекты и модуляции',
-    goal: 'Эхо, реверб, перегруз; авторучки-LFO',
-    steps: [
-      {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="tab-fx"]',
-        say: 'Жми вкладку «эффекты».',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="fx-add"]',
-        say: 'Жми «+ эффект» — добавится в цепочку.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="fx-list"] .mod-row',
-        say: 'Порядок строк — цепочка. Mix — сколько эффекта.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="tab-mods"]',
-        say: 'Жми вкладку «модуляции».',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="mods-add"]',
-        say: 'Жми «+ модуляция» — ручка поедет сама.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="mods-list"] .mod-row',
-        say: 'Цель — что качать. «синхр» — скорость по темпу.',
-        side: 'bottom',
-      },
-    ],
-  },
-  {
-    id: 'arp',
-    title: 'арпеджиатор',
-    goal: 'Аккорды играют по нотке — фигурой',
-    steps: [
-      {
-        target: '[data-ob="ops-sound"]',
-        say: 'Открой панель «звук» — иконка в дорожке.',
-        hint: 'Галка арпеджиатора живёт во вкладке «тембр».',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="tab-timbre"]',
-        say: 'Жми вкладку «тембр».',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="arp"]',
-        say: 'Жми галку «арпеджиатор» — включён.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="arp-mode"]',
-        say: 'Тип — фигура: вверх, вниз, случайно…',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="arp-speed"]',
-        say: 'Скорость — событий на шаг. Октавы — повтор сверху.',
-        side: 'bottom',
-      },
-    ],
-  },
-  {
-    id: 'arrangement',
-    title: 'сцены и цепочка',
-    goal: 'Из сцен — целая пьеса',
-    steps: [
-      {
-        target: '[data-ob="scenes"] .scene-btn',
-        say: 'Клик по сцене — играть её.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="scene-add"]',
-        say: 'Жми + — новая сцена, копия текущей.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="scene-edit"]',
-        say: 'Здесь имя сцены и удаление.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="follow-chain"]',
-        say: 'Жми «цепочка» — сцены пойдут по списку сами.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="chain-panel"]',
-        open: 'chain',
-        say: 'Цепочка: порядок сцен и такты.',
-        side: 'bottom',
-      },
-    ],
-  },
-  {
-    id: 'mix',
-    title: 'микшер',
-    goal: 'Громкости, панорамы, общий звук',
-    steps: [
-      {
-        target: '[data-ob="mixer-btn"]',
-        say: 'Жми «микшер» — откроется рэк.',
-        expect: 'click',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="mix-master"]',
-        open: 'mix',
-        say: 'Мастер: шум и компрессия.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="mix-track"]',
-        say: 'Дорожка: громкость, пан, полный выключатель.',
-        side: 'bottom',
-      },
-      {
-        target: '.master-vol',
-        say: 'В шапке — общая громкость и пан.',
-        side: 'bottom',
-      },
-    ],
-  },
-  {
     id: 'samples',
     title: 'сэмплы',
     goal: 'Загрузить или сгенерировать звук',
+    section: 'more',
     steps: [
       {
         target: '[data-ob="ops-sound"]',
@@ -509,6 +522,7 @@ export const GUIDES: Guide[] = [
     id: 'scratch',
     title: 'скрэтч',
     goal: 'Записать движение мыши — нота его сыграет',
+    section: 'more',
     steps: [
       {
         target: '[data-ob="ops-sound"]',
@@ -545,10 +559,17 @@ export const GUIDES: Guide[] = [
     id: 'wave',
     title: 'редактор волны',
     goal: 'Обрезать сэмпл, сварить тембр из гармоник',
+    section: 'more',
     steps: [
       {
-        target: '[data-ob="ops-wave"]',
-        say: 'Жми иконку волны в дорожке — откроется редактор.',
+        target: '[data-ob="ops-sound"]',
+        say: 'Открой панель «звук» — иконка в дорожке.',
+        side: 'bottom',
+      },
+      {
+        target: '[data-ob="we-open"]',
+        say: 'Жми «править волну…» — откроется редактор.',
+        expect: 'click',
         side: 'bottom',
       },
       {
@@ -583,6 +604,7 @@ export const GUIDES: Guide[] = [
     id: 'ai',
     title: 'ИИ-генерация',
     goal: 'Ключ — и звук по описанию',
+    section: 'more',
     steps: [
       {
         target: '[data-ob="ai-btn"]',
@@ -607,6 +629,7 @@ export const GUIDES: Guide[] = [
     id: 'files',
     title: 'сохраниться и поделиться',
     goal: 'Wav, json, zip — и ничего не потерять',
+    section: 'more',
     steps: [
       {
         target: '[data-ob="title"]',

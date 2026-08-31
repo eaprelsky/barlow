@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GUIDES, guideById, isGuideSeen, launchGuide, markInvited } from './guides';
-import type { GuideStart } from './guides';
+import type { Guide, GuideStart } from './guides';
 
 export interface GuideRun {
   guideId: string;
@@ -357,6 +357,24 @@ export function HelpMenu({ onClose, onCheatSheet }: { onClose: () => void; onChe
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  /** Кнопка пункта меню гидов. */
+  const item = (g: Guide) => (
+    <button
+      key={g.id}
+      className="gm-item"
+      onClick={() => {
+        launchGuide(g.id);
+        onClose();
+      }}
+    >
+      <span className="gm-title">
+        {isGuideSeen(g.id) ? '✓ ' : '· '}
+        {g.title}
+      </span>
+      <span className="gm-goal">{g.goal}</span>
+    </button>
+  );
+
   return (
     <>
       <div className="hm-backdrop" onMouseDown={onClose} />
@@ -366,23 +384,11 @@ export function HelpMenu({ onClose, onCheatSheet }: { onClose: () => void; onChe
           <span className="gm-goal">покажет за минуту — просто жми на подсвеченное</span>
         </button>
         <span className="hm-sep" />
-        <span className="hm-cap">гиды по местам</span>
-        {GUIDES.filter((g) => g.id !== 'main').map((g) => (
-          <button
-            key={g.id}
-            className="gm-item"
-            onClick={() => {
-              launchGuide(g.id);
-              onClose();
-            }}
-          >
-            <span className="gm-title">
-              {isGuideSeen(g.id) ? '✓ ' : '· '}
-              {g.title}
-            </span>
-            <span className="gm-goal">{g.goal}</span>
-          </button>
-        ))}
+        <span className="hm-cap">путь трека: от первого звука до сведения</span>
+        {GUIDES.filter((g) => g.section === 'path').map(item)}
+        <span className="hm-sep" />
+        <span className="hm-cap">отдельные умения</span>
+        {GUIDES.filter((g) => g.section === 'more').map(item)}
         <span className="hm-sep" />
         <button
           className="gm-item"

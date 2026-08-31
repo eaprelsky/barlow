@@ -1194,6 +1194,77 @@ header button.on {
   font-size: 9px;
 }
 
+.env-text.strong {
+  fill: var(--accent-2);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.env-text.dim {
+  opacity: 0.75;
+}
+
+/* График падения тона: тянут мышью — курсор и подсказка это показывают */
+.pitch-graph.editable {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.env-note-end {
+  stroke: var(--accent);
+  opacity: 0.45;
+  stroke-dasharray: 3 3;
+}
+
+.env-listen {
+  align-self: flex-start;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+/* Блок эскиза: всё, что настраивается на партию (рисунок, длина, шаг,
+   громкость/пан, вход/выход), живёт внутри неё — визуально «в эскизе»,
+   в отличие от шапки трека, где общий звук */
+.sketch-box {
+  margin: -2px 0 12px;
+  padding: 8px 12px 6px;
+  background: rgba(126, 200, 255, 0.03);
+  border: 1px solid var(--border);
+  border-left: 2px solid rgba(126, 200, 255, 0.5);
+  border-radius: 10px;
+}
+
+.sketch-bar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 6px;
+}
+
+.sketch-cap {
+  align-self: center;
+  font-size: 11px;
+  color: var(--accent-2);
+  padding: 2px 8px;
+  border: 1px solid rgba(126, 200, 255, 0.35);
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Метка скоупа в панели звука: чей параметр — дорожки или эскиза */
+.scope-cap {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 1px 7px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  align-self: center;
+  white-space: nowrap;
+  cursor: help;
+}
+
 /* Компактные строки модуляций/эффектов: юниты справа от полей */
 
 .mod-row .mr {
@@ -1884,6 +1955,21 @@ button.danger:hover {
   box-shadow: 2px 0 0 var(--accent);
 }
 
+/* Перенос пунктов цепочки */
+.chain-grip {
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chain-item.drop-before {
+  box-shadow: -2px 0 0 var(--accent-2);
+}
+
+.chain-item.drop-after {
+  box-shadow: 2px 0 0 var(--accent-2);
+}
+
 /* Мини-слайдер панорамы в свёрнутой дорожке */
 .mini-vol.pan {
   width: 64px;
@@ -2178,7 +2264,10 @@ button.danger:hover {
   width: 21px;
   height: 21px;
   padding: 0;
-  line-height: 1;
+  /* Глиф по центру круга: line-height «?» по вертикали не выравнивает */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 12px;
   font-weight: 700;
   border-radius: 50%;

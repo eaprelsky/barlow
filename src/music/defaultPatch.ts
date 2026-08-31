@@ -39,7 +39,7 @@ export function defaultPatch(): Patch {
       pitchTime: 0.09,
       filterFreq: 1400,
       volume: 0.9,
-      patterns: [makePattern('A', 16, stepsFromMask(euclid(16, 4)))],
+      patterns: [makePattern('A', 16, stepsFromMask(euclid(16, 4)), 4)],
     }),
     makeTrack({
       id: uid('t'),
@@ -52,8 +52,8 @@ export function defaultPatch(): Patch {
       volume: 0.5,
       effects: [{ type: 'reverb', sizeSec: 1.2, mix: 0.18 }],
       patterns: [
-        makePattern('A', 9, stepsFromMask(euclid(9, 4))),
-        makePattern('B', 9, stepsFromMask(euclid(9, 5))),
+        makePattern('A', 9, stepsFromMask(euclid(9, 4)), 2),
+        makePattern('B', 9, stepsFromMask(euclid(9, 5)), 2),
       ],
     }),
     makeTrack({
@@ -68,7 +68,7 @@ export function defaultPatch(): Patch {
       volume: 0.55,
       effects: [{ type: 'delay', timeSec: 0.28, feedback: 0.4, mix: 0.2 }],
       patterns: [
-        makePattern('A', 7, withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]])),
+        makePattern('A', 7, withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]]), 2),
       ],
     }),
     makeTrack({
@@ -82,7 +82,7 @@ export function defaultPatch(): Patch {
       decay: 0.8,
       filterFreq: 500,
       volume: 0.85,
-      patterns: [makePattern('A', 5, withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]))],
+      patterns: [makePattern('A', 5, withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]), 8)],
     }),
   ];
   const scene = makeScene('основа', tracks, (t) => t.patterns[0].id);
