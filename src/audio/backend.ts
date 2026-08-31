@@ -44,6 +44,13 @@ export interface AudioBackend {
   /** Пики волны сэмпла (64 сегмента, 0..1) для мини-карты скрэтч-пэда. */
   getSamplePeaks(id: string | undefined): Promise<number[] | null>;
 
+  /** Декодированный буфер сэмпла — редактору волны (канвас, разложение). */
+  getSampleBuffer(id: string | undefined): Promise<AudioBuffer | null>;
+  /** Прослушать кусок сэмпла — проверка обрезки в редакторе. */
+  previewSampleRegion(track: Track, fromSec: number, toSec: number): void;
+  /** Прослушать одну ноту инструмента — проверка тембра в редакторе. */
+  previewNote(track: Track, noteRow?: number): void;
+
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
   renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number): Promise<Blob>;
 }

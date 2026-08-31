@@ -12,8 +12,9 @@
 // Публичная поверхность движка — контракт AudioBackend (backend.ts):
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
-import type { Mod, Patch, Scene, Track } from '../types';
-import { patternInScene } from '../types';
+import type { Mod, Note, Patch, Scene, Track } from '../types';
+import { makeNote, patternInScene } from '../types';
+import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
 import type { AudioBackend } from './backend';
@@ -292,6 +293,12 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ctx;
     if (!ctx || !this.master) return chain;
     const t0 = ctx.currentTime;
+    // Переходная огибающая сыграла — план снимается, громкость снова
+    // под управлением scheduler'а.
+    if (chain.fadePlan && t0 > chain.fadePlan.entryEnd + 0.05) {
+      chain.fadePlan = null;
+      chain.fadeHold = undefined;
+    }
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       this.retireChain(chain, t0);
@@ -303,7 +310,11 @@ export class AudioEngine implements AudioBackend {
     chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
     chain.filter.Q.setTargetAtTime(track.filterQ ?? 0.8, t0, 0.03);
     chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
-    chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
+    // Во время запланированного перехода сцен громкость на плане рамп —
+    // setTarget здесь затёр бы их; вернёмся к обычному режиму после входа.
+    if (chain.fadeHold === undefined || t0 >= chain.fadeHold) {
+      chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
+    }
     eff.mods.forEach((m, i) => {
       const nodes = chain.mods[i];
       if (!nodes) return;
@@ -361,6 +372,110 @@ export class AudioEngine implements AudioBackend {
       this.sceneAdvanceTime = t + BAR_TICKS * tickDuration(patch.bpm);
     } else {
       this.sceneAdvanceTime = null;
+    }
+    // Граница известна — планируем переходную огибающую заранее (выход
+    // может начинаться за секунды до границы). null — перехода нет.
+    this.armSceneExit(this.sceneAdvanceTime);
+  }
+
+  /** Переходная огибающая сцены: рампы на chain.gain. Уходящий эскиз
+   *  затухает к границе (его fadeOut), входящий нарастает после неё
+   *  (его fadeIn) — у каждой партии свой характер вступления и ухода.
+   *
+   *  Вызывается, когда граница становится известна (цепочка — конец
+   *  текущего пункта; ручной клик — ближайший такт). Смена сцены в
+   *  applyNextScene план не трогает: рампы расставлены заранее.
+   *  Повторный вызов с той же границей и той же следующей сценой —
+   *  no-op; с другой (перенаведение клика) — хвост перестраивается:
+   *  идущий вход не рвётся, достраиваем после него.
+   *
+   *  boundary = null, cancel = true — переход отменён (выход из
+   *  цепочки): снимаем рампы. null без cancel — план сыгран до конца
+   *  (сцена применена), события добьют вход, нового ухода нет.
+   *
+   *  Известное ограничение: смена темпа в середине длинного выхода
+   *  растягивает границу (setBpm), но не уже запланированные рампы —
+   *  стык слегка съезжает; на слух незаметно, редкий случай. */
+  private armSceneExit(boundary: number | null, opts?: { cancel?: boolean }): void {
+    const ctx = this.ctx;
+    const patch = this.patch;
+    if (!ctx || !patch) return;
+    const now = ctx.currentTime;
+    const nextId = this.pendingSceneId
+      ? this.validScene(this.pendingSceneId)
+      : patch.followChain && !this.manualMode
+        ? this.validScene(patch.chain[(this.chainPos + 1) % Math.max(1, patch.chain.length)]?.sceneId ?? '')
+        : '';
+    const nextScene = patch.scenes.find((s) => s.id === nextId);
+    const curScene = this.scene();
+    for (const track of patch.tracks) {
+      const chain = this.chains.get(track.id);
+      const clock = this.clocks.get(track.id);
+      if (!chain || !clock) continue;
+      const g = chain.gain.gain;
+      const plan = chain.fadePlan;
+      // Тот же переход — план уже стоит.
+      if (boundary !== null && plan && plan.boundary === boundary && plan.nextSceneId === nextId) continue;
+      const curP = patternInScene(track, curScene);
+      const volCur = effectiveParams(track, curP).volume;
+      const fadeInCur = Math.max(0.001, curP?.fadeIn ?? 0.005);
+      const fadeOutCur = Math.max(0, curP?.fadeOut ?? 0.05);
+      const inP = patternInScene(track, nextScene);
+      const volIn = effectiveParams(track, inP).volume;
+      const fadeInIn = Math.max(0.001, inP?.fadeIn ?? 0.005);
+      const hasPlan = !!plan && plan.entryEnd > now + 0.001;
+
+      if (boundary === null) {
+        if (opts?.cancel && hasPlan) {
+          // Переход отменён до границы — рампы не нужны.
+          g.cancelScheduledValues(now);
+          g.setValueAtTime(g.value, now);
+        }
+        if (hasPlan && !opts?.cancel) {
+          // Сцена уже применена: событиям входа дать отыграть.
+          chain.fadeHold = plan!.entryEnd;
+        } else if (!hasPlan && !opts?.cancel && clock.resetTime > now + 0.001) {
+          // Границы дальше нет, но партия только входит (старт/вливание) —
+          // входной фейд от resetTime.
+          g.setValueAtTime(0, clock.resetTime);
+          g.linearRampToValueAtTime(volCur, clock.resetTime + fadeInCur);
+          chain.fadeHold = clock.resetTime + fadeInCur;
+        } else {
+          chain.fadeHold = undefined;
+        }
+        chain.fadePlan = null;
+        continue;
+      }
+
+      // Опорная точка, до которой на параметре уже есть события:
+      // вход прошлого плана или вход свежей цепочки от resetTime.
+      let anchor: number;
+      if (hasPlan) {
+        anchor = plan!.entryEnd;
+      } else if (clock.resetTime > now + 0.001) {
+        // Свежая цепочка: старт игры или вливание трека на ходу. До
+        // resetTime голосов нет — значение на параметре не важно.
+        g.setValueAtTime(0, clock.resetTime);
+        g.linearRampToValueAtTime(volCur, clock.resetTime + fadeInCur);
+        anchor = clock.resetTime + fadeInCur;
+      } else {
+        // Свободный параметр: фиксируем текущее значение и строим переход.
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.setTargetAtTime(volCur, now, 0.02);
+        anchor = now;
+      }
+      const exitFrom = Math.max(anchor, boundary - fadeOutCur);
+      if (exitFrom > anchor + 0.001) g.setValueAtTime(volCur, exitFrom);
+      if (fadeOutCur > 0.001) {
+        g.linearRampToValueAtTime(0, boundary);
+      } else {
+        g.setValueAtTime(0, boundary);
+      }
+      const entryEnd = boundary + fadeInIn;
+      g.linearRampToValueAtTime(volIn, entryEnd);
+      chain.fadePlan = { boundary, nextSceneId: nextId, entryEnd };
+      chain.fadeHold = entryEnd;
     }
   }
 
@@ -431,6 +546,18 @@ export class AudioEngine implements AudioBackend {
     this.lastVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
+    // Запланированные переходные рампы больше не актуальны: снимаем,
+    // иначе они стреляли бы в новом запуске по старым временам.
+    if (this.ctx) {
+      const now = this.ctx.currentTime;
+      for (const chain of this.chains.values()) {
+        if (!chain.fadePlan) continue;
+        chain.gain.gain.cancelScheduledValues(now);
+        chain.gain.gain.setValueAtTime(chain.gain.gain.value, now);
+        chain.fadePlan = null;
+        chain.fadeHold = undefined;
+      }
+    }
     // Хвосты (эхо, реверб) не доигрывают в тишине после стопа: мастер
     // плавно гасится, цепочки разбираются — на следующем play scheduler
     // соберёт их заново.
@@ -451,6 +578,8 @@ export class AudioEngine implements AudioBackend {
   // ---- Ручной скрэтч-пэд: игла под мышью, вне планировщика ----
 
   private scratchNode: AudioWorkletNode | null = null;
+  // Обрезка сэмпла в нормальных координатах иглы (0..1 всего буфера).
+  private scratchMap: ((p: number) => number) | null = null;
 
   /** Начать ручной скрэтч: игла с заданной позиции. Без играющего
    *  транспорта звук идёт прямо в мастер — запись жеста всегда слышна. */
@@ -466,10 +595,14 @@ export class AudioEngine implements AudioBackend {
       if (!sample || (!chain && !this.master)) return;
       const dest: AudioNode = chain ? chain.hp : this.master!.input;
       this.scratchEnd();
+      // Игла ходит по обрезанному куску сэмпла, если он задан.
+      const rs = Math.max(0, Math.min(track.sampleStart ?? 0, sample.duration - 0.001));
+      const re = Math.max(rs + 0.001, Math.min(track.sampleEnd ?? sample.duration, sample.duration));
+      this.scratchMap = (p) => Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
       const node = makeScratchNode(ctx, sample);
       const pos = node.parameters.get('position')!;
       const off = node.parameters.get('off')!;
-      pos.setValueAtTime(pos0, ctx.currentTime);
+      pos.setValueAtTime(this.scratchMap(pos0), ctx.currentTime);
       off.setValueAtTime(0, ctx.currentTime);
       node.connect(dest);
       this.scratchNode = node;
@@ -480,10 +613,11 @@ export class AudioEngine implements AudioBackend {
   scratchMove(pos: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.scratchNode) return;
+    const p = this.scratchMap ? this.scratchMap(pos) : Math.min(1, Math.max(0, pos));
     this.scratchNode.parameters
       .get('position')!
       // tau побольше: мышиные события ~8 мс, резкие цели дают дробность
-      .setTargetAtTime(Math.min(1, Math.max(0, pos)), ctx.currentTime, 0.02);
+      .setTargetAtTime(p, ctx.currentTime, 0.02);
   }
 
   /** Прослушать жест одной нотой: работает и без играющего транспорта —
@@ -507,14 +641,19 @@ export class AudioEngine implements AudioBackend {
       const node = makeScratchNode(ctx, sample);
       const pos = node.parameters.get('position')!;
       const off = node.parameters.get('off')!;
+      // Жест иглы ходит по обрезанному куску сэмпла.
+      const rs = Math.max(0, Math.min(track.sampleStart ?? 0, sample.duration - 0.001));
+      const re = Math.max(rs + 0.001, Math.min(track.sampleEnd ?? sample.duration, sample.duration));
+      const mapPos = (p: number) =>
+        Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
       const t0 = ctx.currentTime + 0.02;
       const points = (track.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
       if (points.length === 0) {
-        pos.setValueAtTime(0, t0);
-        pos.linearRampToValueAtTime(1, t0 + len);
+        pos.setValueAtTime(mapPos(0), t0);
+        pos.linearRampToValueAtTime(mapPos(1), t0 + len);
       } else {
-        pos.setValueAtTime(points[0].pos, t0);
-        for (const pt of points) pos.linearRampToValueAtTime(pt.pos, t0 + pt.t * len);
+        pos.setValueAtTime(mapPos(points[0].pos), t0);
+        for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
       }
       off.setValueAtTime(0, t0);
       off.setValueAtTime(1, t0 + len + 0.1);
@@ -531,6 +670,7 @@ export class AudioEngine implements AudioBackend {
   /** Отпустили: узел завершает себя по расписанию off. */
   scratchEnd(): void {
     const ctx = this.ctx;
+    this.scratchMap = null;
     if (!ctx || !this.scratchNode) return;
     this.scratchNode.parameters.get('off')!.setValueAtTime(1, ctx.currentTime + 0.05);
     this.scratchNode = null;
@@ -566,6 +706,87 @@ export class AudioEngine implements AudioBackend {
     return peaks;
   }
 
+  /** Декодированный буфер сэмпла — редактору волны для канваса
+   *  (пики на любой зум считает UI по буферу). */
+  async getSampleBuffer(id: string | undefined): Promise<AudioBuffer | null> {
+    if (!id) return null;
+    const patch = this.patch;
+    if (!patch) return null;
+    await this.ensureSamples(patch);
+    return this.sampleCache.get(id) ?? null;
+  }
+
+  /** Прослушать кусок сэмпла (редактор: проверка обрезки). Играет через
+   *  цепочку трека, если транспорт стоит — прямо в мастер. */
+  previewSampleRegion(track: Track, fromSec: number, toSec: number): void {
+    void (async () => {
+      const patch = this.patch;
+      if (!patch) return;
+      await this.ensureSamples(patch);
+      const ctx = this.ensureCtx();
+      if (ctx.state === 'suspended') void ctx.resume();
+      const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+      if (!sample || !this.master) return;
+      const chain = this.chains.get(track.id);
+      const dest: AudioNode = chain ? chain.hp : this.master.input;
+      const from = Math.max(0, Math.min(fromSec, sample.duration - 0.001));
+      const to = Math.max(from + 0.01, Math.min(toSec, sample.duration));
+      const t0 = ctx.currentTime + 0.02;
+      const src = ctx.createBufferSource();
+      src.buffer = sample;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
+      const dur = to - from;
+      g.gain.setValueAtTime(0.9, t0 + Math.max(0.005, dur - 0.02));
+      g.gain.linearRampToValueAtTime(0, t0 + dur);
+      src.connect(g);
+      g.connect(dest);
+      src.start(t0, from, dur);
+      src.stop(t0 + dur + 0.02);
+    })();
+  }
+
+  /** Прослушать одну ноту инструмента (редактор волны: тембр на слух).
+   *  Тот же triggerVoice, что и в планировщике — слышим ровно то, что
+   *  будет в паттерне. */
+  previewNote(track: Track, noteRow = 0): void {
+    void (async () => {
+      const patch = this.patch;
+      if (!patch) return;
+      await this.ensureSamples(patch);
+      const ctx = this.ensureCtx();
+      if (ctx.state === 'suspended') void ctx.resume();
+      if (!this.master || !this.noiseBuffer) return;
+      const chain = this.chains.get(track.id);
+      // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
+      const pseudo: TrackChain = chain
+        ? chain
+        : ({ hp: ctx.createGain() } as unknown as TrackChain);
+      if (!chain) (pseudo.hp as GainNode).connect(this.master.input);
+      const pattern = patternInScene(track, this.scene());
+      const stepSec = stepDuration(track, patch.bpm, pattern);
+      const notes = [makeNote(noteRow, 0.9, 1)];
+      const voice = triggerVoice(
+        ctx,
+        pseudo,
+        this.noiseBuffer,
+        this.sampleCache.get(track.sampleId ?? '') ?? null,
+        track,
+        notes,
+        ctx.currentTime + 0.02,
+        stepSec,
+      );
+      // Голос живёт своей огибающей; хвост подчищаем по stopAt.
+      const src = voice.sources[0];
+      try {
+        (src as AudioScheduledSourceNode).stop?.(voice.stopAt);
+      } catch {
+        /* уже остановлен */
+      }
+    })();
+  }
+
   /** Ручное переключение сцены: применяется на ближайшей границе такта. */
   setScene(id: string): void {
     if (!this.playing || !this.ctx || !this.patch) return;
@@ -580,6 +801,8 @@ export class AudioEngine implements AudioBackend {
       this.ctx.currentTime + 0.03,
       this.nextBarTime(this.ctx.currentTime),
     );
+    // Клик по другой сцене до границы — перенаводим переходную рампу.
+    this.armSceneExit(this.sceneAdvanceTime);
   }
 
   /** Смена темпа на ходу: часы треков пере-якорятся — позиция шага
@@ -629,8 +852,12 @@ export class AudioEngine implements AudioBackend {
       // Расчёт времени следующего перехода от границы такта.
       const t = this.sceneAdvanceTime;
       this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(this.patch.bpm);
+      this.armSceneExit(this.sceneAdvanceTime);
     } else {
       this.sceneAdvanceTime = this.pendingSceneId ? this.sceneAdvanceTime : null;
+      // Выход из цепочки без заявленной сцены — переход отменяем; с заявленной
+      // (кликнули сцену, потом выключили цепочку) — граница и рампы живут.
+      this.armSceneExit(this.sceneAdvanceTime, { cancel: this.sceneAdvanceTime === null });
     }
   }
 
@@ -673,6 +900,9 @@ export class AudioEngine implements AudioBackend {
       if (!chain && this.master) {
         chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
         this.chains.set(track.id, chain);
+        // Свежая цепочка: планируем ей вход (старт игры / вливание на ходу)
+        // и, если граница сцен известна, переходный выход.
+        this.armSceneExit(this.sceneAdvanceTime);
       }
       if (!chain) continue;
       chain = this.applyTrackParams(track.id, chain, track, eff);
@@ -682,16 +912,23 @@ export class AudioEngine implements AudioBackend {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         const notes = step ? liveNotes(step) : [];
         if (notes.length > 0 && audible.has(pattern.id)) {
-          const at = clock.nextStepTime;
-          if (track.mono) this.duckLastVoice(track.id, at);
-          const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, notes, at, stepDur);
-          if (track.mono) this.lastVoices.set(track.id, voice);
-          // Сайдчейн: ноты этой дорожки качают приглушаемых.
-          for (const rt of patch.tracks) {
-            const sc = rt.sidechain;
-            if (!sc || sc.sourceId !== track.id) continue;
-            const rc = this.chains.get(rt.id);
-            if (rc) duckSidechain(rc.duck, at, sc);
+          // Арпеджиатор разворачивает аккорд шага в последовательность;
+          // без него — одно событие со всеми нотами (как раньше).
+          const events: { notes: Note[]; dt: number }[] = track.arp
+            ? arpEvents(notes, track.arp).map((e) => ({ notes: [e.note], dt: e.dt }))
+            : [{ notes, dt: 0 }];
+          for (const ev of events) {
+            const at = clock.nextStepTime + ev.dt * stepDur;
+            if (track.mono) this.duckLastVoice(track.id, at);
+            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, ev.notes, at, stepDur);
+            if (track.mono) this.lastVoices.set(track.id, voice);
+            // Сайдчейн: ноты этой дорожки качают приглушаемых.
+            for (const rt of patch.tracks) {
+              const sc = rt.sidechain;
+              if (!sc || sc.sourceId !== track.id) continue;
+              const rc = this.chains.get(rt.id);
+              if (rc) duckSidechain(rc.duck, at, sc);
+            }
           }
         }
         clock.nextStepTime += stepDur;
@@ -752,21 +989,41 @@ export class AudioEngine implements AudioBackend {
         // Не dispose-им: запланированные ноты привязаны к узлам.
         const chain = chainsByKey.get(`${track.id}:${item.sceneId}`)!;
         const itemDur = item.bars * BAR_TICKS * tickDur;
+        // Переходная огибающая: вход партии от начала пункта цепочки,
+        // выход — к его концу. Те же правила, что и в live-планировщике
+        // (armSceneExit) — рендер и живой звук сходятся.
+        const vol = effectiveParams(track, pattern).volume;
+        const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
+        const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
+        const tEnd = t + itemDur;
+        const gg = chain.gain.gain;
+        gg.setValueAtTime(0, t);
+        gg.linearRampToValueAtTime(vol, t + fadeIn);
+        const exitFrom = Math.max(t + fadeIn, tEnd - fadeOut);
+        if (exitFrom < tEnd - 0.001) gg.setValueAtTime(vol, exitFrom);
+        if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, tEnd);
+        else gg.setValueAtTime(0, tEnd);
         let idx = startStepIndex(track, pattern);
         const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {
-            if (track.mono && prevVoice && prevVoice.stopAt > tt) duckVoice(prevVoice, tt);
-            const voice = triggerVoice(ctx, chain, noise, sample, track, notes, tt, stepDur);
-            if (track.mono) prevVoice = voice;
-            // Сайдчейн: ноты этой дорожки качают приглушаемых.
-            for (const rt of patch.tracks) {
-              const sc = rt.sidechain;
-              if (!sc || sc.sourceId !== track.id) continue;
-              const rc = chainsByKey.get(`${rt.id}:${item.sceneId}`);
-              if (rc) duckSidechain(rc.duck, tt, sc);
+            const events: { notes: Note[]; dt: number }[] = track.arp
+              ? arpEvents(notes, track.arp).map((e) => ({ notes: [e.note], dt: e.dt }))
+              : [{ notes, dt: 0 }];
+            for (const ev of events) {
+              const at = tt + ev.dt * stepDur;
+              if (track.mono && prevVoice && prevVoice.stopAt > at) duckVoice(prevVoice, at);
+              const voice = triggerVoice(ctx, chain, noise, sample, track, ev.notes, at, stepDur);
+              if (track.mono) prevVoice = voice;
+              // Сайдчейн: ноты этой дорожки качают приглушаемых.
+              for (const rt of patch.tracks) {
+                const sc = rt.sidechain;
+                if (!sc || sc.sourceId !== track.id) continue;
+                const rc = chainsByKey.get(`${rt.id}:${item.sceneId}`);
+                if (rc) duckSidechain(rc.duck, at, sc);
+              }
             }
           }
           idx = (idx + 1) % pattern.length;

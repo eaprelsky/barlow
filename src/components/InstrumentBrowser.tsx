@@ -14,6 +14,7 @@ import {
 } from '../music/instrumentPresets';
 import { WAVEFORM_LABELS } from '../types';
 import { confirmDialog } from './dialogs';
+import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
   title: string;
@@ -79,16 +80,20 @@ export function InstrumentBrowser({ title, onPick, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal browser" role="dialog" aria-modal="true">
-        <h3>{title}</h3>
+      <div className="modal browser" role="dialog" aria-modal="true" data-ob="inst-browser">
+        <h3>
+          {title}
+          <HelpHint guide="instruments" label="Гид: браузер инструментов" />
+        </h3>
         <input
           className="browser-search"
+          data-ob="inst-search"
           autoFocus
           placeholder="поиск: имя, тембр, категория…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <div className="browser-grid">
+        <div className="browser-grid" data-ob="inst-cards">
           {groups.map((g) => (
             <div className="browser-cat" key={g.cat}>
               <span className="browser-cat-label">{g.cat}</span>

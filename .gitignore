@@ -26,3 +26,9 @@ dist-ssr
 # Tauri
 src-tauri/target
 src-tauri/gen
+
+# Фоновые логи scripts/bg.sh
+tmp/
+
+# Сессия ZCode
+.zcode/

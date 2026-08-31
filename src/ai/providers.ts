@@ -9,15 +9,30 @@ export interface GenerateParams {
   seconds: number;
 }
 
+export interface TransformParams {
+  apiKey: string;
+  prompt: string;
+  audio: Blob;
+  // Сила преобразования 0..1: 0 — лёгкая приправа, 1 — полная переделка.
+  strength: number;
+}
+
 export interface SampleProvider {
   id: string;
   title: string;
+  /** Умеет ли audio-to-audio: преобразование существующего сэмпла
+   *  по описанию. У ElevenLabs в API только текст→звук. */
+  supportsTransform: boolean;
   generate(params: GenerateParams): Promise<Blob>;
+  /** ИИ-преобразование сэмпла по промпту. undefined у провайдеров
+   *  без a2a — UI честно говорит, что нужен другой. */
+  transform?(params: TransformParams): Promise<Blob>;
 }
 
 const elevenlabs: SampleProvider = {
   id: 'elevenlabs',
   title: 'ElevenLabs (звуковые эффекты)',
+  supportsTransform: false,
   async generate({ apiKey, prompt, seconds }) {
     const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
       method: 'POST',

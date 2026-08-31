@@ -16,7 +16,14 @@ if [ -z "$HTTPS_PROXY" ]; then
   export HTTPS_PROXY=http://127.0.0.1:12334 HTTP_PROXY=http://127.0.0.1:12334
 fi
 
-npx tauri build
+# По умолчанию — без инсталляторов (msi/nsis): для обновления установленной
+# копии нужен только exe, а WiX/NSIS едят минуты на каждый прогон.
+# Полные бандлы — явным флагом: BARLOW_BUNDLE=1 npm run desktop
+BUNDLE_ARGS=(--no-bundle)
+if [ "${BARLOW_BUNDLE:-0}" = "1" ]; then
+  BUNDLE_ARGS=()
+fi
+npx tauri build "${BUNDLE_ARGS[@]}"
 
 DEST="$LOCALAPPDATA/barlow"
 if [ -d "$DEST" ]; then
@@ -27,5 +34,5 @@ if [ -d "$DEST" ]; then
   echo "запущено"
 else
   echo "установки нет — exe: src-tauri/target/release/barlow.exe"
-  echo "поставить: src-tauri/target/release/bundle/nsis/barlow_*-setup.exe /S"
+  echo "поставить: BARLOW_BUNDLE=1 npm run desktop → src-tauri/target/release/bundle/nsis/barlow_*-setup.exe /S"
 fi

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type {
+  ArpMode,
   Effect,
   Mod,
   Note,
@@ -11,6 +12,7 @@ import type {
   Waveform,
 } from '../types';
 import {
+  ARP_MODE_LABELS,
   EFFECT_LABELS,
   MOD_TARGET_LABELS,
   MORPH_LABELS,
@@ -32,12 +34,15 @@ import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
+import { SliderField } from './SliderField';
+import { WaveEditor } from './WaveEditor';
 import { EnvGraph, PitchGraph } from './EnvGraph';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration } from '../audio/timing';
 import { clip } from '../music/clip';
+import { HelpHint } from '../onboarding/Onboarding';
 
 const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -70,12 +75,13 @@ function fmtRatio(r: number): string {
   return Math.abs(r - Math.round(r)) < 1e-6 ? String(Math.round(r)) : r.toFixed(2);
 }
 
-/** Заняты ли ноты в верхней/нижней добавленной октаве (удалять нельзя). */
-function octaveBusy(track: Track, dir: 'up' | 'down'): boolean {
-  const base = track.scale.length;
+/** Заняты ли ноты в добавленной октаве (удалять нельзя). Дельта строк —
+ *  фактическая: шкала с отношением 2 схлопывается с новой октавой,
+ *  строк добавляется меньше длины шкалы. */
+function octaveBusy(track: Track, dir: 'up' | 'down', delta: number): boolean {
   const rows = scaleOf(track).length;
-  const from = dir === 'up' ? rows - base : 0;
-  const to = dir === 'up' ? rows : base;
+  const from = dir === 'up' ? rows - delta : 0;
+  const to = dir === 'up' ? rows : delta;
   return track.patterns.some((pt) =>
     pt.steps.some((s) => s.notes.some((nt) => nt.n >= from && nt.n < to)),
   );
@@ -89,6 +95,8 @@ interface Props {
   collapsed: boolean;
   onToggleCollapse: (id: string) => void;
   onChange: (id: string, t: Track) => void;
+  // структурные правки трека (октавы/шкала — правят ноты) — отдельный шаг undo
+  onTrackCommand: (id: string, t: Track) => void;
   onPatternChange: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   // steps-правки (клики, перенос, вставка, удаление) — отдельный шаг undo
   onPatternCommand: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
@@ -119,7 +127,15 @@ interface Props {
   // Для сайдчейна: все дорожки патча (id + имя).
   allTracks: { id: string; name: string }[];
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
+  onTransformSample: (trackId: string, prompt: string, strength: number) => void;
   genBusy: boolean;
+  // Редактор волны: раздвижной режим карточки — остальной интерфейс
+  // трека съёживается, редактор занимает его место.
+  waveEditor: boolean;
+  onToggleWaveEditor: (id: string) => void;
+  onGetSampleBuffer: (id?: string) => Promise<AudioBuffer | null>;
+  onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
+  onPreviewNote: (track: Track) => void;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -130,6 +146,7 @@ export const TrackRow = memo(function TrackRow({
   collapsed,
   onToggleCollapse,
   onChange,
+  onTrackCommand,
   onPatternChange,
   onPatternCommand,
   onSelectPattern,
@@ -152,12 +169,15 @@ export const TrackRow = memo(function TrackRow({
   patternSceneCounts,
   allTracks,
   onGenerateSample,
+  onTransformSample,
   genBusy,
+  waveEditor,
+  onToggleWaveEditor,
+  onGetSampleBuffer,
+  onPreviewSampleRegion,
+  onPreviewNote,
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
-  // Громкость/пан: двойной клик по подписи — точное число вместо ползунка.
-  const [volField, setVolField] = useState(false);
-  const [panField, setPanField] = useState(false);
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
@@ -196,6 +216,7 @@ export const TrackRow = memo(function TrackRow({
       grainScatter: t.grainScatter ?? 0.15,
       vibratoRate: t.vibratoRate ?? 5,
       vibratoDepth: t.vibratoDepth ?? 0,
+      wave: t.wave,
       patterns: clampAllNotes(scale.length - 1),
     };
     if (t.mods) upd.mods = t.mods.map((m) => ({ ...m }));
@@ -235,8 +256,9 @@ export const TrackRow = memo(function TrackRow({
    *  модалкой выбора шкалы вместе с N-ET и пресетами. */
 
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
-  const [more, setMore] = useState(false);
-  const [showRoll, setShowRoll] = useState(true);
+  // Нотка/звук/редактор — вкладки трека: открыта максимум одна.
+  // Редактор живёт в App (он съёживает остальные треки), остальные две — здесь.
+  const [panel, setPanel] = useState<'roll' | 'sound' | null>('roll');
   const [showPicker, setShowPicker] = useState(false);
   const [showScales, setShowScales] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
@@ -291,7 +313,6 @@ export const TrackRow = memo(function TrackRow({
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
   const rows = scaleOf(track).map((ratio, i) => ({ ratio, i })).reverse();
-  const baseLen = track.scale.length;
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
   const changeSteps = (steps: Step[]) => onPatternCommand(track.id, pattern.id, { steps });
@@ -325,7 +346,8 @@ export const TrackRow = memo(function TrackRow({
   /** Применить шкалу (пресет, N-ET или своя): сбрасывает октавные сдвиги
    *  и клампит ноты всех эскизов под новую длину стана. */
   const applyScale = (scale: number[]) => {
-    change({
+    onTrackCommand(track.id, {
+      ...track,
       scale,
       scaleOctUp: 0,
       scaleOctDown: 0,
@@ -333,29 +355,47 @@ export const TrackRow = memo(function TrackRow({
     });
   };
 
+  // Добавление/удаление октавы: ноты остаются на своих высотах. Индекс
+  // ноты — позиция в отсортированном массиве строк, октава снизу
+  // вставляет строки в начало и сдвигает индексы — компенсируем дельтой
+  // фактического числа новых строк (шкалы с отношением 2 схлопываются).
   const addOctave = (dir: 'up' | 'down') => {
     const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
     const now = (track[key] ?? 0) + 1;
     if (now > 4) return;
-    change({ [key]: now } as Partial<Track>);
+    const delta = scaleOf({ ...track, [key]: now }).length - scaleOf(track).length;
+    const patterns =
+      dir === 'down' && delta > 0
+        ? track.patterns.map((pt) => ({
+            ...pt,
+            steps: pt.steps.map((s) => ({
+              ...s,
+              notes: s.notes.map((nt) => ({ ...nt, n: nt.n + delta })),
+            })),
+          }))
+        : track.patterns;
+    onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
   };
 
   const removeOctave = (dir: 'up' | 'down') => {
-    if (octaveBusy(track, dir)) return;
     const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
     const now = (track[key] ?? 0) - 1;
     if (now < 0) return;
-    const base = baseLen;
-    const patterns = track.patterns.map((pt) => ({
-      ...pt,
-      steps: pt.steps.map((s) => ({
-        ...s,
-        notes: s.notes
-          .map((nt) => ({ ...nt, n: nt.n - base }))
-          .filter((nt) => nt.n >= 0),
-      })),
-    }));
-    change({ [key]: now, patterns } as Partial<Track>);
+    const delta = scaleOf(track).length - scaleOf({ ...track, [key]: now }).length;
+    if (octaveBusy(track, dir, delta)) return;
+    const patterns =
+      dir === 'down' && delta > 0
+        ? track.patterns.map((pt) => ({
+            ...pt,
+            steps: pt.steps.map((s) => ({
+              ...s,
+              notes: s.notes
+                .map((nt) => ({ ...nt, n: nt.n - delta }))
+                .filter((nt) => nt.n >= 0),
+            })),
+          }))
+        : track.patterns;
+    onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
   };
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
@@ -748,6 +788,54 @@ export const TrackRow = memo(function TrackRow({
   const addEffect = () =>
     change({ effects: [...effects, { type: 'delay', timeSec: 0.28, feedback: 0.35, mix: 0.3 }] });
 
+  // Перенос эффектов и модуляций драг-н-дропом: порядок эффектов — это
+  // порядок цепочки, порядок модуляций — просто удобство.
+  const moveEffect = (from: number, to: number) => {
+    const list = [...effects];
+    const [item] = list.splice(from, 1);
+    list.splice(to, 0, item);
+    change({ effects: list });
+  };
+  const moveMod = (from: number, to: number) => {
+    const base = [...(pattern.mods ?? track.mods)];
+    const [item] = base.splice(from, 1);
+    base.splice(to, 0, item);
+    changePatternMods(base);
+  };
+  const rowGrip = (kind: 'fx' | 'mod', i: number) => (
+    <span
+      className="row-grip"
+      title="Перетащи — строка поменяется местами"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', `${kind}:${i}`);
+      }}
+    >
+      ⠿
+    </span>
+  );
+  const rowDropProps = (kind: 'fx' | 'mod', i: number, move: (from: number, to: number) => void) => ({
+    onDragOver: (e: ReactDragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes('text/plain')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('drop-target');
+    },
+    onDragLeave: (e: ReactDragEvent<HTMLDivElement>) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      e.currentTarget.classList.remove('drop-target');
+    },
+    onDrop: (e: ReactDragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drop-target');
+      const raw = e.dataTransfer.getData('text/plain');
+      if (!raw.startsWith(`${kind}:`)) return;
+      const from = Number(raw.slice(kind.length + 1));
+      if (Number.isInteger(from) && from !== i) move(from, i);
+    },
+  });
+
   const modTargets: string[] = ['pan', 'volume', 'filterFreq'];
   if (effects.length > 0) modTargets.push('fxMix');
   if (effects.some((e) => e.type === 'delay')) modTargets.push('fxTime', 'fxFeedback');
@@ -765,9 +853,13 @@ export const TrackRow = memo(function TrackRow({
     />
   );
 
+  // Зона-скоуп для гидов: их шаги ищут якоря внутри этой карточки.
+  const scope = `[data-track-id="${track.id}"]`;
+
   if (collapsed) {
     return (
       <div
+      data-track-id={track.id}
       className={
         'track collapsed' +
         (track.enabled === false ? ' off' : '') +
@@ -800,17 +892,24 @@ export const TrackRow = memo(function TrackRow({
           </span>
           <span className="mini-wave">{WAVEFORM_LABELS[track.waveform]}</span>
           {patternChips}
-          <input
+          <SliderField
+            variant="bare"
             className="mini-vol"
-            type="range" min={0} max={1} step={0.05} value={track.volume}
-            title={`громкость ${Math.round(track.volume * 100)}%`}
-            onChange={(e) => change({ volume: Number(e.target.value) })}
+            title={`громкость ${Math.round(track.volume * 100)}% — двойной клик: точное число`}
+            value={Math.round(track.volume * 100)}
+            min={0} max={100} step={5}
+            display={`${Math.round(track.volume * 100)}%`}
+            unit="%"
+            onChange={(v) => change({ volume: v / 100 })}
           />
-          <input
+          <SliderField
+            variant="bare"
             className="mini-vol pan"
-            type="range" min={0} max={1} step={0.05} value={track.pan}
-            title={`панорама дорожки: ${panLabel(track.pan)} — разнос инструментов по комнате`}
-            onChange={(e) => change({ pan: Number(e.target.value) })}
+            title={`панорама дорожки: ${panLabel(track.pan)} — разнос инструментов по комнате. Двойной клик: точное число`}
+            value={Math.round(track.pan * 100)}
+            min={0} max={100} step={5}
+            display={panLabel(track.pan)}
+            onChange={(v) => change({ pan: v / 100 })}
           />
           <span className="mini-info">{pattern.length} шагов</span>
         </div>
@@ -823,6 +922,11 @@ export const TrackRow = memo(function TrackRow({
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
   const scaleRows = scaleOf(track);
+  /** Сколько строк стана уйдёт при удалении октавы (шкала с отношением 2
+   *  схлопывается с новой октавой — дельта меньше длины шкалы). */
+  const octRows = (dir: 'up' | 'down') =>
+    scaleRows.length -
+    scaleOf({ ...track, [dir === 'up' ? 'scaleOctUp' : 'scaleOctDown']: (dir === 'up' ? up : down) - 1 }).length;
   // Истинная длительность ноты в клетках стана: по сетке (noteSteps) или по
   // огибающей (атака + спад), в шагах эффективного темпа; гейт умножает сверху.
   const noteCellsBase =
@@ -902,6 +1006,7 @@ export const TrackRow = memo(function TrackRow({
 
   return (
     <div
+      data-track-id={track.id}
       className={
         'track' +
         (track.enabled === false ? ' off' : '') +
@@ -922,20 +1027,24 @@ export const TrackRow = memo(function TrackRow({
         </svg>
       </button>
       <div className="track-head">
-        <button className="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
-        <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
-        <span className="ms-btns">
+        <button className="fold" data-ob="fold" title="Свернуть трек" onClick={() => onToggleCollapse(track.id)}>▾</button>
+        <input className="track-name" data-ob="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+        <span className="ms-btns" data-ob="solo">
           <button
             className={soloActive ? 'ms on-s' : 'ms'}
             title="Соло в этой сцене: слышна только эта дорожка (любой её эскиз). С других сцен не переносится. Повторный клик — снять"
             onClick={() => onSolo(track.id)}
           >S</button>
         </span>
-        <div className="group ops">
+        <div className="group ops" data-ob="ops">
           <button
-            className={showRoll ? 'on' : ''}
-            onClick={() => setShowRoll((v) => !v)}
-            title={showRoll ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
+            className={panel === 'roll' && !waveEditor ? 'on' : ''}
+            data-ob="ops-roll"
+            onClick={() => {
+              if (waveEditor) onToggleWaveEditor(track.id);
+              setPanel((cur) => (waveEditor || cur !== 'roll' ? 'roll' : null));
+            }}
+            title={panel === 'roll' && !waveEditor ? 'Скрыть нотный стан (ноты продолжат играть)' : 'Показать нотный стан'}
             aria-label="нотный стан"
           >
             <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
@@ -946,8 +1055,12 @@ export const TrackRow = memo(function TrackRow({
             </svg>
           </button>
           <button
-            className={more ? 'on' : ''}
-            onClick={() => setMore((m) => !m)}
+            className={panel === 'sound' && !waveEditor ? 'on' : ''}
+            data-ob="ops-sound"
+            onClick={() => {
+              if (waveEditor) onToggleWaveEditor(track.id);
+              setPanel((cur) => (waveEditor || cur !== 'sound' ? 'sound' : null));
+            }}
             title="Звук дорожки: тоника и сэмпл, огибающая, тембр, эффекты, модуляции"
             aria-label="звук дорожки"
           >
@@ -959,21 +1072,48 @@ export const TrackRow = memo(function TrackRow({
               <rect x="12.1" y="5.5" width="2" height="3" rx="1" fill="currentColor" />
             </svg>
           </button>
+          <button
+            className={waveEditor ? 'on' : ''}
+            data-ob="ops-wave"
+            onClick={() => {
+              if (waveEditor) {
+                onToggleWaveEditor(track.id);
+                setPanel('roll');
+              } else {
+                setPanel(null);
+                onToggleWaveEditor(track.id);
+              }
+            }}
+            title="Редактор волны: обрезка сэмпла и свой тембр из гармоник. Нотка и звук — соседние вкладки"
+            aria-label="редактор волны"
+          >
+            <svg width="15" height="14" viewBox="0 0 15 14" aria-hidden="true">
+              {/* синусоида */}
+              <path
+                d="M1 7c1.4-4.5 2.9-4.5 4.3 0s2.9 4.5 4.3 0 2.9-4.5 4.4 0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+          <HelpHint guide="tracks" scope={scope} label="Гид: анатомия дорожки" />
         </div>
         <div className="group">
           {/* div, не label: label переносит :hover и клики на первый
               вложенный контрол — чип M загорался при наведении на любой эскиз */}
-          <div className="lbl" title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
+          <div className="lbl" title="Эскизы дорожки: какой играет — решает сцена. Правый клик по эскизу — вариация (форк)" data-ob="patterns">
             эскизы
             {patternChips}
           </div>
         </div>
         <div className="group">
-          <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются">
+          <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
             длина
             <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
           </label>
-          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия">
+          <label title="Длительность шага. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия" data-ob="rate">
             шаг
             <select
               className="rate-sel"
@@ -1006,57 +1146,46 @@ export const TrackRow = memo(function TrackRow({
               <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
             </span>
           </label>
-          <label
+          <SliderField
+            variant="inline"
+            label="громкость"
             title="Громкость трека — общая для всех эскизов. Свою на эскиз можно задать во вкладке «тембр». Двойной клик по подписи — точное число вместо ползунка"
-            onDoubleClick={() => setVolField((v) => !v)}
-          >
-            громкость
-            {volField ? (
-              <span className="inline">
-                <NumField
-                  value={Math.round(track.volume * 100)} min={0} max={100}
-                  onChange={(v) => change({ volume: v / 100 })}
-                />
-                <span className="pan-label">%</span>
-              </span>
-            ) : (
-              <span className="inline">
-                <input
-                  type="range" min={0} max={1} step={0.05} value={track.volume}
-                  onChange={(e) => change({ volume: Number(e.target.value) })}
-                />
-                <span className="pan-label">{Math.round(track.volume * 100)}%</span>
-              </span>
-            )}
-          </label>
-          <label
+            value={Math.round(track.volume * 100)}
+            min={0} max={100} step={5}
+            display={`${Math.round(track.volume * 100)}%`}
+            unit="%"
+            onChange={(v) => change({ volume: v / 100 })}
+          />
+          <SliderField
+            variant="inline"
+            label="пан"
             title="Панорама дорожки — разнос инструментов по комнате. База для эскизов: у конкретной партии может быть своя (вкладка «тембр»), LFO на панораму — пинг-понг. Двойной клик по подписи — точное число (0 — лево, 50 — центр, 100 — право)"
-            onDoubleClick={() => setPanField((v) => !v)}
-          >
-            пан
-            {panField ? (
-              <span className="inline">
-                <NumField
-                  value={Math.round(track.pan * 100)} min={0} max={100}
-                  onChange={(v) => change({ pan: v / 100 })}
-                />
-                <span className="pan-label">{panLabel(track.pan)}</span>
-              </span>
-            ) : (
-              <span className="inline">
-                <input
-                  type="range" min={0} max={1} step={0.05} value={track.pan}
-                  onChange={(e) => change({ pan: Number(e.target.value) })}
-                />
-                <span className="pan-label">{panLabel(track.pan)}</span>
-              </span>
-            )}
-          </label>
+            value={Math.round(track.pan * 100)}
+            min={0} max={100} step={5}
+            display={panLabel(track.pan)}
+            onChange={(v) => change({ pan: v / 100 })}
+          />
         </div>
       </div>
 
-      {more && (
-        <div className="track-head more-row">
+      {waveEditor && (
+        <WaveEditor
+          track={track}
+          onChange={change}
+          onClose={() => {
+            onToggleWaveEditor(track.id);
+            setPanel('roll');
+          }}
+          getBuffer={onGetSampleBuffer}
+          onPreviewRegion={onPreviewSampleRegion}
+          onPreviewNote={onPreviewNote}
+          onTransformSample={onTransformSample}
+          busy={genBusy}
+        />
+      )}
+
+      {!waveEditor && panel === 'sound' && (
+        <div className="track-head more-row" data-ob="sound-panel">
           <div className="tabs">
             {(
               [
@@ -1070,15 +1199,18 @@ export const TrackRow = memo(function TrackRow({
               <button
                 key={id}
                 className={tab === id ? 'tab on' : 'tab'}
+                data-ob={`tab-${id}`}
                 onClick={() => setTab(id)}
               >
                 {title}
               </button>
             ))}
             <span className="spacer" />
+            <HelpHint guide="sound" scope={scope} label="Гид: настроить звук дорожки" />
             {tab === 'snd' && (
               <button
                 className="save-inst"
+                data-ob="save-inst"
                 title="Сохранить звук дорожки как свой пресет — появится в браузере инструментов, категория «мои»"
                 aria-label="сохранить инструмент"
                 onClick={() => void saveInstrumentAs()}
@@ -1093,7 +1225,7 @@ export const TrackRow = memo(function TrackRow({
             )}
           </div>
           {tab === 'snd' && (
-          <div className="group">
+          <div className="group" data-ob="inst-group">
             {/* div, не label: label переносит hover/клики на первый
                 вложенный контрол — «выбрать…» подсвечивался при наведении
                 на соседей */}
@@ -1103,7 +1235,7 @@ export const TrackRow = memo(function TrackRow({
                 <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
                   {instrumentNameOf(track)}
                 </span>
-                <button onClick={() => setShowInstruments(true)}>выбрать…</button>
+                <button data-ob="inst-pick" onClick={() => setShowInstruments(true)}>выбрать…</button>
               </span>
             </div>
             <label title="Форма волны осциллятора — основа тембра">
@@ -1146,7 +1278,7 @@ export const TrackRow = memo(function TrackRow({
             )}
             {track.waveform === 'sample' ? (
               <>
-                <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)">
+                <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
                   сэмпл
                   <span className="inline">
                     <span className="sample-name" title={track.sampleName ?? 'сэмпл не выбран'}>
@@ -1169,7 +1301,7 @@ export const TrackRow = memo(function TrackRow({
                     />
                   </span>
                 </label>
-                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью) или гранулярно (нота = облако коротких осколков)">
+                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью) или гранулярно (нота = облако коротких осколков)" data-ob="sample-mode">
                   режим
                   <select
                     value={track.sampleMode ?? 'plain'}
@@ -1213,7 +1345,7 @@ export const TrackRow = memo(function TrackRow({
           </div>
           )}
           {tab === 'env' && (
-          <div className="group env-tab">
+          <div className="group env-tab" data-ob="env-tab">
             <div className="env-block">
               <EnvGraph
                 attack={track.attack}
@@ -1280,7 +1412,7 @@ export const TrackRow = memo(function TrackRow({
           )}
           {tab === 'timbre' && (
           <>
-          <div className="group">
+          <div className="group" data-ob="timbre-tab">
             <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
               фаза, шагов
               <NumField
@@ -1376,16 +1508,15 @@ export const TrackRow = memo(function TrackRow({
                 onChange={(volume) => onPatternChange(track.id, pattern.id, { volume })}
               />
             </label>
-            <label title="Панорама этого эскиза: слева — центр — справа. Синус-LFO 0.2 Гц на панораме ниже — пинг-понг">
-              панорама эскиза
-              <span className="inline">
-                <input
-                  type="range" min={0} max={1} step={0.05} value={pattern.pan ?? track.pan}
-                  onChange={(e) => onPatternChange(track.id, pattern.id, { pan: Number(e.target.value) })}
-                />
-                <span className="pan-label">{panLabel(pattern.pan ?? track.pan)}</span>
-              </span>
-            </label>
+            <SliderField
+              variant="inline"
+              label="панорама эскиза"
+              title="Панорама этого эскиза: слева — центр — справа. Синус-LFO 0.2 Гц на панораме ниже — пинг-понг. Двойной клик по подписи — точное число"
+              value={Math.round((pattern.pan ?? track.pan) * 100)}
+              min={0} max={100} step={5}
+              display={panLabel(pattern.pan ?? track.pan)}
+              onChange={(pan) => onPatternChange(track.id, pattern.id, { pan: pan / 100 })}
+            />
             <label
               title={
                 pattern.rate === undefined
@@ -1428,13 +1559,83 @@ export const TrackRow = memo(function TrackRow({
                 )}
               </span>
             </label>
+            <label
+              title={
+                'Как партия врывается в сцену, мс: 0 — обрыв (деклик), 100–500 — мягкое вступление, 1000+ — выплывает из тишины. ' +
+                  'Заодно это вход трека при старте игры и вливании на ходу'
+              }
+            >
+              вход в сцену, мс
+              <NumField
+                value={Math.round((pattern.fadeIn ?? 0.005) * 1000)} min={0} max={8000} step={5}
+                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeIn: ms / 1000 })}
+              />
+            </label>
+            <label
+              title={
+                'Как партия уходит из сцены, мс: 0 — резкий обрыв, 100–400 — хвост уплывает, 1000+ — длинное растворение. ' +
+                  'Действует на границе сцен и на остановке транспорта'
+              }
+            >
+              выход из сцены, мс
+              <NumField
+                value={Math.round((pattern.fadeOut ?? 0.05) * 1000)} min={0} max={8000} step={5}
+                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeOut: ms / 1000 })}
+              />
+            </label>
+          </div>
+          <div className="group" data-ob="arp-group">
+            <label
+              title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
+              data-ob="arp"
+            >
+              <input
+                type="checkbox"
+                checked={!!track.arp}
+                onChange={(e) =>
+                  change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
+                }
+              />
+              арпеджиатор
+            </label>
+            <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
+            {track.arp && (
+              <>
+                <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
+                  тип
+                  <select
+                    value={track.arp.mode}
+                    onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
+                  >
+                    {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
+                      <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label title="Событий на шаг: 1 — фигура ложится на шаг, 2 — вдвое чаще (32-е), 0.5 — на два шага" data-ob="arp-speed">
+                  скорость ×
+                  <NumField
+                    value={track.arp.div} min={0.25} max={8} step={0.25} narrow
+                    onChange={(div) => change({ arp: { ...track.arp!, div } })}
+                  />
+                </label>
+                <label title="Повтор фигуры по октавам — классика арпеджио">
+                  октавы
+                  <NumField
+                    value={track.arp.octaves} min={1} max={4} narrow
+                    onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
+                  />
+                </label>
+              </>
+            )}
           </div>
           </>
           )}
           {tab === 'fx' && (
-          <div className="group mods-group">
+          <div className="group mods-group" data-ob="fx-list">
             {effects.map((fx, i) => (
-              <div className="mod-row" key={i}>
+              <div className="mod-row" key={i} {...rowDropProps('fx', i, moveEffect)}>
+                {rowGrip('fx', i)}
                 {/* Удаление — первым слева: крестики строк в одну колонку,
                     ряды не выглядят лесенкой */}
                 <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
@@ -1452,13 +1653,15 @@ export const TrackRow = memo(function TrackRow({
                       />
                       <i>мс</i>
                     </span>
-                    <span className="mr" title="Затухание повторов: 0% — один повтор, 80% — длинное эхо">
-                      <input
-                        type="range" min={0} max={0.9} step={0.05} value={fx.feedback}
-                        onChange={(e) => updateDelay(i, { feedback: Number(e.target.value) })}
-                      />
-                      <i>{Math.round(fx.feedback * 100)}%</i>
-                    </span>
+                    <SliderField
+                      variant="mr"
+                      title="Затухание повторов: 0% — один повтор, 80% — длинное эхо"
+                      value={Math.round(fx.feedback * 100)}
+                      min={0} max={90} step={5}
+                      display={`${Math.round(fx.feedback * 100)}%`}
+                      unit="%"
+                      onChange={(v) => updateDelay(i, { feedback: v / 100 })}
+                    />
                   </>
                 ) : fx.type === 'reverb' ? (
                   <span className="mr" title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
@@ -1492,29 +1695,32 @@ export const TrackRow = memo(function TrackRow({
                     <i>бит</i>
                   </span>
                 )}
-                <span className="mr" title="Сколько эффекта подмешать к чистому звуку">
-                  <input
-                    type="range" min={0} max={1} step={0.05} value={fx.mix}
-                    onChange={(e) => {
-                      const mix = Number(e.target.value);
-                      if (fx.type === 'delay') updateDelay(i, { mix });
-                      else if (fx.type === 'reverb') updateReverb(i, { mix });
-                      else if (fx.type === 'dist') updateEffect(i, 'dist', { mix });
-                      else if (fx.type === 'chorus') updateEffect(i, 'chorus', { mix });
-                      else updateEffect(i, 'lofi', { mix });
-                    }}
-                  />
-                  <i>{Math.round(fx.mix * 100)}%</i>
-                </span>
+                <SliderField
+                  variant="mr"
+                  title="Сколько эффекта подмешать к чистому звуку"
+                  value={Math.round(fx.mix * 100)}
+                  min={0} max={100} step={5}
+                  display={`${Math.round(fx.mix * 100)}%`}
+                  unit="%"
+                  onChange={(mix) => {
+                    if (fx.type === 'delay') updateDelay(i, { mix: mix / 100 });
+                    else if (fx.type === 'reverb') updateReverb(i, { mix: mix / 100 });
+                    else if (fx.type === 'dist') updateEffect(i, 'dist', { mix: mix / 100 });
+                    else if (fx.type === 'chorus') updateEffect(i, 'chorus', { mix: mix / 100 });
+                    else updateEffect(i, 'lofi', { mix: mix / 100 });
+                  }}
+                />
               </div>
             ))}
-            <button onClick={addEffect} title="Добавить эффект">+ эффект</button>
+            <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект">+ эффект</button>
+            <HelpHint guide="effects" scope={scope} label="Гид: эффекты и модуляции" />
           </div>
           )}
           {tab === 'mods' && (
-          <div className="group mods-group">
+          <div className="group mods-group" data-ob="mods-list">
             {(pattern.mods ?? track.mods).map((m, i) => (
-              <div className="mod-row" key={i}>
+              <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
+                {rowGrip('mod', i)}
                 <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
                 <select
                   value={m.source ?? 'lfo'}
@@ -1574,26 +1780,30 @@ export const TrackRow = memo(function TrackRow({
                     <option value="4">1/1</option>
                   </select>
                 </span>
-                <span className="mr" title="Глубина: насколько сильно LFO отклоняет параметр">
-                  <input
-                    type="range" min={0} max={1} step={0.05} value={m.depth}
-                    onChange={(e) => updateMod(i, { depth: Number(e.target.value) })}
-                  />
-                  <i>{Math.round(m.depth * 100)}%</i>
-                </span>
+                <SliderField
+                  variant="mr"
+                  title="Глубина: насколько сильно LFO отклоняет параметр"
+                  value={Math.round(m.depth * 100)}
+                  min={0} max={100} step={5}
+                  display={`${Math.round(m.depth * 100)}%`}
+                  unit="%"
+                  onChange={(v) => updateMod(i, { depth: v / 100 })}
+                />
               </div>
             ))}
-            <button onClick={addMod} title="Добавить LFO">+ модуляция</button>
+            <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">+ модуляция</button>
+            <HelpHint guide="effects" step={5} scope={scope} label="Гид: модуляции" />
           </div>
           )}
         </div>
       )}
 
-      {track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'scratch' && (
-        <div className={'scratch-bar' + (scratchArmed || scratchLive ? ' recording' : '')}>
+      {!waveEditor && track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'scratch' && (
+        <div className={'scratch-bar' + (scratchArmed || scratchLive ? ' recording' : '')} data-ob="scratch-bar">
           <div className="scratch-actions">
             <button
               className={scratchArmed || scratchLive ? 'on' : ''}
+              data-ob="scratch-rec"
               title="Нажми — и проведи мышью по пэду: путь запишется жестом (до 48 сглаженных точек). Отпустишь — запись закончится сама"
               onClick={() => setScratchArmed((v) => !v)}
             >
@@ -1601,6 +1811,7 @@ export const TrackRow = memo(function TrackRow({
             </button>
             <button
               className={scratchPlaying ? 'on' : ''}
+              data-ob="scratch-play"
               title="Проиграть жест одной нотой — проверить, как он звучит в нотах"
               onClick={() => {
                 onScratchPreview();
@@ -1614,6 +1825,7 @@ export const TrackRow = memo(function TrackRow({
             >
               {scratchPlaying ? '▶ играет…' : '▶ послушать'}
             </button>
+            <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
             <span
               className="mini-info"
               title="Длительность жеста = длина ноты. Меняется во вкладке «огибающая»: «длина ноты, шагов» или атака+спад"
@@ -1651,10 +1863,11 @@ export const TrackRow = memo(function TrackRow({
               </svg>
             </div>
             <div className="scratch-main">
-              <div
-                className="scratch-track"
-                ref={scratchRef}
-                title="Жест иглы. Клик — добавить точку, тянуть точку — править, правый клик — удалить. Наклон = скорость иглы: круче — быстрее"
+            <div
+              className="scratch-track"
+              ref={scratchRef}
+              data-ob="scratch-pad"
+              title="Жест иглы. Клик — добавить точку, тянуть точку — править, правый клик — удалить. Наклон = скорость иглы: круче — быстрее"
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
                   const el = scratchRef.current;
@@ -1796,8 +2009,8 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-      {track.waveform === 'sample' && (
-        <div className="gen-bar">
+      {!waveEditor && track.waveform === 'sample' && (
+        <div className="gen-bar" data-ob="gen-bar">
           <label
             className="gen-label"
             title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»"
@@ -1830,10 +2043,11 @@ export const TrackRow = memo(function TrackRow({
           {track.sampleName && genBusy === false && (
             <span className="mini-info" title="Сейчас в слоте">в слоте: {track.sampleName}</span>
           )}
+          <HelpHint guide="samples" step={3} scope={scope} label="Гид: сгенерировать сэмпл" />
         </div>
       )}
 
-      {showRoll && (
+      {!waveEditor && panel === 'roll' && (
         <RollTools
           track={track}
           pattern={pattern}
@@ -1843,15 +2057,15 @@ export const TrackRow = memo(function TrackRow({
           onPickScale={() => setShowScales(true)}
         />
       )}
-      {showRoll && (
-      <div className="roll" ref={rollRef}>
-        <div className="roll-side">
-          <div className="col-num-spacer oct-row">
+      {!waveEditor && panel === 'roll' && (
+      <div className="roll" ref={rollRef} data-ob="roll">
+        <div className="roll-side" data-ob="scale-rows">
+          <div className="col-num-spacer oct-row" data-ob="octaves">
             <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
             <button
               className="oct-btn"
-              title={octaveBusy(track, 'up') ? 'В верхней октаве есть ноты — сначала убери их' : 'Убрать верхнюю октаву'}
-              disabled={up === 0 || octaveBusy(track, 'up')}
+              title={octaveBusy(track, 'up', octRows('up')) ? 'В верхней октаве есть ноты — сначала убери их' : 'Убрать верхнюю октаву'}
+              disabled={up === 0 || octaveBusy(track, 'up', octRows('up'))}
               onClick={() => removeOctave('up')}
             >−</button>
           </div>
@@ -1864,8 +2078,8 @@ export const TrackRow = memo(function TrackRow({
             <button className="oct-btn" title="Добавить октаву вниз" onClick={() => addOctave('down')}>+окт</button>
             <button
               className="oct-btn"
-              title={octaveBusy(track, 'down') ? 'В нижней октаве есть ноты — сначала убери их' : 'Убрать нижнюю октаву'}
-              disabled={down === 0 || octaveBusy(track, 'down')}
+              title={octaveBusy(track, 'down', octRows('down')) ? 'В нижней октаве есть ноты — сначала убери их' : 'Убрать нижнюю октаву'}
+              disabled={down === 0 || octaveBusy(track, 'down', octRows('down'))}
               onClick={() => removeOctave('down')}
             >−</button>
           </div>
@@ -1986,8 +2200,8 @@ export const TrackRow = memo(function TrackRow({
       </div>
       )}
 
-      {selectedStep && selectedCol !== null && (
-        <div className="step-panel">
+      {!waveEditor && selectedStep && selectedCol !== null && (
+        <div className="step-panel" data-ob="step-panel">
           <span className="sp-label">шаг {selectedCol + 1}</span>
           {selectedStep.notes.length === 0 && (
             <span className="none">пусто — поставь ноты кликом по стану</span>
@@ -1997,25 +2211,28 @@ export const TrackRow = memo(function TrackRow({
               <span className="np-label" title="Высота ноты">
                 ×{fmtRatio(scaleRows[nt.n] ?? 1)}
               </span>
-              <label className="sp-field">
-                громкость
-                <input
-                  type="range" min={0.05} max={1} step={0.05} value={nt.vel}
-                  onChange={(e) => setNoteField(selectedCol, nt.n, 'vel', Number(e.target.value))}
-                />
-                {Math.round(nt.vel * 100)}%
-              </label>
-              <label
+              <SliderField
                 className="sp-field"
-                title="Шанс, что нота прозвучит при каждом проходе цикла — у каждой ноты свой"
-              >
-                вероятность
-                <input
-                  type="range" min={0} max={1} step={0.05} value={nt.prob}
-                  onChange={(e) => setNoteField(selectedCol, nt.n, 'prob', Number(e.target.value))}
-                />
-                {Math.round(nt.prob * 100)}%
-              </label>
+                variant="label"
+                label="громкость"
+                title="Громкость этой ноты. Колесо мыши над нотой крутит её же. Двойной клик — точное число"
+                value={Math.round(nt.vel * 100)}
+                min={5} max={100} step={5}
+                display={`${Math.round(nt.vel * 100)}%`}
+                unit="%"
+                onChange={(v) => setNoteField(selectedCol, nt.n, 'vel', v / 100)}
+              />
+              <SliderField
+                className="sp-field"
+                variant="label"
+                label="вероятность"
+                title="Шанс, что нота прозвучит при каждом проходе цикла — у каждой ноты свой. Двойной клик — точное число"
+                value={Math.round(nt.prob * 100)}
+                min={0} max={100} step={5}
+                display={`${Math.round(nt.prob * 100)}%`}
+                unit="%"
+                onChange={(v) => setNoteField(selectedCol, nt.n, 'prob', v / 100)}
+              />
               <label
                 className="sp-field"
                 title="Длина ноты: множитель от огибающей трека (атака + спад). 1 — как у трека; 0.2–0.5 — короткие тычки; 2–4 — подтяжки поверх соседних шагов. Alt+колесо над нотой тоже крутит"

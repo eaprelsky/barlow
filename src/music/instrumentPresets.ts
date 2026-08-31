@@ -33,6 +33,7 @@ const MATCH_FIELDS: (keyof Track)[] = [
   'vibratoRate', 'vibratoDepth',
   'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+  'wave',
 ];
 
 const sameValue = (a: unknown, b: unknown): boolean => {
@@ -219,6 +220,45 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     hint: 'чистый лист, всё настроешь сам',
     track: { name: 'трек', waveform: 'square', freq: 220, scale: [1], length: 16, rate: 1 },
   },
+  {
+    name: 'стекло',
+    category: 'тоны и лиды',
+    hint: 'своя волна: нероственные парциалы (1, 2.76, 5.4) — звенящее стекло, сделано в редакторе волны',
+    track: {
+      name: 'стекло', waveform: 'wave', freq: 523.3,
+      scale: [1, 9 / 8, 3 / 2, 2],
+      wave: {
+        partials: [
+          { ratio: 1, amp: 1, type: 'sine' },
+          { ratio: 2.76, amp: 0.35, type: 'sine' },
+          { ratio: 5.4, amp: 0.18, type: 'sine' },
+          { ratio: 8.93, amp: 0.08, type: 'sine' },
+        ],
+      },
+      length: 9, rate: 2, attack: 0.002, decay: 0.9,
+      filterFreq: 9000, volume: 0.6,
+      effects: [{ type: 'reverb', sizeSec: 2.4, mix: 0.3 }],
+    },
+  },
+  {
+    name: 'песок',
+    category: 'фоны',
+    hint: 'своя волна: синус + шумовое зерно 25 мс — шуршащая подложка, характер крупы крути в редакторе',
+    track: {
+      name: 'песок', waveform: 'wave', freq: 174.6,
+      scale: [1, 3 / 2],
+      wave: {
+        partials: [
+          { ratio: 1, amp: 0.55, type: 'sine' },
+          { ratio: 2, amp: 0.2, type: 'sine' },
+          { ratio: 1, amp: 0.5, type: 'noise' },
+        ],
+        noiseGrainMs: 25,
+      },
+      length: 4, rate: 8, attack: 0.05, decay: 1.2,
+      filterFreq: 2400, volume: 0.45,
+    },
+  },
 ];
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный трек
@@ -235,6 +275,7 @@ const SAVE_FIELDS: (keyof Track)[] = [
   'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife', 'sampleMode',
   'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'vibratoRate', 'vibratoDepth', 'scratchPoints', 'mods',
+  'wave',
 ];
 
 export function loadUserPresets(): InstrumentPreset[] {

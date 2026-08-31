@@ -25,11 +25,12 @@ export function PatternChips({
   onRemovePattern,
 }: Props) {
   return (
-    <div className="pattern-chips">
+    <div className="pattern-chips" data-ob="chips">
       {/* Мьют — «отрицательный эскиз»: вместо выбора партии трек молчит,
           пока выбран этот эскиз (во всех сценах, где он играет). */}
       <button
         className={pattern.muted ? 'chip mute on-m' : 'chip mute'}
+        data-ob="chip-mute"
         title="Мьют вместо эскиза: трек молчит, пока играет этот эскиз (во всех сценах, где он выбран). Часы идут — сняв мьют, войдёшь в фазе"
         onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
       >
@@ -62,7 +63,7 @@ export function PatternChips({
           </button>
         );
       })}
-      <button className="chip add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
+      <button className="chip add" data-ob="chip-add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
         +
       </button>
       {track.patterns.length > 1 && (

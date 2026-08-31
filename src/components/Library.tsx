@@ -13,6 +13,7 @@ import {
   samplesDirPick,
 } from '../audio/library';
 import { isDesktop } from '../platform';
+import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
   open: boolean;
@@ -71,11 +72,12 @@ export function Library({ open, usedIds, onClose }: Props) {
   };
 
   return (
-    <div className="lib-panel">
+    <div className="lib-panel" data-ob="library">
       <span className="scenes-label">
         сэмплы ({samples.length}) —{' '}
         {dirLabel ? `папка: ${dirLabel}` : 'библиотека этого браузера'}
       </span>
+      <HelpHint guide="samples" step={4} label="Гид: библиотека сэмплов" />
       <span className="spacer" />
       {dirLabel && (
         <button onClick={() => void revealSamplesDir()} title="Открыть папку сэмпла в проводнике">

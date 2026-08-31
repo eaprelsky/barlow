@@ -18,6 +18,7 @@ export type Waveform =
   | 'formant'
   | 'modal'
   | 'organ'
+  | 'wave'
   | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
@@ -33,6 +34,7 @@ export const WAVEFORM_LABELS: Record<Waveform, string> = {
   formant: 'вокал',
   modal: 'колокол',
   organ: 'орган',
+  wave: 'своя волна',
   sample: 'сэмпл',
 };
 
@@ -47,6 +49,90 @@ export const MORPH_LABELS: Partial<Record<Waveform, string>> = {
 
 /** Как сэмплер играет буфер: напрямую, облаком гранул или скрэтчем. */
 export type SampleMode = 'plain' | 'grain' | 'scratch';
+
+/** Режимы арпеджиатора (набор как в Ableton Live). */
+export type ArpMode = 'up' | 'down' | 'updown' | 'downup' | 'order' | 'chord' | 'random';
+
+export const ARP_MODE_LABELS: Record<ArpMode, string> = {
+  up: 'вверх',
+  down: 'вниз',
+  updown: 'вверх-вниз',
+  downup: 'вниз-вверх',
+  order: 'как сыграно',
+  chord: 'аккорд',
+  random: 'случайно',
+};
+
+export interface Arp {
+  mode: ArpMode;
+  // Событий на шаг: 1 — по фигуре на шаг, 2 — вдвое чаще, 0.5 — реже.
+  div: number;
+  // Повтор фигуры по октавам (умножение частоты на 2^o), 1–4.
+  octaves: number;
+}
+
+/** Довести арпеджиатор до валидного. */
+export function normalizeArp(raw: unknown): Arp | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Partial<Arp>;
+  const mode = (Object.keys(ARP_MODE_LABELS) as ArpMode[]).includes(r.mode as ArpMode)
+    ? (r.mode as ArpMode)
+    : 'up';
+  return {
+    mode,
+    div: clamp(typeof r.div === 'number' ? r.div : 1, 0.25, 8, 1),
+    octaves: Math.round(clamp(typeof r.octaves === 'number' ? r.octaves : 1, 1, 4, 1)),
+  };
+}
+
+/** Один парциал своей волны: типовая форма на множителе к ноте.
+ *  Множитель может быть дробным — микротюнинг тембра. */
+export type PartialType = 'sine' | 'saw' | 'square' | 'noise';
+
+export interface WavePartial {
+  ratio: number;
+  // Амплитуда 0..1.
+  amp: number;
+  type: PartialType;
+}
+
+/** Своя волна: аддитивный тембр из парциалов. Компактный JSON в патче
+ *  и пресетах; целые синус-парциалы движок сливает в один PeriodicWave. */
+export interface WaveDef {
+  partials: WavePartial[];
+  // Размер зерна шумовых парциалов, мс (характер «крупы»).
+  noiseGrainMs?: number;
+}
+
+export const PARTIAL_TYPE_LABELS: Record<PartialType, string> = {
+  sine: 'синус',
+  saw: 'пила',
+  square: 'прямоугольник',
+  noise: 'шум',
+};
+
+/** Довести определение волны до валидного: клампы, лимит парциалов. */
+export function normalizeWave(raw: unknown): WaveDef | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const list = (raw as { partials?: unknown }).partials;
+  if (!Array.isArray(list)) return undefined;
+  const types: PartialType[] = ['sine', 'saw', 'square', 'noise'];
+  const partials: WavePartial[] = [];
+  for (const p of list as Partial<WavePartial>[]) {
+    if (!p || typeof p !== 'object') continue;
+    const ratio = clamp(typeof p.ratio === 'number' ? p.ratio : 1, 0.25, 64, 1);
+    const amp = clamp(typeof p.amp === 'number' ? p.amp : 0.5, 0, 1, 0.5);
+    const type = types.includes(p.type as PartialType) ? (p.type as PartialType) : 'sine';
+    partials.push({ ratio: +ratio.toFixed(4), amp, type });
+    if (partials.length >= 64) break;
+  }
+  if (partials.length === 0) return undefined;
+  const grain = (raw as { noiseGrainMs?: unknown }).noiseGrainMs;
+  return {
+    partials,
+    noiseGrainMs: clamp(typeof grain === 'number' ? grain : 40, 5, 500, 40),
+  };
+}
 
 /** Точка жеста скрэтча: t — доля от длительности ноты, pos — позиция
  *  иглы в сэмпле (0..1). Жест = ломаная по точкам. */
@@ -65,6 +151,9 @@ export interface Note {
   // Длина ноты: множитель 0.1–4× от огибающей трека (атака + спад).
   // 1 — как у трека, короче — тычки, длиннее — подтяжки.
   gate?: number;
+  // Сдвиг на октавы для арпеджиатора (умножение частоты на 2^oct).
+  // В патч не пишется — появляется только в планировщике.
+  oct?: number;
 }
 
 export interface Step {
@@ -98,6 +187,12 @@ export interface Pattern {
   mods?: Mod[];
   // Партия молчит во всех сценах, где играет.
   muted?: boolean;
+  // Огибающая перехода сцен, сек. fadeIn — как партия входит в сцену
+  // (0 — обрыв), fadeOut — как уходит из неё (0 — резкий обрыв).
+  // Живут на эскизе: у каждой партии свой характер вступления/ухода.
+  // Дефолты 5/50 мс — деклик стыка, атаку нот не глотают.
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export type ModTarget =
@@ -196,6 +291,14 @@ export interface Track {
   sampleId?: string;
   // Отображаемое имя сэмпла (кэш UI, истина — в библиотеке).
   sampleName?: string;
+  // Обрезка сэмпла, сек: играет только кусок [sampleStart, sampleEnd].
+  // Применимо ко всем режимам сэмплера, включая скрэтч.
+  sampleStart?: number;
+  sampleEnd?: number;
+  // Своя волна (waveform === 'wave'): аддитивный тембр из парциалов.
+  wave?: WaveDef;
+  // Арпеджиатор: аккорд шага разворачивается в последовательность нот.
+  arp?: Arp;
   // FM: отношение частоты модулятора к ноте. Целые — гармоничные тембры,
   // иррациональные (≈√2) — колокола и металл.
   fmRatio?: number;
@@ -284,7 +387,7 @@ export interface Patch {
   tracks: Track[];
 }
 
-export const PATCH_VERSION = 29;
+export const PATCH_VERSION = 32;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -333,6 +436,10 @@ export function makeTrack(
     mods: partial.mods ?? [],
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
+    sampleStart: partial.sampleStart,
+    sampleEnd: partial.sampleEnd,
+    wave: partial.wave,
+    arp: partial.arp,
     fmRatio: partial.fmRatio,
     fmIndex: partial.fmIndex,
     voiceMorph: partial.voiceMorph,
@@ -561,6 +668,8 @@ export function normalizePatch(p: Patch): Patch {
         pan?: number;
         rate?: unknown;
         mods?: unknown;
+        fadeIn?: number;
+        fadeOut?: number;
       }[];
       if (Array.isArray(t.patterns) && t.patterns.length > 0) {
         rawPatterns = t.patterns as typeof rawPatterns;
@@ -610,6 +719,10 @@ export function normalizePatch(p: Patch): Patch {
                 : undefined,
             mods: mods.length > 0 ? mods : undefined,
             muted: !!(pt as { muted?: unknown }).muted,
+            // Огибающая перехода сцен (v30): старые патчи получают
+            // дефолты-деклики 5/50 мс.
+            fadeIn: clamp(pt.fadeIn ?? 0.005, 0, 8, 0.005),
+            fadeOut: clamp(pt.fadeOut ?? 0.05, 0, 8, 0.05),
           };
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));
@@ -638,6 +751,17 @@ export function normalizePatch(p: Patch): Patch {
         mods: normalizeMods((t as { mods?: unknown }).mods),
         sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
         sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+        // Обрезка сэмпла: конец должен быть дальше начала.
+        sampleStart:
+          typeof (t as { sampleStart?: unknown }).sampleStart === 'number'
+            ? clamp((t as { sampleStart?: number }).sampleStart!, 0, 3600, 0)
+            : undefined,
+        sampleEnd:
+          typeof (t as { sampleEnd?: unknown }).sampleEnd === 'number'
+            ? clamp((t as { sampleEnd?: number }).sampleEnd!, 0.001, 3600, 3600)
+            : undefined,
+        wave: normalizeWave((t as { wave?: unknown }).wave),
+        arp: normalizeArp((t as { arp?: unknown }).arp),
         fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
         fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
         voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),

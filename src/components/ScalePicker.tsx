@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { alertDialog } from './dialogs';
+import { HelpHint } from '../onboarding/Onboarding';
 import { SCALE_GROUP_ORDER, SCALE_PRESETS, parseRatios, presetName } from '../music/scales';
 
 interface Props {
@@ -66,10 +67,14 @@ export function ScalePicker({ current, onPick, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal browser" role="dialog" aria-modal="true">
-        <h3>шкала нотного стана</h3>
+      <div className="modal browser" role="dialog" aria-modal="true" data-ob="scale-picker">
+        <h3>
+          шкала нотного стана
+          <HelpHint guide="scales" step={1} label="Гид: шкалы и строи" />
+        </h3>
         <input
           className="browser-search"
+          data-ob="scale-search"
           autoFocus
           placeholder="поиск: слендро, шрути, квинта, гамелан…"
           value={query}
@@ -96,7 +101,7 @@ export function ScalePicker({ current, onPick, onClose }: Props) {
           ))}
           {groups.length === 0 && <p className="empty">Ничего не нашлось</p>}
         </div>
-        <div className="scale-tools">
+        <div className="scale-tools" data-ob="scale-tools">
           <label title="Равномерно темперированная шкала: N равных ступеней в октаве. 12 — обычные полутоны, 24 — четвертитоны, 5 — как слендро, 17/19/22/31/53 — микрохроматика и турецкий строй">
             равных ступеней
             <span className="inline">

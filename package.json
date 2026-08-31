@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "desktop": "bash scripts/desktop.sh",
     "deploy-web": "bash scripts/deploy-web.sh",
-    "golden": "node scripts/golden.mjs"
+    "golden": "node scripts/golden.mjs",
+    "smoke": "node scripts/smoke-collapse.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

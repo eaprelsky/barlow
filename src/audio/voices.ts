@@ -2,7 +2,7 @@
 // конкретного контекста — им пользуются и live-планировщик, и
 // оффлайн-рендер WAV (это же — точка сверки с Rust-движком по golden WAV).
 
-import type { Note, Track } from '../types';
+import type { Note, Track, WavePartial } from '../types';
 import { scaleOf } from '../types';
 import type { TrackChain } from './fx';
 
@@ -12,6 +12,9 @@ export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math
 export function liveNotes(step: import('../types').Step): Note[] {
   return step.notes.filter((nt) => Math.random() < nt.prob);
 }
+
+/** Октава арпеджиатора: множитель частоты 2^oct поверх строки стана. */
+const octMulOf = (nt: Note) => 2 ** (nt.oct ?? 0);
 
 /** Нормализация сэмплов к одинаковой громкости: ИИ и библиотечные файлы
  *  приходят с разным уровнем (обычно с большим запасом). Цель — RMS ≈ -16 dBFS
@@ -182,6 +185,8 @@ function scheduleGrainCloud(
   peak: number,
   sources: (AudioScheduledSourceNode | AudioWorkletNode)[],
   baseLenSec: number,
+  regStart: number,
+  regEnd: number,
 ): number {
   // Гейт в облаке общий: облако тянется по самой длинной ноте шага.
   const gMax = Math.max(1, ...notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4)));
@@ -216,11 +221,11 @@ function scheduleGrainCloud(
     // паразитный тон на частоте 1/шага.
     const at = Math.max(time, t0 + (Math.random() - 0.5) * stepT * 0.4);
     for (const nt of notes) {
-      const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
+      const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
       const center = clampNum(pos + (Math.random() * 2 - 1) * scatter * 0.5, 0, 1);
-      // Окно должно поместиться в буфер с учётом скорости воспроизведения.
-      const room = Math.max(0, sample.duration - sizeSec * ratio - 0.001);
-      const offset = center * room;
+      // Окно должно поместиться в обрезанный кусок с учётом скорости.
+      const room = Math.max(0, regEnd - regStart - sizeSec * ratio - 0.001);
+      const offset = regStart + center * room;
       const src = ctx.createBufferSource();
       src.buffer = sample;
       if (track.pitchDrop > 1 && track.pitchTime > 0) {
@@ -268,8 +273,15 @@ export function triggerVoice(
   const rows = scaleOf(track);
   const freqs = notes.map((nt) => {
     const idx = Math.min(Math.max(Math.round(nt.n), 0), rows.length - 1);
-    return track.freq * (rows[idx] ?? 1);
+    return track.freq * (rows[idx] ?? 1) * octMulOf(nt);
   });
+  // Обрезка сэмпла: играет кусок [sampleStart, sampleEnd] (клампы по буферу).
+  const regStart = sample
+    ? Math.max(0, Math.min(clampNum(track.sampleStart ?? 0, 0, sample.duration), sample.duration - 0.001))
+    : 0;
+  const regEnd = sample
+    ? Math.max(regStart + 0.001, clampNum(track.sampleEnd ?? (sample?.duration ?? 1), 0.001, sample.duration))
+    : 1;
   // Аккорд делим поровну между нотами — вертикаль не громче одиночной ноты
   // (главный источник клиппинга), и держим запас под мастер-лимитер.
   // Готовый сэмпл уже мастерен — ему запас осцилляторов не нужен.
@@ -308,7 +320,7 @@ export function triggerVoice(
     if (!sample) return { amp, sources, stopAt: time };
     const baseLenG =
       track.noteSteps && track.noteSteps > 0 ? track.noteSteps * stepSec : track.attack + track.decay;
-    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, baseLenG);
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, baseLenG, regStart, regEnd);
     return { amp, sources, stopAt: lastEnd };
   }
 
@@ -373,14 +385,17 @@ export function triggerVoice(
     const node = makeScratchNode(ctx, sample);
     const pos = node.parameters.get('position')!;
     const off = node.parameters.get('off')!;
+    // Игла ходит по обрезанному куску: позиция 0..1 сэмпла → [регион].
+    const mapPos = (p: number) =>
+      clampNum(p, 0, 1) * ((regEnd - regStart) / sample.duration) + regStart / sample.duration;
     const points = (track.scratchPoints ?? []).slice().sort((a, b) => a.t - b.t);
     if (points.length === 0) {
-      pos.setValueAtTime(0, time);
-      pos.linearRampToValueAtTime(1, time + voiceLen);
+      pos.setValueAtTime(mapPos(0), time);
+      pos.linearRampToValueAtTime(mapPos(1), time + voiceLen);
     } else {
-      pos.setValueAtTime(points[0].pos, time);
+      pos.setValueAtTime(mapPos(points[0].pos), time);
       for (const pt of points) {
-        pos.linearRampToValueAtTime(pt.pos, time + Math.max(0, Math.min(1, pt.t)) * voiceLen);
+        pos.linearRampToValueAtTime(mapPos(pt.pos), time + Math.max(0, Math.min(1, pt.t)) * voiceLen);
       }
     }
     off.setValueAtTime(0, time);
@@ -403,7 +418,7 @@ export function triggerVoice(
     if (!sample) return finish();
     const max = rows.length - 1;
     notes.forEach((nt, ni) => {
-      const ratio = rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1;
+      const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
       const src = ctx.createBufferSource();
       src.buffer = sample;
       // Падение тона на сэмпле — рампой скорости воспроизведения:
@@ -417,9 +432,94 @@ export function triggerVoice(
       const vbS = vibBus(1 / 1200);
       if (vbS) vbS.connect(src.playbackRate);
       src.connect(noteDest(ni));
-      src.start(time);
+      // Играем обрезанный кусок: offset и длительность — в секундах буфера.
+      src.start(time, regStart, Math.max(0.001, regEnd - regStart));
       src.stop(stopAt);
       sources.push(src);
+    });
+    return finish();
+  }
+
+  if (track.waveform === 'wave') {
+    // Своя волна: целые синус-парциалы сливаются в один PeriodicWave
+    // (дёшево), остальные — отдельными осцилляторами/зернами шума.
+    const wave = track.wave;
+    if (!wave || wave.partials.length === 0) return finish();
+    const ints = new Map<number, number>();
+    const solo: WavePartial[] = [];
+    for (const p of wave.partials) {
+      if (p.type === 'sine' && Number.isInteger(p.ratio) && p.ratio >= 1) {
+        ints.set(p.ratio, Math.min(1, (ints.get(p.ratio) ?? 0) + p.amp));
+      } else {
+        solo.push(p);
+      }
+    }
+    let pw: PeriodicWave | null = null;
+    if (ints.size > 0) {
+      const top = Math.max(...ints.keys());
+      const amps = Array.from({ length: top }, (_, i) => ints.get(i + 1) ?? 0);
+      pw = harmonicWave(ctx, amps);
+    }
+    // Сольные парциалы не должны в сумме переесть запас осцилляторов.
+    const soloSum = solo.reduce((s, p) => s + p.amp, 0);
+    const soloScale = soloSum > 1 ? 1 / soloSum : 1;
+    const grainSec = clampNum((wave.noiseGrainMs ?? 40) / 1000, 0.005, 0.5);
+    const drop = track.pitchDrop > 1 && track.pitchTime > 0;
+    freqs.forEach((f, fi) => {
+      if (pw) {
+        const osc = ctx.createOscillator();
+        osc.setPeriodicWave(pw);
+        if (drop) {
+          osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+          osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+        } else {
+          osc.frequency.setValueAtTime(f, time);
+        }
+        const vb = vibBus(1);
+        if (vb) vb.connect(osc.detune);
+        osc.connect(noteDest(fi));
+        osc.start(time);
+        osc.stop(stopAt);
+        sources.push(osc);
+      }
+      for (const p of solo) {
+        if (p.type === 'noise') {
+          // Зерно шума: зацикленное окно живого шумового буфера —
+          // размер окна задаёт характер крупы.
+          const src = ctx.createBufferSource();
+          src.buffer = noise;
+          src.loop = true;
+          const from = Math.random() * 1.5;
+          src.loopStart = from;
+          src.loopEnd = Math.min(from + grainSec, 1.99);
+          const g = ctx.createGain();
+          g.gain.value = p.amp * soloScale;
+          src.connect(g);
+          g.connect(noteDest(fi));
+          src.start(time, from);
+          src.stop(stopAt);
+          sources.push(src);
+          continue;
+        }
+        const osc = ctx.createOscillator();
+        osc.type = p.type === 'saw' ? 'sawtooth' : 'square';
+        const pf = f * p.ratio;
+        if (drop) {
+          osc.frequency.setValueAtTime(pf * track.pitchDrop, time);
+          osc.frequency.exponentialRampToValueAtTime(pf, time + track.pitchTime);
+        } else {
+          osc.frequency.setValueAtTime(pf, time);
+        }
+        const vb = vibBus(1);
+        if (vb) vb.connect(osc.detune);
+        const g = ctx.createGain();
+        g.gain.value = p.amp * soloScale;
+        osc.connect(g);
+        g.connect(noteDest(fi));
+        osc.start(time);
+        osc.stop(stopAt);
+        sources.push(osc);
+      }
     });
     return finish();
   }

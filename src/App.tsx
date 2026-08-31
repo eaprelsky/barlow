@@ -22,18 +22,26 @@ import type { Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { LevelBar } from './components/LevelBar';
 import { NumField } from './components/NumField';
+import { SliderField } from './components/SliderField';
 import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
 import { PROVIDERS } from './ai/providers';
-import { putSample } from './audio/library';
+import { putSample, getSampleBlob } from './audio/library';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
-import { invoke } from '@tauri-apps/api/core';
 import { slugify } from './utils/slug';
 import { Library } from './components/Library';
-import { AudioPanel } from './components/AudioPanel';
-import { RustAudioBackend } from './audio/native';
+import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
+import type { GuideRun } from './onboarding/Onboarding';
+import {
+  guideById,
+  markGuideSeen,
+  markInvited,
+  needsInvite,
+  onboardingUntouched,
+  registerGuideStarter,
+} from './onboarding/guides';
 
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
@@ -42,6 +50,14 @@ const WAV_BARS = 8;
 /** Стем имён файлов экспорта: название пьесы (транслит) или 'barlow'. */
 const exportStem = (patch: Patch): string =>
   patch.title ? slugify(patch.title) : 'barlow';
+
+/** Подпись панорамы: L/R с отклонением или центр. */
+const panText = (pan: number) =>
+  pan < 0.49
+    ? `L${Math.round((0.5 - pan) * 200)}`
+    : pan > 0.51
+      ? `R${Math.round((pan - 0.5) * 200)}`
+      : 'центр';
 
 interface AiSettings {
   providerId: string;
@@ -181,11 +197,58 @@ export default function App() {
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
   const [showAi, setShowAi] = useState(false);
   const [showLib, setShowLib] = useState(false);
-  const [showAudio, setShowAudio] = useState(false);
   const [showMix, setShowMix] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  // Онбординг: меню гидов у «?» и текущий гид (id + шаг + зона-скоуп).
+  const [showHelpMenu, setShowHelpMenu] = useState(false);
+  const [obRun, setObRun] = useState<GuideRun | null>(null);
+  const [helpInvite, setHelpInvite] = useState(needsInvite);
+  const obRef = useRef<GuideRun | null>(null);
+  obRef.current = obRun;
 
-  // «?» — шпаргалка; Esc — закрыть. Проверки по e.key — символы,
+  const startGuide = useCallback((guideId: string, opts?: { scope?: string; step?: number }) => {
+    markInvited(); // любой запуск гасит пульс-приглашение на «?»
+    setShowHelpMenu(false);
+    setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope });
+  }, []);
+  useEffect(() => registerGuideStarter(startGuide), [startGuide]);
+
+  // Первый заход в жизни — вводный гид «собери бит» стартует сам.
+  useEffect(() => {
+    if (!onboardingUntouched()) return;
+    const t = window.setTimeout(() => startGuide('main'), 700);
+    return () => window.clearTimeout(t);
+  }, [startGuide]);
+
+  // Любой выход из гида (✕, Esc, клик мимо, «готово») — он отмечен пройденным.
+  const stopGuide = useCallback(() => {
+    const r = obRef.current;
+    if (r) markGuideSeen(r.guideId);
+    setObRun(null);
+  }, []);
+
+  const stepGuide = useCallback((delta: number) => {
+    setObRun((r) => {
+      if (!r) return r;
+      const n = guideById(r.guideId)?.steps.length ?? 0;
+      return { ...r, step: Math.max(0, Math.min(n - 1, r.step + delta)) };
+    });
+  }, []);
+
+  // Гид пошёл — пульс-приглашение на «?» больше не нужен.
+  useEffect(() => {
+    if (obRun) setHelpInvite(false);
+  }, [obRun]);
+
+  // Шаг гида может попросить раскрыть панель шапки (микшер, цепочка, ИИ).
+  const openGuidePanel = useCallback((what: string) => {
+    if (what === 'mix') setShowMix(true);
+    else if (what === 'chain') setShowChain(true);
+    else if (what === 'ai') setShowAi(true);
+    else if (what === 'lib') setShowLib(true);
+  }, []);
+
+  // «?» — меню гидов; Esc — закрыть. Проверки по e.key — символы,
   // не зависящие от раскладки (?, Esc).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -196,7 +259,7 @@ export default function App() {
         setShowHelp(false);
       } else if (e.key === '?' && !typing) {
         e.preventDefault();
-        setShowHelp((v) => !v);
+        setShowHelpMenu((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -204,52 +267,37 @@ export default function App() {
   }, [showHelp]);
   const [fileOpen, setFileOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
+  // Редактор волны: id дорожки в раздвижном режиме (остальные съёживаются).
+  const [waveEditorTrack, setWaveEditorTrack] = useState<string | null>(null);
+  // Прицел переноса сцены: подсветка вставки до/после кнопки.
+  const [sceneDrop, setSceneDrop] = useState<{ id: string; side: 'before' | 'after' } | null>(null);
+  const toggleWaveEditor = useCallback((id: string) => {
+    setWaveEditorTrack((cur) => (cur === id ? null : id));
+  }, []);
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioBackend | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // Нативный движок (десктоп): выбирается в панели вывода. Переключение
-  // пересоздаёт бэкенд — транспорт и патч переносятся.
-  const [nativeAudio, setNativeAudio] = useState(
-    () => isDesktop && localStorage.getItem('barlow.nativeAudio') === '1',
+  // Движок один — Web Audio (нативный Rust-вывод отложен: звук не сходился
+  // с эталоном). Конструктор дешёвый: AudioContext создаётся лениво.
+  if (!engineRef.current) engineRef.current = new AudioEngine();
+  const engine: AudioBackend = engineRef.current;
+  const getSampleBuffer = useCallback(
+    (id?: string) => engine.getSampleBuffer(id),
+    [engine],
   );
+  const previewSampleRegion = useCallback(
+    (t: Track, fromSec: number, toSec: number) => engine.previewSampleRegion(t, fromSec, toSec),
+    [engine],
+  );
+  const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const swap = async () => {
-      const wasPlaying = engineRef.current?.playing ?? false;
-      engineRef.current?.stop();
-      if (engineRef.current instanceof RustAudioBackend) {
-        engineRef.current.dispose();
-      }
-      if (nativeAudio) {
-        const native = new RustAudioBackend();
-        try {
-          await native.init();
-        } catch {
-          /* вывод не поднят — бэкенд молчит, панель вывода объяснит */
-        }
-        if (cancelled) {
-          native.dispose();
-          return;
-        }
-        engineRef.current = native;
-      } else {
-        engineRef.current = new AudioEngine();
-      }
-      const eng = engineRef.current;
-      eng.setPatch(patch);
-      if (wasPlaying) eng.play(patch, sceneId);
-      setFrame((f) => f + 1);
-    };
-    void swap();
-    localStorage.setItem('barlow.nativeAudio', nativeAudio ? '1' : '0');
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nativeAudio]);
-
-  const engine: AudioBackend = engineRef.current ?? new AudioEngine();
+  // Режим редактора гаснет сам, когда его дорожка исчезла (очистить всё,
+  // удаление, undo, импорт): стухший id иначе держал бы все новые треки
+  // насильно свёрнутыми, а кнопка разворота на них не действовала бы.
+  const waveEditorActive =
+    waveEditorTrack && patch.tracks.some((t) => t.id === waveEditorTrack)
+      ? waveEditorTrack
+      : null;
 
   // Движок всегда видит актуальный патч — редактирование без остановки.
   useEffect(() => {
@@ -298,33 +346,8 @@ export default function App() {
       return;
     }
     void engine.ensureSamples(patch).then(() => {
-      const started = engine.play(patch, sceneId);
+      engine.play(patch, sceneId);
       setPlaying(true);
-      // Нативный запуск сообщает о неполадках — показываем, а не молчим.
-      // Web-движок вернёт undefined: ветка молчит.
-      {
-        void Promise.resolve(started as void | number | Promise<number>)
-          .then(async (sampleTracks) => {
-            if ((sampleTracks ?? 0) > 0) {
-              // Фоновая загрузка сэмплов успевает за полторы секунды
-              await new Promise((r) => setTimeout(r, 1500));
-              const loaded = await invoke<number>('audio_sample_count').catch(() => -1);
-              if (loaded === 0) {
-                await alertDialog(
-                  'Сэмплер-треки в патче есть, но ни один файл библиотеки не загрузился в нативный движок (поддерживаются WAV и MP3). Проверьте папку библиотеки в панели сэмплов.',
-                  'сэмплы не загрузились',
-                );
-              }
-            }
-          })
-          .catch(async (e) => {
-            setPlaying(false);
-            await alertDialog(
-              `Нативный вывод не поднялся: ${String(e)}`,
-              'воспроизведение',
-            );
-          });
-      }
     });
   }, [engine, patch, sceneId]);
 
@@ -421,6 +444,12 @@ export default function App() {
     setPatch((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
   }, []);
 
+  /** Структурная правка трека (октавы стана, смена шкалы — переиндексируют
+   *  ноты): всегда отдельный шаг истории, как команды нот. */
+  const changeTrackCommand = useCallback((id: string, t: Track) => {
+    setPatchStep((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
+  }, [setPatchStep]);
+
   const clearAll = useCallback(() => {
     if (engine.playing) {
       engine.stop();
@@ -443,6 +472,19 @@ export default function App() {
       return { ...p, tracks: [...rest.slice(0, to), moved, ...rest.slice(to)] };
     });
   }, [setPatch]);
+
+  /** Переставить сцену: порядок кнопок = порядок массива scenes. */
+  const reorderScenes = useCallback((fromId: string, toId: string, place: 'before' | 'after') => {
+    setPatchStep((p) => {
+      const moved = p.scenes.find((s) => s.id === fromId);
+      if (!moved || fromId === toId) return p;
+      const rest = p.scenes.filter((s) => s.id !== fromId);
+      let to = rest.findIndex((s) => s.id === toId);
+      if (to < 0) return p;
+      if (place === 'after') to++;
+      return { ...p, scenes: [...rest.slice(0, to), moved, ...rest.slice(to)] };
+    });
+  }, [setPatchStep]);
 
   /** Дубль трека: тот же звук, эскизы и рисунок — база для подложек и вариаций. */
   const duplicateTrack = useCallback((id: string) => {
@@ -591,6 +633,8 @@ export default function App() {
         copy.volume = src.volume;
         copy.pan = src.pan;
         copy.mods = src.mods?.map((m) => ({ ...m }));
+        copy.fadeIn = src.fadeIn;
+        copy.fadeOut = src.fadeOut;
         return {
           ...p,
           tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns: [...t.patterns, copy] } : t)),
@@ -727,13 +771,71 @@ export default function App() {
     [ai],
   );
 
+  /** ИИ-преобразование сэмпла в слоте по описанию (audio-to-audio).
+   *  Провайдер без a2a честно отказывается — нужен fal.ai (роадмап). */
+  const transformSample = useCallback(
+    async (trackId: string, prompt: string, strength: number) => {
+      const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
+      if (!ai.apiKey) {
+        void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-преобразование');
+        return;
+      }
+      if (!provider.transform || !provider.supportsTransform) {
+        void alertDialog(
+          `«${provider.title}» не умеет audio-to-audio — только текст→звук. Преобразование сэмпла появится с провайдером fal.ai (в роадмапе)`,
+          'ИИ-преобразование',
+        );
+        return;
+      }
+      const track = patch.tracks.find((t) => t.id === trackId);
+      const blob = track?.sampleId ? await getSampleBlob(track.sampleId) : null;
+      if (!blob) return;
+      setGenBusy((b) => ({ ...b, [trackId]: true }));
+      try {
+        const out = await provider.transform({ apiKey: ai.apiKey, prompt, audio: blob, strength });
+        const meta = await putSample(out, prompt.slice(0, 40));
+        setPatch((p) => ({
+          ...p,
+          tracks: p.tracks.map((t) =>
+            t.id === trackId ? { ...t, sampleId: meta.id, sampleName: meta.name } : t,
+          ),
+        }));
+      } catch (e) {
+        void alertDialog(
+          `Преобразование не удалось: ${e instanceof Error ? e.message : String(e)}`,
+          'ИИ-преобразование',
+        );
+      } finally {
+        setGenBusy((b) => ({ ...b, [trackId]: false }));
+      }
+    },
+    [ai, patch.tracks],
+  );
+
+  /** Свернуть/развернуть дорожку. Пока открыт редактор волны, чужие дорожки
+   *  форс-свёрнуты — клик по ним пробивает режим: закрывает редактор и
+   *  разворачивает дорожку. Иначе любой «залипший» режим блокировал бы
+   *  разворот (клик крутил бы ui.collapsed, который игнорируется). */
   const toggleCollapse = useCallback((id: string) => {
+    if (waveEditorActive && waveEditorActive !== id) {
+      setWaveEditorTrack(null);
+      setUi((u) => {
+        const next = { collapsed: { ...u.collapsed, [id]: false } };
+        localStorage.setItem(UI_KEY, JSON.stringify(next));
+        return next;
+      });
+      return;
+    }
+    if (waveEditorActive && waveEditorActive === id) {
+      setWaveEditorTrack(null); // «свернуть» карточку с редактором = закрыть редактор
+      return;
+    }
     setUi((u) => {
       const next = { collapsed: { ...u.collapsed, [id]: !u.collapsed[id] } };
       localStorage.setItem(UI_KEY, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [waveEditorActive]);
 
   // ---- Файлы ----
 
@@ -820,12 +922,13 @@ export default function App() {
         <span className="logo">barlow</span>
         <button
           className={playing ? 'play-btn stop' : 'play-btn'}
+          data-ob="play"
           onClick={togglePlay}
           title={playing ? 'Стоп (пробел тоже работает — в будущих версиях)' : 'Играть'}
         >
           {playing ? '■' : '▶'}
         </button>
-        <label title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
+        <label data-ob="bpm" title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
           темп
           <NumField
             value={patch.bpm} min={30} max={300}
@@ -836,52 +939,33 @@ export default function App() {
             }}
           />
         </label>
-        <label
+        <SliderField
           className="master-vol"
-          title="Общая громкость. Выше 100% — лимитер мягко пережимает пики: звук плотнее и жирнее, без треска"
-        >
-          общая громкость
-          <input
-            type="range" min={0} max={2} step={0.05} value={patch.masterVolume}
-            onChange={(e) => setPatch((p) => ({ ...p, masterVolume: Number(e.target.value) }))}
-          />
-          {Math.round(patch.masterVolume * 100)}%
-        </label>
-        <label
+          variant="label"
+          label="общая громкость"
+          title="Общая громкость. Выше 100% — лимитер мягко пережимает пики: звук плотнее и жирнее, без треска. Двойной клик по подписи — точное число"
+          value={Math.round(patch.masterVolume * 100)}
+          min={0} max={200} step={5}
+          display={`${Math.round(patch.masterVolume * 100)}%`}
+          unit="%"
+          onChange={(v) => setPatch((p) => ({ ...p, masterVolume: v / 100 }))}
+        />
+        <SliderField
           className="master-vol"
-          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля"
-        >
-          пан
-          <input
-            type="range" min={0} max={1} step={0.05} value={patch.masterPan ?? 0.5}
-            onChange={(e) => setPatch((pp) => ({ ...pp, masterPan: Number(e.target.value) }))}
-          />
-          {(patch.masterPan ?? 0.5) < 0.49
-            ? `L${Math.round((0.5 - (patch.masterPan ?? 0.5)) * 200)}`
-            : (patch.masterPan ?? 0.5) > 0.51
-              ? `R${Math.round(((patch.masterPan ?? 0.5) - 0.5) * 200)}`
-              : 'центр'}
-        </label>
+          variant="label"
+          label="пан"
+          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
+          value={Math.round((patch.masterPan ?? 0.5) * 100)}
+          min={0} max={100} step={5}
+          display={panText(patch.masterPan ?? 0.5)}
+          onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
+        />
         {/* Правый угол первой строки — настройки и справка; частые
             действия уедут на вторую строку за переносом */}
         <span className="spacer" />
-        {isDesktop && (
-          <button
-            className={showAudio ? 'on hdr-icon' : 'hdr-icon'}
-            onClick={() => setShowAudio((v) => !v)}
-            title="Звуковой вывод: устройство, exclusive-режим, тест-тон (нативный движок)"
-            aria-label="звуковой вывод"
-          >
-            <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-              {/* динамик с дугами */}
-              <path d="M2 5.5v4h2.5L8 12V3L4.5 5.5H2z" fill="currentColor" />
-              <path d="M10 5c1 .8 1 4.2 0 5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <path d="M12 3.5c1.8 1.6 1.8 6.4 0 8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
         <button
           className={showAi ? 'on hdr-icon' : 'hdr-icon'}
+          data-ob="ai-btn"
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
           title="Настройки: ключ ИИ-генерации"
           aria-label="настройки"
@@ -894,18 +978,33 @@ export default function App() {
             <circle cx="7.5" cy="7.5" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
           </svg>
         </button>
-        <button
-          className={showHelp ? 'on help-btn' : 'help-btn'}
-          onClick={() => setShowHelp(true)}
-          title="Шпаргалка жестов и словарь терминов"
-        >
-          ?
-        </button>
+        {/* «?» — меню интерактивных гидов + шпаргалка. Пока гиды ни разу
+            не открывались — кнопка пульсирует, приглашая. */}
+        <span className="menu">
+          <button
+            className={(showHelpMenu ? 'on ' : '') + (helpInvite ? 'help-btn pulse' : 'help-btn')}
+            onClick={() => setShowHelpMenu((v) => !v)}
+            title="Гиды по задачам и шпаргалка"
+            data-ob="help"
+          >
+            ?
+          </button>
+          {showHelpMenu && (
+            <HelpMenu
+              onClose={() => {
+                setShowHelpMenu(false);
+                setHelpInvite(needsInvite());
+              }}
+              onCheatSheet={() => setShowHelp(true)}
+            />
+          )}
+        </span>
         {/* Перенос строки: название пьесы и всё после него — вторым рядом.
             Правый верхний угол остаётся за частыми действиями. */}
         <span className="hdr-break" />
         <input
           className="title-input"
+          data-ob="title"
           value={patch.title ?? ''}
           placeholder="название пьесы"
           title="Название пьесы: попадает в имена файлов экспорта (транслитом)"
@@ -921,6 +1020,7 @@ export default function App() {
         </span>
         <span className="spacer" />
         <button
+          data-ob="add-track"
           onClick={() => setShowInstruments(true)}
           title="Браузер инструментов: выбрать тембр и добавить дорожку"
         >
@@ -939,7 +1039,7 @@ export default function App() {
           title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
         >↷</button>
         <div className="menu">
-          <button onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">файл ▾</button>
+          <button data-ob="file-menu" onClick={() => setFileOpen((v) => !v)} title="Файлы: запись, экспорт, импорт">файл ▾</button>
           {fileOpen && (
             <div className="menu-list">
               <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering}>
@@ -972,6 +1072,7 @@ export default function App() {
         </div>
         <button
           className={showLib ? 'on' : ''}
+          data-ob="library-btn"
           onClick={() => { setShowLib((v) => !v); if (showAi) setShowAi(false); }}
           title="Библиотека сэмплов: прослушать, скачать, удалить"
         >
@@ -979,6 +1080,7 @@ export default function App() {
         </button>
         <button
           className={showMix ? 'on' : ''}
+          data-ob="mixer-btn"
           onClick={() => setShowMix((v) => !v)}
           title="Микшер-рэк: громкости дорожек и глобальные выключатели — не зависят от сцен и эскизов"
         >
@@ -986,6 +1088,7 @@ export default function App() {
         </button>
         <button
           className={showChain ? 'on' : ''}
+          data-ob="chain-btn"
           onClick={() => setShowChain((v) => !v)}
           title="Цепочка: порядок сцен и их длины — арранжмент от начала до конца"
         >
@@ -1008,9 +1111,9 @@ export default function App() {
       />
 
       {showMix && (
-        <div className="mix-panel">
+        <div className="mix-panel" data-ob="mix-panel">
           <div className="mix-rack">
-            <div className="mix-block master">
+            <div className="mix-block master" data-ob="mix-master">
               <div className="mix-main">
                 <span className="mix-name">мастер</span>
                 <label className="mix-ctl" title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает. Играет, пока играет транспорт">
@@ -1027,67 +1130,62 @@ export default function App() {
                   </select>
                 </label>
                 {(patch.masterNoise ?? 'off') !== 'off' && (
-                  <label className="mix-ctl" title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка">
-                    <span className="mc-cap">
-                      уровень
-                      <i>{(Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10).toFixed(1)}%</i>
-                    </span>
-                    <input
-                      type="range" min={0} max={15} step={0.1}
-                      value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
-                      onChange={(e) => setPatch((pp) => ({ ...pp, masterNoiseLevel: Number(e.target.value) / 100 }))}
-                    />
-                  </label>
-                )}
-                <label className="mix-ctl" title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется)">
-                  <span className="mc-cap">
-                    компрессия
-                    <i>{Math.round((patch.masterComp ?? 0) * 100)}%</i>
-                  </span>
-                  <input
-                    type="range" min={0} max={100} step={5}
-                    value={Math.round((patch.masterComp ?? 0) * 100)}
-                    onChange={(e) => setPatch((pp) => ({ ...pp, masterComp: Number(e.target.value) / 100 }))}
+                  <SliderField
+                    variant="mix"
+                    label="уровень"
+                    title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка. Двойной клик по подписи — точное число"
+                    value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
+                    min={0} max={15} step={0.1}
+                    display={`${(Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10).toFixed(1)}%`}
+                    unit="%"
+                    onChange={(v) => setPatch((pp) => ({ ...pp, masterNoiseLevel: v / 100 }))}
                   />
-                </label>
+                )}
+                <SliderField
+                  variant="mix"
+                  label="компрессия"
+                  title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Двойной клик по подписи — точное число"
+                  value={Math.round((patch.masterComp ?? 0) * 100)}
+                  min={0} max={100} step={5}
+                  display={`${Math.round((patch.masterComp ?? 0) * 100)}%`}
+                  unit="%"
+                  onChange={(v) => setPatch((pp) => ({ ...pp, masterComp: v / 100 }))}
+                />
               </div>
             </div>
-            {patch.tracks.map((t) => (
-              <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')}>
+            {patch.tracks.map((t, ti) => (
+              <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')} data-ob={ti === 0 ? 'mix-track' : undefined}>
                 <div className="mix-main">
                   <span className="mix-name" title={t.name}>{t.name}</span>
-                  <label className="mix-ctl" title="Громкость дорожки — та же ручка, что в карточке трека">
-                    <span className="mc-cap">громкость<i>{Math.round(t.volume * 100)}%</i></span>
-                    <input
-                      type="range" min={0} max={1} step={0.05} value={t.volume}
-                      onChange={(e) =>
-                        setPatch((p) => ({
-                          ...p,
-                          tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: Number(e.target.value) } : x)),
-                        }))
-                      }
-                    />
-                  </label>
-                  <label
-                    className="mix-ctl"
-                    title={`Панорама дорожки — ${t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}`}
-                  >
-                    <span className="mc-cap">
-                      пан
-                      <i>
-                        {t.pan < 0.49 ? `L${Math.round((0.5 - t.pan) * 200)}` : t.pan > 0.51 ? `R${Math.round((t.pan - 0.5) * 200)}` : 'центр'}
-                      </i>
-                    </span>
-                    <input
-                      type="range" min={0} max={1} step={0.05} value={t.pan}
-                      onChange={(e) =>
-                        setPatch((p) => ({
-                          ...p,
-                          tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: Number(e.target.value) } : x)),
-                        }))
-                      }
-                    />
-                  </label>
+                  <SliderField
+                    variant="mix"
+                    label="громкость"
+                    title="Громкость дорожки — та же ручка, что в карточке трека. Двойной клик по подписи — точное число"
+                    value={Math.round(t.volume * 100)}
+                    min={0} max={100} step={5}
+                    display={`${Math.round(t.volume * 100)}%`}
+                    unit="%"
+                    onChange={(v) =>
+                      setPatch((p) => ({
+                        ...p,
+                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, volume: v / 100 } : x)),
+                      }))
+                    }
+                  />
+                  <SliderField
+                    variant="mix"
+                    label="пан"
+                    title={`Панорама дорожки — ${panText(t.pan)}. Двойной клик — точное число (0 — лево, 50 — центр, 100 — право)`}
+                    value={Math.round(t.pan * 100)}
+                    min={0} max={100} step={5}
+                    display={panText(t.pan)}
+                    onChange={(v) =>
+                      setPatch((p) => ({
+                        ...p,
+                        tracks: p.tracks.map((x) => (x.id === t.id ? { ...x, pan: v / 100 } : x)),
+                      }))
+                    }
+                  />
                   <button
                     className={t.enabled === false ? '' : 'on'}
                     title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
@@ -1108,12 +1206,13 @@ export default function App() {
             ))}
             {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
           </div>
+          <HelpHint guide="mix" label="Гид: свести микс" />
         </div>
       )}
 
       {showAi && (
-        <div className="ai-panel">
-          <label title="Ключ хранится только в этом браузере (localStorage). Взять: elevenlabs.io → Profile → API Keys. Сэмпл-трек → «сгенерировать по описанию»">
+        <div className="ai-panel" data-ob="ai-panel">
+          <label data-ob="ai-key" title="Ключ хранится только в этом браузере (localStorage). Взять: elevenlabs.io → Profile → API Keys. Сэмпл-трек → «сгенерировать по описанию»">
             ключ API к ElevenLabs
             <input
               type="password" className="ai-key-input"
@@ -1122,29 +1221,63 @@ export default function App() {
               onChange={(e) => saveAi({ apiKey: e.target.value })}
             />
           </label>
+          <HelpHint guide="ai" label="Гид: включить ИИ-генерацию" />
         </div>
       )}
-      <div className="scenes">
+      <div className="scenes" data-ob="scenes">
         <span className="scenes-label">сцены</span>
         {patch.scenes.map((s) => (
           <button
             key={s.id}
-            className={s.id === sceneId ? 'scene-btn on' : 'scene-btn'}
-            title={playing && engine.currentSceneId === s.id ? 'звучит сейчас' : 'Клик — играть эту сцену (квант к такту). Правый клик — удалить'}
+            className={`scene-btn${s.id === sceneId ? ' on' : ''}${
+              sceneDrop?.id === s.id ? ` drop-${sceneDrop.side}` : ''
+            }`}
+            title={
+              (playing && engine.currentSceneId === s.id ? 'звучит сейчас · ' : '') +
+              'Клик — играть эту сцену (квант к такту). Правый клик — удалить. Перетащи — поменять порядок'
+            }
             onClick={() => selectScene(s.id)}
             onContextMenu={(e) => {
               e.preventDefault();
               removeScene(s.id);
+            }}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', `scene:${s.id}`);
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes('text/plain')) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              const r = e.currentTarget.getBoundingClientRect();
+              setSceneDrop({ id: s.id, side: e.clientX < r.left + r.width / 2 ? 'before' : 'after' });
+            }}
+            onDragLeave={() => setSceneDrop((d) => (d?.id === s.id ? null : d))}
+            onDrop={(e) => {
+              e.preventDefault();
+              const raw = e.dataTransfer.getData('text/plain');
+              const side =
+                sceneDrop?.id === s.id
+                  ? sceneDrop.side
+                  : (() => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      return e.clientX < r.left + r.width / 2 ? 'before' : 'after';
+                    })();
+              setSceneDrop(null);
+              if (!raw.startsWith('scene:')) return;
+              reorderScenes(raw.slice(6), s.id, side);
             }}
           >
             {s.name}
             {playing && engine.currentSceneId === s.id ? ' ●' : ''}
           </button>
         ))}
-        <button className="scene-btn add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
+        <button className="scene-btn add" data-ob="scene-add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
         <span className="spacer" />
         <span
           className="seg"
+          data-ob="follow-chain"
           title="Режим игры: «сцена» — текущая держится, пока не выберешь другую; «цепочка» — сцены идут по порядку из панели «цепочка»"
         >
           <button className={!patch.followChain ? 'on' : ''} onClick={() => setFollowChain(false)}>
@@ -1155,7 +1288,7 @@ export default function App() {
           </button>
         </span>
         {currentScene && (
-          <span className="scene-edit" title="Переименуй или удали текущую сцену">
+          <span className="scene-edit" data-ob="scene-edit" title="Переименуй или удали текущую сцену">
             <span className="mini-info">название сцены</span>
             <input
               className="scene-name-input"
@@ -1179,11 +1312,12 @@ export default function App() {
             </button>
           </span>
         )}
+        <HelpHint guide="arrangement" label="Гид: собрать пьесу из сцен" />
       </div>
       </div>
 
       {showChain && (
-        <div className="chain-panel">
+        <div className="chain-panel" data-ob="chain-panel">
           {patch.chain.map((it, i) => {
             const isPlaying =
               playing && patch.followChain && engine.currentChainPos === i;
@@ -1209,6 +1343,7 @@ export default function App() {
             );
           })}
           <button onClick={chainAdd}>+</button>
+          <HelpHint guide="arrangement" step={4} label="Гид: цепочка сцен" />
         </div>
       )}
 
@@ -1220,9 +1355,10 @@ export default function App() {
             pattern={patternInScene(t, currentScene)}
             bpm={patch.bpm}
             activeStep={activeOf(t)}
-            collapsed={!!ui.collapsed[t.id]}
+            collapsed={waveEditorActive ? waveEditorActive !== t.id : !!ui.collapsed[t.id]}
             onToggleCollapse={toggleCollapse}
             onChange={changeTrack}
+            onTrackCommand={changeTrackCommand}
             onPatternChange={changePattern}
             onPatternCommand={changePatternCommand}
             onSelectPattern={selectPattern}
@@ -1245,7 +1381,13 @@ export default function App() {
             patternSceneCounts={patternSceneCounts}
             allTracks={trackList}
             onGenerateSample={generateSample}
+            onTransformSample={transformSample}
             genBusy={!!genBusy[t.id]}
+            waveEditor={waveEditorActive === t.id}
+            onToggleWaveEditor={toggleWaveEditor}
+            onGetSampleBuffer={getSampleBuffer}
+            onPreviewSampleRegion={previewSampleRegion}
+            onPreviewNote={previewNote}
           />
         ))}
         {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
@@ -1298,14 +1440,6 @@ export default function App() {
         </div>
       )}
 
-      {showAudio && (
-        <AudioPanel
-          onClose={() => setShowAudio(false)}
-          native={nativeAudio}
-          onNativeChange={setNativeAudio}
-        />
-      )}
-
       {showInstruments && (
         <InstrumentBrowser
           title="добавить дорожку"
@@ -1318,6 +1452,9 @@ export default function App() {
       )}
 
       <DialogHost />
+      {obRun && (
+        <Onboarding run={obRun} onDone={stopGuide} onStep={stepGuide} onOpenPanel={openGuidePanel} />
+      )}
     </div>
   );
 }

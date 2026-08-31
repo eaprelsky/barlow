@@ -7,6 +7,7 @@ import type { Pattern, Track } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { presetName } from '../music/scales';
 import { NumField } from './NumField';
+import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
   track: Track;
@@ -38,7 +39,8 @@ export function RollTools({
   const [mutEdits, setMutEdits] = useState(3);
 
   return (
-    <div className="roll-tools">
+    <div className="roll-tools" data-ob="roll-tools">
+      <HelpHint guide="roll" scope={`[data-track-id="${track.id}"]`} label="Гид: нотный стан" />
       <label
         className="rt-scale"
         title={
@@ -50,24 +52,27 @@ export function RollTools({
         шкала
         <button
           className="scale-btn"
+          data-ob="scale-btn"
           title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
           onClick={onPickScale}
         >
           {presetName(track.scale)}
         </button>
+        <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label="Гид: шкалы и строи" />
       </label>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по
           кнопке оси применяет только её — время и тон компонуются. */}
       <button
         className={showFill ? 'on' : ''}
+        data-ob="fill-btn"
         title="Заполнение стана: время и тон по кнопкам, мутация с уровнем, очистка"
         onClick={() => setShowFill((v) => !v)}
       >
         заполнить
       </button>
       {showFill && (
-        <span className="fill-tools">
+        <span className="fill-tools" data-ob="fill-tools">
           <span className="rt-label" title="Сколько нот раскидает заполнение по времени">
             нот
           </span>
@@ -79,6 +84,7 @@ export function RollTools({
           <span className="fill-axis">
             <span className="rt-label" title="Клик сразу применяет ось времени">время</span>
             <button
+              data-ob="fill-even"
               title="Евклидово раскладывание N нот: максимально равномерно, 3 по 8 — тресильо"
               onClick={() => onFillAxis(track.id, 'time', 'even', pulses)}
             >
@@ -145,6 +151,7 @@ export function RollTools({
             />
             <button
               disabled={!mutTime && !mutPitch}
+              data-ob="fill-mutate"
               title="Случайные правки по включённым осям: слушай — мутируй — оставляй или снова мутируй"
               onClick={() => onMutate(track.id, { time: mutTime, pitch: mutPitch }, mutEdits)}
             >
@@ -153,6 +160,7 @@ export function RollTools({
           </span>
           <span className="rt-sep" />
           <button
+            data-ob="fill-clear"
             title="Очистить стан этого эскиза: убрать все ноты (undo вернёт)"
             onClick={() =>
               onPatternCommand(track.id, pattern.id, {
@@ -162,6 +170,11 @@ export function RollTools({
           >
             очистить
           </button>
+          <HelpHint
+            guide="generators"
+            scope={`[data-track-id="${track.id}"]`}
+            label="Гид: заполнить и мутировать"
+          />
         </span>
       )}
     </div>

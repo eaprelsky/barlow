@@ -34,6 +34,12 @@ export interface TrackChain {
   fx: FxNodes[];
   // Сигнатура набора модуляций и эффектов: изменилась — цепочка пересобирается.
   modSig: string;
+  // Переходная огибающая сцены: рампы входа/выхода на gain.gain.
+  // boundary — граница, к которой уходит эскиз; entryEnd — конец входа
+  // следующего. Пока план жив, scheduler не пере-применяет громкость.
+  fadePlan?: { boundary: number; nextSceneId: string; entryEnd: number } | null;
+  // До этого времени (audio clock) громкость под управлением плана.
+  fadeHold?: number;
 }
 
 export const modsSigOf = (mods: Mod[]) =>
