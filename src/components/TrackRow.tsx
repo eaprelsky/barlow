@@ -1054,29 +1054,32 @@ export const TrackRow = memo(function TrackRow({
             {patternChips}
           </div>
         </div>
-        {/* Переключатель сущности карточки: партия (эскиз) или общий звук
-            (трек). Заметный, отдельно от остальных ручек. */}
-        <div className="seg mode-seg" data-ob="mode">
-          <button
-            className={view === 'sketch' ? 'on' : ''}
-            data-ob="mode-sketch"
-            aria-label="эскиз"
-            title="Эскиз — партия: ноты и её ручки (длина, шаг, громкость/пан, вход/выход, модуляции)"
-            onClick={() => setView('sketch')}
-          >
-            эскиз
-          </button>
-          <button
-            className={view === 'track' ? 'on' : ''}
-            data-ob="mode-track"
-            aria-label="настройка трека"
-            title="Трек — общий звук: громкость и пан дорожки, длина ноты, фаза, инструмент, огибающая, тембр, эффекты"
-            onClick={() => setView('track')}
-          >
-            трек
-          </button>
+        {/* Правый хвост шапки: переключатель сущности карточки (партия
+            или общий звук) + «?». Прижат вправо, но не заезжает на
+            угловые кнопки «копировать/удалить» и выровнен с ними. */}
+        <div className="head-tail">
+          <div className="seg mode-seg" data-ob="mode">
+            <button
+              className={view === 'sketch' ? 'on' : ''}
+              data-ob="mode-sketch"
+              aria-label="эскиз"
+              title="Эскиз — партия: ноты и её ручки (длина, шаг, громкость/пан, вход/выход, модуляции)"
+              onClick={() => setView('sketch')}
+            >
+              эскиз
+            </button>
+            <button
+              className={view === 'track' ? 'on' : ''}
+              data-ob="mode-track"
+              aria-label="настройка трека"
+              title="Трек — общий звук: громкость и пан дорожки, длина ноты, фаза, инструмент, огибающая, тембр, эффекты"
+              onClick={() => setView('track')}
+            >
+              трек
+            </button>
+          </div>
+          <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
         </div>
-        <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
       </div>
 
       {waveEditor && (

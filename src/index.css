@@ -1266,13 +1266,7 @@ header button.on {
 }
 
 /* Переключатель сущности карточки: эскиз (партия) / трек (общий звук).
-   Уезжает вправо — отдельно от ручек, как вложенная вкладка. */
-.mode-seg {
-  margin-left: auto;
-  align-self: center;
-  flex: 0 0 auto;
-}
-
+   Живёт в правом хвосте шапки — отступ до угловых кнопок считает он. */
 .mode-seg button {
   font-size: 12px;
   padding: 4px 14px;
@@ -1281,6 +1275,18 @@ header button.on {
 .mode-seg button.on {
   color: var(--accent);
   background: rgba(255, 168, 60, 0.08);
+}
+
+/* Правый хвост шапки трека: переключатель «эскиз/трек» + «?».
+   Прижат вправо и поднята к первой строке, но отступом справа не
+   заезжает на угловые кнопки «копировать/удалить» (12..65px от края). */
+.head-tail {
+  margin-left: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 60px;
 }
 
 /* Раздел модуляций внутри эскиза: свёрнут — одна строка-оглавление */
