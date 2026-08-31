@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Track, WaveDef, WavePartial } from '../types';
+import type { Instrument, WaveDef, WavePartial } from '../types';
 import { PARTIAL_TYPE_LABELS } from '../types';
 import { NumField } from './NumField';
 import { WaveCanvas } from './WaveCanvas';
@@ -13,12 +13,14 @@ import { cycleToPartials, renderWaveCycle, sampleToPartials } from '../music/fft
 // (рисуешь форму — FFT превращает её в гармоники).
 
 interface Props {
-  track: Track;
-  onChange: (patch: Partial<Track>) => void;
+  /** id дорожки (не инструмента): генерация и цели привязаны к дорожке. */
+  trackId: string;
+  inst: Instrument;
+  onChangeInst: (patch: Partial<Instrument>) => void;
   onClose: () => void;
   getBuffer: (id?: string) => Promise<AudioBuffer | null>;
-  onPreviewRegion: (track: Track, fromSec: number, toSec: number) => void;
-  onPreviewNote: (track: Track) => void;
+  onPreviewRegion: (inst: Instrument, fromSec: number, toSec: number) => void;
+  onPreviewNote: (inst: Instrument) => void;
   onTransformSample: (trackId: string, prompt: string, strength: number) => void;
   busy: boolean;
 }
@@ -58,8 +60,9 @@ const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
           };
 
 export function WaveEditor({
-  track,
-  onChange,
+  trackId,
+  inst,
+  onChangeInst,
   onClose,
   getBuffer,
   onPreviewRegion,
@@ -67,7 +70,7 @@ export function WaveEditor({
   onTransformSample,
   busy,
 }: Props) {
-  const [tab, setTab] = useState<'sample' | 'wave'>(track.waveform === 'sample' ? 'sample' : 'wave');
+  const [tab, setTab] = useState<'sample' | 'wave'>(inst.waveform === 'sample' ? 'sample' : 'wave');
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [sel, setSel] = useState<[number, number] | null>(null);
   // Режим точек: локальная таблица (в патч уходит конвертацией в гармоники).
@@ -82,43 +85,41 @@ export function WaveEditor({
   const [aiStrength, setAiStrength] = useState(0.5);
 
   useEffect(() => {
-    if (tab !== 'sample' || !track.sampleId) {
+    if (tab !== 'sample' || !inst.sampleId) {
       if (tab === 'sample') setBuffer(null);
       return;
     }
     let alive = true;
-    void getBuffer(track.sampleId).then((b) => {
+    void getBuffer(inst.sampleId).then((b) => {
       if (alive) setBuffer(b);
     });
     return () => {
       alive = false;
     };
-  }, [tab, track.sampleId, getBuffer]);
+  }, [tab, inst.sampleId, getBuffer]);
 
   const mono = useMemo(() => (buffer ? monoOf(buffer) : null), [buffer]);
   const dur = buffer?.duration ?? 0;
-  const regStart = track.sampleStart ?? 0;
-  const regEnd = track.sampleEnd ?? dur;
+  const regStart = inst.sampleStart ?? 0;
+  const regEnd = inst.sampleEnd ?? dur;
   const selSec: [number, number] | null =
     sel && sel[1] - sel[0] > 0.0005 && dur > 0
       ? [sel[0] * dur, sel[1] * dur]
       : null;
 
-  const wave: WaveDef = track.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] };
+  const wave: WaveDef = inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] };
   const cycle = useMemo(() => renderWaveCycle(wave, CYCLE_N), [wave]);
   // Любая правка волны делает её волной дорожки: редактор — это инструмент
   // этого трека, отдельная кнопка «применить» только путала (звук не звучал).
-  const setWave = (upd: Partial<WaveDef>) =>
-    onChange({ waveform: 'wave', wave: { ...wave, ...upd } });
   const setPartial = (i: number, upd: Partial<WavePartial>) =>
-    setWave({ partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
+    onChangeInst({ wave: { ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) } });
   const removePartial = (i: number) =>
-    setWave({ partials: wave.partials.filter((_, j) => j !== i) });
+    onChangeInst({ wave: { ...wave, partials: wave.partials.filter((_, j) => j !== i) } });
   const addPartial = () => {
     const used = new Set(wave.partials.map((p) => p.ratio));
     let r = 1;
     while (used.has(r) && r < 64) r++;
-    setWave({ partials: [...wave.partials, { ratio: r, amp: 0.5, type: 'sine' }] });
+    onChangeInst({ wave: { ...wave, partials: [...wave.partials, { ratio: r, amp: 0.5, type: 'sine' }] } });
   };
 
   /** Штрих мышью: точка в таблице точек + живой перевод в гармоники —
@@ -131,7 +132,7 @@ export function WaveEditor({
     pointsRef.current = pts;
     setPoints(pts);
     const partials = cycleToPartials(pts, 64);
-    if (partials.length > 0) onChange({ waveform: 'wave', wave: { partials } });
+    if (partials.length > 0) onChangeInst({ waveform: 'wave', wave: { partials } });
   };
 
   /** Сэмпл → огрублённый набор гармоник: тембровый слепок куска.
@@ -154,7 +155,7 @@ export function WaveEditor({
       );
       return;
     }
-    onChange({ waveform: 'wave', wave: { partials } });
+    onChangeInst({ waveform: 'wave', wave: { partials } });
     setF0Manual(Math.round(f0 * 10) / 10);
     setTab('wave');
   };
@@ -176,7 +177,7 @@ export function WaveEditor({
         <HelpHint
           guide="wave"
           step={2}
-          scope={`[data-track-id="${track.id}"]`}
+          scope={`[data-track-id="${trackId}"]`}
           label="Гид: обрезка сэмпла и свой тембр"
         />
         <button
@@ -190,9 +191,9 @@ export function WaveEditor({
 
       {tab === 'sample' && (
         <div className="we-body">
-          {!track.sampleId || !buffer ? (
+          {!inst.sampleId || !buffer ? (
             <p className="empty">
-              {track.sampleId
+              {inst.sampleId
                 ? 'сэмпл ещё грузится…'
                 : 'в слоте нет сэмпла — выбери его на вкладке «звук» панели трека'}
             </p>
@@ -205,7 +206,7 @@ export function WaveEditor({
                   sel={sel}
                   onSel={(a, b) => setSel([a, b])}
                   region={
-                    track.sampleStart !== undefined || track.sampleEnd !== undefined
+                    inst.sampleStart !== undefined || inst.sampleEnd !== undefined
                       ? [regStart / dur, regEnd / dur]
                       : null
                   }
@@ -215,7 +216,7 @@ export function WaveEditor({
                 <button
                   disabled={!selSec}
                   title="Прослушать выделенный кусок"
-                  onClick={() => selSec && onPreviewRegion(track, selSec[0], selSec[1])}
+                  onClick={() => selSec && onPreviewRegion(inst, selSec[0], selSec[1])}
                 >
                   ▶ выделение
                 </button>
@@ -224,7 +225,7 @@ export function WaveEditor({
                   title="Ноты (и скрэтч) будут играть только этот кусок сэмпла"
                   onClick={() =>
                     selSec &&
-                    onChange({
+                    onChangeInst({
                       sampleStart: +selSec[0].toFixed(4),
                       sampleEnd: +selSec[1].toFixed(4),
                     })
@@ -233,9 +234,9 @@ export function WaveEditor({
                   оставить кусок
                 </button>
                 <button
-                  disabled={track.sampleStart === undefined && track.sampleEnd === undefined}
+                  disabled={inst.sampleStart === undefined && inst.sampleEnd === undefined}
                   title="Убрать обрезку — играть сэмпл целиком"
-                  onClick={() => onChange({ sampleStart: undefined, sampleEnd: undefined })}
+                  onClick={() => onChangeInst({ sampleStart: undefined, sampleEnd: undefined })}
                 >
                   сброс
                 </button>
@@ -244,14 +245,14 @@ export function WaveEditor({
                   старт
                   <NumField
                     value={Math.round(regStart * 1000) / 1000} min={0} max={Math.max(0.001, dur - 0.001)} step={0.01} narrow
-                    onChange={(v) => onChange({ sampleStart: +v.toFixed(4) })}
+                    onChange={(v) => onChangeInst({ sampleStart: +v.toFixed(4) })}
                   />
                 </label>
                 <label title="Конец куска, с">
                   конец
                   <NumField
                     value={Math.round(regEnd * 1000) / 1000} min={0.001} max={dur} step={0.01} narrow
-                    onChange={(v) => onChange({ sampleEnd: +v.toFixed(4) })}
+                    onChange={(v) => onChangeInst({ sampleEnd: +v.toFixed(4) })}
                   />
                 </label>
                 {selSec && (
@@ -290,7 +291,7 @@ export function WaveEditor({
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && aiPrompt.trim()) onTransformSample(track.id, aiPrompt.trim(), aiStrength);
+                    if (e.key === 'Enter' && aiPrompt.trim()) onTransformSample(trackId, aiPrompt.trim(), aiStrength);
                   }}
                 />
                 <label title="Сила преобразования: 20% — лёгкая приправа, 80% — почти новый звук">
@@ -302,7 +303,7 @@ export function WaveEditor({
                 </label>
                 <button
                   disabled={!aiPrompt.trim() || busy}
-                  onClick={() => onTransformSample(track.id, aiPrompt.trim(), aiStrength)}
+                  onClick={() => onTransformSample(trackId, aiPrompt.trim(), aiStrength)}
                 >
                   {busy ? 'преобразую…' : 'преобразовать'}
                 </button>
@@ -332,7 +333,7 @@ export function WaveEditor({
                 onClick={() => {
                   pointsRef.current = null;
                   setPoints(null);
-                  onChange({ waveform: 'wave', wave: genPartials(k) });
+                  onChangeInst({ waveform: 'wave', wave: genPartials(k) });
                 }}
               >
                 {PARTIAL_TYPE_LABELS[k]}
@@ -364,7 +365,7 @@ export function WaveEditor({
             <span className="we-sep" />
             <button
               title="Прослушать одну ноту этим тембром (тоника шкалы дорожки)"
-              onClick={() => onPreviewNote({ ...track, waveform: 'wave', wave })}
+              onClick={() => onPreviewNote({ ...inst, waveform: 'wave', wave })}
             >
               ▶ нота
             </button>
@@ -413,7 +414,7 @@ export function WaveEditor({
                   зерно шума, мс
                   <NumField
                     value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
-                    onChange={(v) => setWave({ noiseGrainMs: Math.round(v) })}
+                    onChange={(v) => onChangeInst({ wave: { ...wave, noiseGrainMs: Math.round(v) } })}
                   />
                 </label>
               )}

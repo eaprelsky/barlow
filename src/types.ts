@@ -248,6 +248,9 @@ export interface Mod {
 export interface Track {
   id: string;
   name: string;
+  // Инструмент дорожки (тембр: источник, огибающая ноты, фильтры).
+  // Живёт в patch.instruments; по умолчанию у дорожки свой экземпляр.
+  instrumentId: string;
   // Скорость шага в базовых 1/16 тиках. Дробное значение даёт
   // фазовый дрейф относительно других треков (полиметрия).
   // Дефолт для эскизов: у каждого эскиза свой rate (Pattern.rate),
@@ -255,42 +258,59 @@ export interface Track {
   rate: number;
   // Сдвиг цикла в шагах: тот же ритм, но стартует позже/раньше.
   phase: number;
-  waveform: Waveform;
   // Шкала: отношения частот к тонике, по возрастанию. Произвольные
   // значения — микротюнинг без привязки к 12 полутонам.
   scale: number[];
   // Добавленные октавы шкалы вверх/вниз (расширение диапазона стана).
   scaleOctUp?: number;
   scaleOctDown?: number;
-  // Тоника шкалы, Гц.
+  // Тоника шкалы, Гц. Намеренно на дорожке, не на инструменте:
+  // строй — свойство «прибора» целиком, стан общий для его партий.
   freq: number;
-  // Падение тона: во сколько раз выше тоники нота стартует и слетает
-  // вниз за pitchTime. >1 превращает синус в бочку («вумп»).
-  pitchDrop: number;
-  // Длительность падения тона, с.
-  pitchTime: number;
-  // Длина ноты в шагах (привязка к сетке инструмента: шаг эскиза × темп).
-  // 0/undefined — по огибающей (атака + спад). Гейт ноты умножает сверху.
+  // Длина ноты в шагах (привязка к сетке: шаг эскиза × темп).
+  // 0/undefined — по огибающей инструмента (атака + спад).
+  // Гейт ноты умножает сверху.
   noteSteps?: number;
-  // Частоты обрезки: highpass снизу и lowpass сверху, Гц.
-  filterLow: number;
-  filterFreq: number;
-  // Резонанс lowpass (Q): 0.8 — ровный обрез, 4–10 — звонкое «горло»
-  // (воббл, сквелч), 15+ — самозвон на частоте среза.
-  filterQ?: number;
-  // Огибающая ноты, сек.
-  attack: number;
-  decay: number;
-  // Плато (sustain): доля 0..1 звуковой части ноты (после атаки), которую
-  // нота держит на полной громкости; остаток — экспоненциальный спад.
-  // 0 — сразу спад после атаки (классический барлоу-перкуссионный хвост).
-  sustain?: number;
   // Громкость трека 0..1.
   volume: number;
   // Панорама 0..1 (0.5 — центр).
   pan: number;
   // Модуляции: LFO, подключённые к параметрам трека (см. docs/DESIGN.md).
   mods: Mod[];
+  // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
+  // убирает фазовую интерференцию наложений (басам включать).
+  mono?: boolean;
+  // Мастер-выключатель дорожки: false — молчит во всех сценах, с любым
+  // эскизом. Не путать с мьютом партии (на эскизе).
+  enabled?: boolean;
+  // Вставные эффекты: «комната» дорожки — общая для всех её эскизов.
+  effects?: Effect[];
+  // Сайдчейн: ноты дорожки-источника приглушают эту дорожку
+  // («бас качается под бочку»).
+  sidechain?: {
+    sourceId: string;
+    // Глубина приглушения 0..1.
+    amount: number;
+    // Время восстановления, с.
+    releaseSec: number;
+  };
+  // Арпеджиатор: аккорд шага разворачивается в перелив внутри ноты.
+  arp?: Arp;
+  // Эскизы дорожки. Какой играет — решает сцена.
+  patterns: Pattern[];
+}
+
+/** Инструмент — тембр одной ноты: источник (волна/сэмпл), огибающая,
+ *  падение тона, фильтры, вибрато. Сущность патча (v34): дорожка
+ *  ссылается на инструмент по id; шаринг по ссылке — opt-in на будущее,
+ *  по умолчанию экземпляр у дорожки свой. */
+export interface Instrument {
+  id: string;
+  // Имя инструмента (при создании наследует имя дорожки/пресета).
+  name: string;
+  waveform: Waveform;
+  // Своя волна (waveform === 'wave'): аддитивный тембр из гармоник.
+  wave?: WaveDef;
   // Ссылка на сэмпл из библиотеки (SHA-256) — для волны «сэмпл».
   sampleId?: string;
   // Отображаемое имя сэмпла (кэш UI, истина — в библиотеке).
@@ -299,10 +319,18 @@ export interface Track {
   // Применимо ко всем режимам сэмплера, включая скрэтч.
   sampleStart?: number;
   sampleEnd?: number;
-  // Своя волна (waveform === 'wave'): аддитивный тембр из парциалов.
-  wave?: WaveDef;
-  // Арпеджиатор: аккорд шага разворачивается в последовательность нот.
-  arp?: Arp;
+  // Режим сэмплера: прямой, гранулярный (облако осколков) или скрэтч.
+  sampleMode?: SampleMode;
+  // Гранулярный режим: длина зерна, мс.
+  grainSizeMs?: number;
+  // Гранулярный режим: сколько зёрен выпускает одна нота.
+  grainCount?: number;
+  // Гранулярный режим: центр позиции зерна в сэмпле, 0..1.
+  grainPos?: number;
+  // Гранулярный режим: разброс позиции зерна вокруг центра, 0..1.
+  grainScatter?: number;
+  // Скрэтч: жест иглы по сэмплу (ломаная t→pos), проигрывается на нотах.
+  scratchPoints?: ScratchPoint[];
   // FM: отношение частоты модулятора к ноте. Целые — гармоничные тембры,
   // иррациональные (≈√2) — колокола и металл.
   fmRatio?: number;
@@ -316,38 +344,38 @@ export interface Track {
   vibratoDepth?: number;
   // Karplus-Strong: время собственного затухания струны, с (T60).
   ksLife?: number;
-  // Режим сэмплера: прямой или гранулярный (нота = облако осколков).
-  sampleMode?: SampleMode;
-  // Гранулярный режим: длина зерна, мс.
-  grainSizeMs?: number;
-  // Гранулярный режим: сколько зёрен выпускает одна нота.
-  grainCount?: number;
-  // Гранулярный режим: центр позиции зерна в сэмпле, 0..1.
-  grainPos?: number;
-  // Гранулярный режим: разброс позиции зерна вокруг центра, 0..1.
-  grainScatter?: number;
-  // Скрэтч: жест иглы по сэмплу (ломаная t→pos), проигрывается на нотах.
-  scratchPoints?: ScratchPoint[];
-  // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
-  // убирает фазовую интерференцию наложений (басам включать).
-  mono?: boolean;
-  // Мастер-выключатель дорожки: false — молчит во всех сценах, с любым
-  // эскизом. Не путать с мьютом партии (на эскизе).
-  enabled?: boolean;
-  // Вставные эффекты: задержка (эхо) и реверб.
-  effects?: Effect[];
-  // Сайдчейн: ноты дорожки-источника приглушают эту дорожку
-  // («бас качается под бочку»).
-  sidechain?: {
-    sourceId: string;
-    // Глубина приглушения 0..1.
-    amount: number;
-    // Время восстановления, с.
-    releaseSec: number;
-  };
-  // Эскизы дорожки. Какой играет — решает сцена.
-  patterns: Pattern[];
+  // Огибающая ноты, сек.
+  attack: number;
+  decay: number;
+  // Плато (sustain): доля 0..1 звуковой части ноты (после атаки), которую
+  // нота держит на полной громкости; остаток — экспоненциальный спад.
+  // 0 — сразу спад после атаки (классический барлоу-перкуссионный хвост).
+  sustain?: number;
+  // Падение тона: во сколько раз выше тоники нота стартует и слетает
+  // вниз за pitchTime. >1 превращает синус в бочку («вумп»).
+  pitchDrop: number;
+  // Длительность падения тона, с.
+  pitchTime: number;
+  // Частоты обрезки: highpass снизу и lowpass сверху, Гц.
+  filterLow: number;
+  filterFreq: number;
+  // Резонанс lowpass (Q): 0.8 — ровный обрез, 4–10 — звонкое «горло»
+  // (воббл, сквелч), 15+ — самозвон на частоте среза.
+  filterQ?: number;
 }
+
+/** Поля Track, принадлежащие инструменту: маршрутизация пресетов и
+ *  миграции v33 → v34. */
+export const INSTRUMENT_FIELDS = [
+  'waveform', 'wave', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd',
+  'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+  'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
+  'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
+  'filterLow', 'filterFreq', 'filterQ', 'vibratoRate', 'vibratoDepth',
+] as const;
+
+/** Дорожка со слитым инструментом — то, что получает синтез. */
+export type SoundingTrack = Track & Instrument;
 
 export interface Scene {
   id: string;
@@ -389,9 +417,11 @@ export interface Patch {
   scenes: Scene[];
   chain: ChainItem[];
   tracks: Track[];
+  // Инструменты дорожек (v34): тембр как сущность патча.
+  instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 33;
+export const PATCH_VERSION = 34;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -417,34 +447,23 @@ export function makePattern(name: string, length: number, steps?: Step[], rate?:
   };
 }
 
-export function makeTrack(
-  partial: Partial<Track> & { id: string; name: string; length?: number },
-): Track {
+export function makeInstrument(
+  partial: Partial<Instrument> & { id: string; name: string },
+): Instrument {
   return {
-    rate: partial.rate ?? 1,
-    phase: partial.phase ?? 0,
     waveform: partial.waveform ?? 'sine',
-    scale: partial.scale && partial.scale.length > 0 ? partial.scale : [1],
-    freq: partial.freq ?? 220,
     pitchDrop: partial.pitchDrop ?? 1,
-    // Новый трек — ноты ровно в клетку (1 шаг); «авто» по огибающей —
-    // только если пользователь явно обнулил поле «нота».
-    noteSteps: partial.noteSteps ?? 1,
     pitchTime: partial.pitchTime ?? 0.08,
     filterLow: partial.filterLow ?? 20,
     filterFreq: partial.filterFreq ?? 8000,
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
     sustain: partial.sustain,
-    volume: partial.volume ?? 0.8,
-    pan: partial.pan ?? 0.5,
-    mods: partial.mods ?? [],
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
     sampleEnd: partial.sampleEnd,
     wave: partial.wave,
-    arp: partial.arp,
     fmRatio: partial.fmRatio,
     fmIndex: partial.fmIndex,
     voiceMorph: partial.voiceMorph,
@@ -456,14 +475,59 @@ export function makeTrack(
     grainCount: partial.grainCount,
     grainPos: partial.grainPos,
     grainScatter: partial.grainScatter,
+    scratchPoints: partial.scratchPoints,
+    filterQ: partial.filterQ,
+    id: partial.id,
+    name: partial.name,
+  };
+}
+
+/** Инструмент из «сырых» звуковых полей (пресеты, миграция v33 → v34):
+ *  забирает только поля из INSTRUMENT_FIELDS. */
+export function instrumentOfFields(
+  fields: Partial<Record<(typeof INSTRUMENT_FIELDS)[number], unknown>>,
+  id: string,
+  name: string,
+): Instrument {
+  const picked = Object.fromEntries(
+    INSTRUMENT_FIELDS.filter((f) => fields[f] !== undefined).map((f) => [f, fields[f]]),
+  );
+  return makeInstrument({ ...(picked as Partial<Instrument>), id, name });
+}
+
+export function makeTrackWithInstrument(
+  partial: Partial<Track> & { id: string; name: string; length?: number },
+): { track: Track; instrument: Instrument } {
+  // Звуковые поля (INSTRUMENT_FIELDS) уходят в инструмент дорожки (v34),
+  // остальные — на дорожку.
+  const instrument = instrumentOfFields(
+    partial as Partial<Record<(typeof INSTRUMENT_FIELDS)[number], unknown>>,
+    uid('i'),
+    partial.name,
+  );
+  const track: Track = {
+    instrumentId: instrument.id,
+    rate: partial.rate ?? 1,
+    phase: partial.phase ?? 0,
+    scale: partial.scale && partial.scale.length > 0 ? partial.scale : [1],
+    freq: partial.freq ?? 220,
+    // Новый трек — ноты ровно в клетку (1 шаг); «авто» по огибающей —
+    // только если пользователь явно обнулил поле «нота».
+    noteSteps: partial.noteSteps ?? 1,
+    volume: partial.volume ?? 0.8,
+    pan: partial.pan ?? 0.5,
+    mods: partial.mods ?? [],
+    arp: partial.arp,
     mono: partial.mono,
     effects: partial.effects,
     scaleOctUp: partial.scaleOctUp,
     scaleOctDown: partial.scaleOctDown,
-    patterns: partial.patterns ?? [makePattern('A', partial.length ?? 16, undefined, partial.rate ?? 1)],
+    patterns:
+      partial.patterns ?? [makePattern('A', partial.length ?? 16, undefined, partial.rate ?? 1)],
     id: partial.id,
     name: partial.name,
   };
+  return { track, instrument };
 }
 
 export function makeScene(name: string, tracks: Track[], patternOf: (t: Track) => string): Scene {
@@ -651,7 +715,81 @@ function normalizeSteps(
 // v5 и ниже: единственный рисунок трека становится паттерном «A»,
 // создаётся одна сцена и цепочка из неё.
 // v16 → v17: соло переезжает с эскиза в сцену (эксклюзивное soloTrackId).
+/** Довести инструмент до валидного: клампы звуковых полей (v34;
+ *  переехали из нормализации трека без изменений). */
+function normalizeInstrument(
+  raw: Record<string, unknown>,
+  id: string,
+  name: string,
+): Instrument {
+  // Приведение через unknown: сырой JSON, поля могут быть чем угодно.
+  const t = raw as unknown as Partial<Instrument>;
+  const waveforms = Object.keys(WAVEFORM_LABELS) as Waveform[];
+  return {
+    id,
+    name,
+    waveform: waveforms.includes(t.waveform as Waveform) ? (t.waveform as Waveform) : 'sine',
+    pitchDrop: clamp(t.pitchDrop ?? 1, 1, 16, 1),
+    pitchTime: clamp(t.pitchTime ?? 0.08, 0, 2, 0.08),
+    filterLow: clamp(t.filterLow ?? 20, 20, 4000, 20),
+    filterFreq: clamp(t.filterFreq ?? 8000, 60, 12000, 8000),
+    filterQ: clamp(t.filterQ ?? 0.8, 0.5, 20, 0.8),
+    attack: clamp(t.attack ?? 0.002, 0, 1, 0.002),
+    decay: clamp(t.decay ?? 0.25, 0.01, 4, 0.25),
+    sustain: clamp(t.sustain ?? 0, 0, 1, 0),
+    sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
+    sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+    // Обрезка сэмпла: конец должен быть дальше начала.
+    sampleStart:
+      typeof t.sampleStart === 'number' ? clamp(t.sampleStart, 0, 3600, 0) : undefined,
+    sampleEnd:
+      typeof t.sampleEnd === 'number' ? clamp(t.sampleEnd, 0.001, 3600, 3600) : undefined,
+    wave: normalizeWave(t.wave),
+    fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
+    fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
+    voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
+    vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 30, 5),
+    vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 1200, 0),
+    ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
+    sampleMode:
+      t.sampleMode === 'grain' || t.sampleMode === 'scratch' ? t.sampleMode : 'plain',
+    grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),
+    grainCount: Math.round(clamp(t.grainCount ?? 10, 1, 32, 10)),
+    grainPos: clamp(t.grainPos ?? 0.3, 0, 1, 0.3),
+    grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
+    scratchPoints: Array.isArray(t.scratchPoints)
+      ? (t.scratchPoints as ScratchPoint[])
+          .filter((pt) => pt && Number.isFinite(pt.t) && Number.isFinite(pt.pos))
+          .map((pt) => ({
+            t: clamp(pt.t, 0, 1, 0),
+            pos: clamp(pt.pos, 0, 1, 0),
+          }))
+          .sort((a, b) => a.t - b.t)
+          .slice(0, 256)
+      : undefined,
+  };
+}
+
 export function normalizePatch(p: Patch): Patch {
+  // Миграция v34: инструменты дорожек. Валидируем существующие, а у
+  // дорожек без инструмента забираем звуковые поля из старого JSON
+  // (они лежали прямо на треке до v34) в новый экземпляр 1:1 —
+  // на слух ничего не меняется.
+  const instruments: Instrument[] = Array.isArray(
+    (p as { instruments?: unknown }).instruments,
+  )
+    ? ((p as { instruments?: unknown }).instruments as Instrument[])
+        .filter((i) => i && typeof i.id === 'string')
+        .map((i) =>
+          normalizeInstrument(
+            i as unknown as Record<string, unknown>,
+            i.id,
+            typeof i.name === 'string' ? i.name : '?',
+          ),
+        )
+    : [];
+  const instIds = new Set(instruments.map((i) => i.id));
+
   // Миграция v16: trackId → id эскизов со старым флагом solo.
   const soloByTrack = new Map<string, Set<string>>();
   const tracks: Track[] = p.tracks
@@ -730,66 +868,42 @@ export function normalizePatch(p: Patch): Patch {
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));
 
+      // Инструмент: валидный instrumentId из патча, иначе новый экземпляр
+      // из звуковых полей старого JSON (миграция v33 → v34, звук тот же).
+      const legacyInstId =
+        typeof t.instrumentId === 'string' && instIds.has(t.instrumentId)
+          ? t.instrumentId
+          : null;
+      let instrumentId: string;
+      if (legacyInstId) {
+        instrumentId = legacyInstId;
+      } else {
+        instrumentId = uid('i');
+        instruments.push(
+          normalizeInstrument(
+            t as unknown as Record<string, unknown>,
+            instrumentId,
+            t.name,
+          ),
+        );
+      }
+
       return {
         ...t,
+        instrumentId,
         patterns,
         scale,
         rate: clamp(t.rate, 0.25, 32, 1),
         phase: Math.round(clamp(t.phase ?? 0, -64, 64, 0)),
         freq: clamp(t.freq, 20, 9000, 220),
-        pitchDrop: clamp(t.pitchDrop ?? 1, 1, 16, 1),
-        pitchTime: clamp(t.pitchTime ?? 0.08, 0, 2, 0.08),
         noteSteps:
           typeof t.noteSteps === 'number' && t.noteSteps > 0
             ? clamp(t.noteSteps, 0.1, 16, 1)
             : undefined,
-        filterLow: clamp((t as { filterLow?: number }).filterLow ?? 20, 20, 4000, 20),
-        filterFreq: clamp(t.filterFreq, 60, 12000, 8000),
-        filterQ: clamp((t as { filterQ?: number }).filterQ ?? 0.8, 0.5, 20, 0.8),
-        attack: clamp(t.attack, 0, 1, 0.002),
-        decay: clamp(t.decay, 0.01, 4, 0.25),
-        sustain: clamp(t.sustain ?? 0, 0, 1, 0),
         volume: clamp(t.volume, 0, 1, 0.8),
         pan: clamp((t as { pan?: number }).pan ?? 0.5, 0, 1, 0.5),
         mods: normalizeMods((t as { mods?: unknown }).mods),
-        sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
-        sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
-        // Обрезка сэмпла: конец должен быть дальше начала.
-        sampleStart:
-          typeof (t as { sampleStart?: unknown }).sampleStart === 'number'
-            ? clamp((t as { sampleStart?: number }).sampleStart!, 0, 3600, 0)
-            : undefined,
-        sampleEnd:
-          typeof (t as { sampleEnd?: unknown }).sampleEnd === 'number'
-            ? clamp((t as { sampleEnd?: number }).sampleEnd!, 0.001, 3600, 3600)
-            : undefined,
-        wave: normalizeWave((t as { wave?: unknown }).wave),
         arp: normalizeArp((t as { arp?: unknown }).arp),
-        fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
-        fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
-        voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
-        vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 30, 5),
-        vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 1200, 0),
-        ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
-        sampleMode:
-          t.sampleMode === 'grain' || t.sampleMode === 'scratch' ? t.sampleMode : 'plain',
-        grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),
-        grainCount: Math.round(clamp(t.grainCount ?? 10, 1, 32, 10)),
-        grainPos: clamp(t.grainPos ?? 0.3, 0, 1, 0.3),
-        grainScatter: clamp(t.grainScatter ?? 0.15, 0, 1, 0.15),
-        scratchPoints: Array.isArray(t.scratchPoints)
-          ? t.scratchPoints
-              .filter(
-                (pt): pt is ScratchPoint =>
-                  pt && Number.isFinite(pt.t) && Number.isFinite(pt.pos),
-              )
-              .map((pt) => ({
-                t: clamp(pt.t, 0, 1, 0),
-                pos: clamp(pt.pos, 0, 1, 0),
-              }))
-              .sort((a, b) => a.t - b.t)
-              .slice(0, 256)
-          : undefined,
         mono: !!t.mono,
         enabled: t.enabled === false ? false : undefined,
         sidechain: (() => {
@@ -806,6 +920,7 @@ export function normalizePatch(p: Patch): Patch {
         scaleOctDown: octDown,
       };
     });
+
 
   let scenes: Scene[] = Array.isArray(p.scenes)
     ? p.scenes.filter((s) => s && typeof s.id === 'string' && typeof s.name === 'string')
@@ -863,5 +978,6 @@ export function normalizePatch(p: Patch): Patch {
     scenes,
     chain,
     tracks,
+    instruments,
   };
 }

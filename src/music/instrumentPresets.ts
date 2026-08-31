@@ -1,7 +1,7 @@
 // Пресеты инструментов для добавления трека: готовые параметры,
 // пользователю остаётся накидать ноты в нотном стане.
 
-import type { Track } from '../types';
+import type { Instrument, Track } from '../types';
 
 export interface InstrumentPreset {
   name: string;
@@ -9,7 +9,7 @@ export interface InstrumentPreset {
   category: string;
   // Пояснение для поиска встроенных; на плитке не показывается.
   hint?: string;
-  track: Partial<Track> & { length?: number };
+  track: Partial<Track & Instrument> & { length?: number };
 }
 
 export const CATEGORY_ORDER = [
@@ -27,7 +27,7 @@ const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
 // Поля, которые переносит смена инструмента (applyInstrumentPreset в
 // TrackRow): по ним и опознаём текущий пресет. Ручки вне списка (громкость,
 // ритм, вибрато, сайдчейн) — пользователя, на совпадение не влияют.
-const MATCH_FIELDS: (keyof Track)[] = [
+const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
   'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'vibratoRate', 'vibratoDepth',
@@ -42,10 +42,10 @@ const sameValue = (a: unknown, b: unknown): boolean => {
 };
 
 /** Имя пресета, которому соответствуют параметры трека; иначе «своя». */
-export function instrumentNameOf(track: Track): string {
+export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): string {
   // Свои — первыми: перезаписанный юзером пресет важнее встроенного тёзки.
   for (const p of [...loadUserPresets(), ...INSTRUMENT_PRESETS]) {
-    const preset = p.track as Partial<Track>;
+    const preset: Partial<Track & Instrument> = p.track;
     if (MATCH_FIELDS.every((f) => preset[f] === undefined || sameValue(preset[f], track[f]))) {
       return p.name;
     }
@@ -269,7 +269,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
 const USER_KEY = 'barlow.instruments.v1';
 export const USER_CATEGORY = 'мои';
 
-const SAVE_FIELDS: (keyof Track)[] = [
+const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
   'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife', 'sampleMode',
@@ -286,7 +286,7 @@ export function loadUserPresets(): InstrumentPreset[] {
     if (!Array.isArray(arr)) return [];
     return arr
       .filter(
-        (p): p is { name: string; track: Partial<Track> } =>
+        (p): p is { name: string; track: Partial<Track & Instrument> } =>
           typeof p === 'object' &&
           p !== null &&
           typeof (p as { name?: unknown }).name === 'string' &&
@@ -301,10 +301,13 @@ export function loadUserPresets(): InstrumentPreset[] {
 }
 
 /** Записать (или перезаписать по имени) пресет из звуковых полей трека. */
-export function saveUserPreset(name: string, track: Track): void {
+export function saveUserPreset(
+  name: string,
+  track: Partial<Track> & Partial<Instrument>,
+): void {
   const sound = Object.fromEntries(
     SAVE_FIELDS.filter((f) => track[f] !== undefined).map((f) => [f, track[f]]),
-  ) as Partial<Track>;
+  ) as Partial<Track & Instrument>;
   const list = loadUserPresets().filter((p) => p.name !== name);
   list.push({ name, category: USER_CATEGORY, track: sound });
   try {

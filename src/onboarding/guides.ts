@@ -143,9 +143,9 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
       },
       {
@@ -167,7 +167,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="tab-timbre"]',
-        say: 'Вкладка «тембр»: фильтры, вибрато, сайдчейн, арпеджиатор.',
+        say: 'Вкладка «тембр»: фильтры и вибрато.',
         side: 'bottom',
       },
       {
@@ -299,9 +299,9 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
         hint: 'Арпеджиатор живёт во вкладке «тембр».',
 
@@ -379,15 +379,9 @@ export const GUIDES: Guide[] = [
     section: 'path',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="tab-fx"]',
-        say: 'Жми вкладку «эффекты».',
-        expect: 'click',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
       },
       {
@@ -500,9 +494,9 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
         hint: 'Сэмплы живут у дорожек с волной «сэмпл».',
 
@@ -537,9 +531,9 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
         hint: 'Нужна дорожка с волной «сэмпл».',
 
@@ -576,9 +570,9 @@ export const GUIDES: Guide[] = [
     section: 'more',
     steps: [
       {
-        target: '[data-ob="mode-track"]',
+        target: '[data-ob="mode-inst"]',
         expect: 'click',
-        say: 'Жми «трек» на дорожке — откроются её общие настройки.',
+        say: 'Жми «инструмент» на дорожке — откроется его настройка.',
         side: 'bottom',
       },
       {

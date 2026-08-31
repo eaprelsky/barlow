@@ -3,7 +3,7 @@
 // Выделено из engine.ts без изменений логики — модуль переносится в
 // Rust-движок по мере надобности.
 
-import type { Effect, Mod, Track } from '../types';
+import type { Effect, Mod, SoundingTrack } from '../types';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -230,7 +230,7 @@ export interface MasterNodes {
   setPan: (v: number, at: number) => void;
 }
 
-export function makeChain(ctx: BaseAudioContext, track: Track, dest: AudioNode): TrackChain {
+export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
   hp.frequency.value = track.filterLow;

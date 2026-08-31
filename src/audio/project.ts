@@ -34,14 +34,14 @@ export async function exportProject(patch: Patch): Promise<Blob> {
   const files: Record<string, Uint8Array> = {};
   const manifest: ProjectManifest = { barlow: 1, exportedAt: Date.now(), samples: [] };
   const seen = new Set<string>();
-  for (const track of patch.tracks) {
-    if (!track.sampleId || seen.has(track.sampleId)) continue;
-    seen.add(track.sampleId);
-    const blob = await getSampleBlob(track.sampleId);
+  for (const inst of patch.instruments) {
+    if (!inst.sampleId || seen.has(inst.sampleId)) continue;
+    seen.add(inst.sampleId);
+    const blob = await getSampleBlob(inst.sampleId);
     if (!blob) continue; // сэмпл исчез из библиотеки — патч валиден и без него
-    const file = `${track.sampleId}.${extOf(blob)}`;
+    const file = `${inst.sampleId}.${extOf(blob)}`;
     files[`samples/${file}`] = new Uint8Array(await blob.arrayBuffer());
-    manifest.samples.push({ id: track.sampleId, name: track.sampleName ?? track.sampleId, file });
+    manifest.samples.push({ id: inst.sampleId, name: inst.sampleName ?? inst.sampleId, file });
   }
   files['patch.json'] = strToU8(JSON.stringify(patch, null, 2));
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));

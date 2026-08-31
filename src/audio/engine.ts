@@ -12,7 +12,7 @@
 // Публичная поверхность движка — контракт AudioBackend (backend.ts):
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
-import type { Mod, Note, Patch, Scene, Track } from '../types';
+import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
 import { makeNote, patternInScene } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
@@ -81,6 +81,12 @@ export function effectiveParams(track: Track, pattern: import('../types').Patter
     pan: pattern?.pan ?? track.pan,
     mods: pattern?.mods ?? track.mods,
   };
+}
+
+/** Дорожка со слитым инструментом: синтез видит только слитый вид. */
+function stOf(patch: Patch | null, track: Track): SoundingTrack {
+  const inst = patch?.instruments?.find((i) => i.id === track.instrumentId);
+  return inst ? { ...inst, ...track } : (track as unknown as SoundingTrack);
 }
 
 function validSceneId(patch: Patch | null, want: string): string {
@@ -206,14 +212,15 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ensureCtx();
     await ensureScratchModule(ctx);
     for (const track of patch.tracks) {
-      if (track.waveform !== 'sample' || !track.sampleId) continue;
-      if (this.sampleCache.has(track.sampleId)) continue;
-      const blob = await getSampleBlob(track.sampleId);
+      const st = stOf(patch, track);
+      if (st.waveform !== 'sample' || !st.sampleId) continue;
+      if (this.sampleCache.has(st.sampleId)) continue;
+      const blob = await getSampleBlob(st.sampleId);
       if (!blob) continue;
       try {
         const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
         normalizeBuffer(buf);
-        this.sampleCache.set(track.sampleId, buf);
+        this.sampleCache.set(st.sampleId, buf);
       } catch {
         // Битый формат — молча пропускаем, трек будет просто молчать.
       }
@@ -287,7 +294,7 @@ export class AudioEngine implements AudioBackend {
   private applyTrackParams(
     trackId: string,
     chain: TrackChain,
-    track: Track,
+    track: SoundingTrack,
     eff: { volume: number; pan: number; mods: Mod[] },
   ): TrackChain {
     const ctx = this.ctx;
@@ -590,14 +597,15 @@ export class AudioEngine implements AudioBackend {
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
-      const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+      const st = stOf(patch, track);
+      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       const chain = this.chains.get(track.id);
       if (!sample || (!chain && !this.master)) return;
       const dest: AudioNode = chain ? chain.hp : this.master!.input;
       this.scratchEnd();
       // Игла ходит по обрезанному куску сэмпла, если он задан.
-      const rs = Math.max(0, Math.min(track.sampleStart ?? 0, sample.duration - 0.001));
-      const re = Math.max(rs + 0.001, Math.min(track.sampleEnd ?? sample.duration, sample.duration));
+      const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
+      const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
       this.scratchMap = (p) => Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
       const node = makeScratchNode(ctx, sample);
       const pos = node.parameters.get('position')!;
@@ -629,25 +637,26 @@ export class AudioEngine implements AudioBackend {
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
-      const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+      const st = stOf(patch, track);
+      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       const chain = this.chains.get(track.id);
       if (!sample || (!chain && !this.master)) return;
       const dest: AudioNode = chain ? chain.hp : this.master!.input;
       const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
       const len =
-        track.noteSteps && track.noteSteps > 0
-          ? track.noteSteps * stepSec
-          : track.attack + track.decay;
+        st.noteSteps && st.noteSteps > 0
+          ? st.noteSteps * stepSec
+          : st.attack + st.decay;
       const node = makeScratchNode(ctx, sample);
       const pos = node.parameters.get('position')!;
       const off = node.parameters.get('off')!;
       // Жест иглы ходит по обрезанному куску сэмпла.
-      const rs = Math.max(0, Math.min(track.sampleStart ?? 0, sample.duration - 0.001));
-      const re = Math.max(rs + 0.001, Math.min(track.sampleEnd ?? sample.duration, sample.duration));
+      const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
+      const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
       const mapPos = (p: number) =>
         Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
       const t0 = ctx.currentTime + 0.02;
-      const points = (track.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
+      const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
       if (points.length === 0) {
         pos.setValueAtTime(mapPos(0), t0);
         pos.linearRampToValueAtTime(mapPos(1), t0 + len);
@@ -725,7 +734,8 @@ export class AudioEngine implements AudioBackend {
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
-      const sample = track.sampleId ? this.sampleCache.get(track.sampleId) : undefined;
+      const st = stOf(patch, track);
+      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       if (!sample || !this.master) return;
       const chain = this.chains.get(track.id);
       const dest: AudioNode = chain ? chain.hp : this.master.input;
@@ -758,6 +768,7 @@ export class AudioEngine implements AudioBackend {
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
       if (!this.master || !this.noiseBuffer) return;
+      const st = stOf(patch, track);
       const chain = this.chains.get(track.id);
       // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
       const pseudo: TrackChain = chain
@@ -771,8 +782,8 @@ export class AudioEngine implements AudioBackend {
         ctx,
         pseudo,
         this.noiseBuffer,
-        this.sampleCache.get(track.sampleId ?? '') ?? null,
-        track,
+        this.sampleCache.get(st.sampleId ?? '') ?? null,
+        st,
         notes,
         ctx.currentTime + 0.02,
         stepSec,
@@ -887,6 +898,7 @@ export class AudioEngine implements AudioBackend {
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
       if (!pattern) continue;
+      const st = stOf(patch, track);
       // Трек, добавленный на ходу, вливается с ближайшего мгновения —
       // лайв-джем: набросал дорожку поверх играющего микса.
       let clock = this.clocks.get(track.id);
@@ -898,14 +910,14 @@ export class AudioEngine implements AudioBackend {
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
       if (!chain && this.master) {
-        chain = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
+        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
         this.chains.set(track.id, chain);
         // Свежая цепочка: планируем ей вход (старт игры / вливание на ходу)
         // и, если граница сцен известна, переходный выход.
         this.armSceneExit(this.sceneAdvanceTime);
       }
       if (!chain) continue;
-      chain = this.applyTrackParams(track.id, chain, track, eff);
+      chain = this.applyTrackParams(track.id, chain, st, eff);
       const stepDur = stepDuration(track, patch.bpm, pattern);
       let g = 0;
       while (clock.nextStepTime < horizon && g++ < 1024) {
@@ -915,9 +927,9 @@ export class AudioEngine implements AudioBackend {
           // Арпеджиатор дробит ноту на доли-перелив (каждая короче ноты);
           // без него — одно событие со всеми нотами (как раньше).
           const noteLenSteps =
-            track.noteSteps && track.noteSteps > 0
-              ? track.noteSteps
-              : (Math.max(track.attack, 0.0005) + track.decay) / stepDur;
+            st.noteSteps && st.noteSteps > 0
+              ? st.noteSteps
+              : (Math.max(st.attack, 0.0005) + st.decay) / stepDur;
           const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
             ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
                 notes: [e.note],
@@ -928,7 +940,7 @@ export class AudioEngine implements AudioBackend {
           for (const ev of events) {
             const at = clock.nextStepTime + ev.dt * stepDur;
             if (track.mono) this.duckLastVoice(track.id, at);
-            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, ev.notes, at, stepDur, ev.durSec);
+            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null, st, ev.notes, at, stepDur, ev.durSec);
             if (track.mono) this.lastVoices.set(track.id, voice);
             // Сайдчейн: ноты этой дорожки качают приглушаемых.
             for (const rt of patch.tracks) {
@@ -972,6 +984,7 @@ export class AudioEngine implements AudioBackend {
     // находить цепочки приёмников независимо от порядка обхода треков.
     const chainsByKey = new Map<string, TrackChain>();
     for (const track of patch.tracks) {
+      const st = stOf(patch, track);
       for (const item of fixedItems) {
         const scene = patch.scenes.find((sc) => sc.id === item.sceneId);
         const pattern = patternInScene(track, scene);
@@ -979,12 +992,13 @@ export class AudioEngine implements AudioBackend {
         const eff = effectiveParams(track, pattern);
         chainsByKey.set(
           `${track.id}:${item.sceneId}`,
-          makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input),
+          makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input),
         );
       }
     }
 
     for (const track of patch.tracks) {
+      const st = stOf(patch, track);
       let t = 0.05;
       let prevVoice: Voice | null = null;
       for (const item of fixedItems) {
@@ -1012,15 +1026,15 @@ export class AudioEngine implements AudioBackend {
         if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, tEnd);
         else gg.setValueAtTime(0, tEnd);
         let idx = startStepIndex(track, pattern);
-        const sample = this.sampleCache.get(track.sampleId ?? '') ?? null;
+        const sample = this.sampleCache.get(st.sampleId ?? '') ?? null;
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {
             const noteLenSteps =
-              track.noteSteps && track.noteSteps > 0
-                ? track.noteSteps
-                : (Math.max(track.attack, 0.0005) + track.decay) / stepDur;
+              st.noteSteps && st.noteSteps > 0
+                ? st.noteSteps
+                : (Math.max(st.attack, 0.0005) + st.decay) / stepDur;
             const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
               ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
                   notes: [e.note],
@@ -1031,7 +1045,7 @@ export class AudioEngine implements AudioBackend {
             for (const ev of events) {
               const at = tt + ev.dt * stepDur;
               if (track.mono && prevVoice && prevVoice.stopAt > at) duckVoice(prevVoice, at);
-              const voice = triggerVoice(ctx, chain, noise, sample, track, ev.notes, at, stepDur, ev.durSec);
+              const voice = triggerVoice(ctx, chain, noise, sample, st, ev.notes, at, stepDur, ev.durSec);
               if (track.mono) prevVoice = voice;
               // Сайдчейн: ноты этой дорожки качают приглушаемых.
               for (const rt of patch.tracks) {

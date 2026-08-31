@@ -56,8 +56,8 @@ try {
 
   const fp = await page.evaluate(async (patchTemplate) => {
     const { AudioEngine } = await import('/src/audio/engine.ts');
-    const { PATCH_VERSION } = await import('/src/types.ts');
-    const patch = { ...patchTemplate, version: PATCH_VERSION };
+    const { PATCH_VERSION, normalizePatch } = await import('/src/types.ts');
+    const patch = normalizePatch({ ...patchTemplate, version: PATCH_VERSION });
     const eng = new AudioEngine();
     const blob = await eng.renderToWav(patch, 's1', 2);
     const ab = await blob.arrayBuffer();

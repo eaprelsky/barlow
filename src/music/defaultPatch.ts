@@ -1,7 +1,8 @@
 import { euclid } from './euclid';
 import { SCALE_PRESETS } from './scales';
-import { PATCH_VERSION, makeNote, makePattern, makeScene, makeStep, makeTrack, uid } from '../types';
-import type { Patch, Step, Track } from '../types';
+import { PATCH_VERSION, makeNote, makePattern, makeScene, makeStep, makeTrackWithInstrument, uid } from '../types';
+import type { Instrument, Patch, Step, Track } from '../types';
+import type { Instrument as Inst } from '../types';
 
 const scale = (name: string): number[] =>
   SCALE_PRESETS.find((p) => p.name === name)?.ratios ?? [1];
@@ -25,8 +26,16 @@ function withMelody(steps: Step[], notes: number[][]): Step[] {
 // чтобы фича паттернов была видна сразу.
 
 export function defaultPatch(): Patch {
+  const instruments: Instrument[] = [];
+  const mk = (
+    partial: Partial<Track & Inst> & { id: string; name: string; length?: number },
+  ): Track => {
+    const made = makeTrackWithInstrument(partial);
+    instruments.push(made.instrument);
+    return made.track;
+  };
   const tracks: Track[] = [
-    makeTrack({
+    mk({
       id: uid('t'),
       name: 'pulse',
       rate: 4,
@@ -41,7 +50,7 @@ export function defaultPatch(): Patch {
       volume: 0.9,
       patterns: [makePattern('A', 16, stepsFromMask(euclid(16, 4)), 4)],
     }),
-    makeTrack({
+    mk({
       id: uid('t'),
       name: 'grain',
       rate: 2,
@@ -56,7 +65,7 @@ export function defaultPatch(): Patch {
         makePattern('B', 9, stepsFromMask(euclid(9, 5)), 2),
       ],
     }),
-    makeTrack({
+    mk({
       id: uid('t'),
       name: 'lead',
       rate: 2,
@@ -71,7 +80,7 @@ export function defaultPatch(): Patch {
         makePattern('A', 7, withMelody(stepsFromMask(euclid(7, 3)), [[2], [4], [0, 2], [5]]), 2),
       ],
     }),
-    makeTrack({
+    mk({
       id: uid('t'),
       name: 'bass',
       rate: 8,
@@ -94,5 +103,6 @@ export function defaultPatch(): Patch {
     scenes: [scene],
     chain: [{ sceneId: scene.id, bars: 8 }],
     tracks,
+    instruments,
   };
 }

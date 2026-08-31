@@ -85,9 +85,15 @@ ok(
 );
 // Панель «трек» открывается переключателем сущности, во вкладке
 // «инструмент» есть вход в редактор волны.
-await page.locator('[data-ob="mode-track"]').first().click();
+await page.locator('[data-ob="mode-inst"]').first().click();
 await page.waitForTimeout(200);
-ok('wave editor entry in track view', (await page.locator('[data-ob="we-open"]').count()) === 1);
+ok('wave editor entry in instrument view', (await page.locator('[data-ob="we-open"]').count()) === 1);
+await page.locator('[data-ob="mode-track"]').first().click(); // проверим вью трека
+await page.waitForTimeout(150);
+const firstTrackChips = await page.locator('.track').first().locator('[data-ob="patterns"]').count();
+const firstTrackCommon = await page.locator('.track').first().locator('[data-ob="common-row"]').count();
+ok('track view: chips hidden, common row shown', firstTrackChips === 0 && firstTrackCommon === 1,
+   `chips=${firstTrackChips} common=${firstTrackCommon}`);
 await page.locator('[data-ob="mode-sketch"]').first().click(); // обратно к эскизу
 await page.waitForTimeout(150);
 // Модуляции — свёрнутый раздел внутри эскиза.

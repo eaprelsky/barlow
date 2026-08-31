@@ -2,7 +2,7 @@
 // конкретного контекста — им пользуются и live-планировщик, и
 // оффлайн-рендер WAV (это же — точка сверки с Rust-движком по golden WAV).
 
-import type { Note, Track, WavePartial } from '../types';
+import type { Note, SoundingTrack, WavePartial } from '../types';
 import { scaleOf } from '../types';
 import type { TrackChain } from './fx';
 
@@ -178,7 +178,7 @@ function scheduleGrainCloud(
   ctx: BaseAudioContext,
   amp: GainNode,
   sample: AudioBuffer,
-  track: Track,
+  track: SoundingTrack,
   rows: number[],
   notes: Note[],
   time: number,
@@ -264,7 +264,7 @@ export function triggerVoice(
   chain: TrackChain,
   noise: AudioBuffer,
   sample: AudioBuffer | null,
-  track: Track,
+  track: SoundingTrack,
   notes: Note[],
   time: number,
   stepSec: number,

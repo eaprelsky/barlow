@@ -81,7 +81,7 @@ try {
 
   // A: редактор волны (открывается из «трек» → «инструмент») → очистить всё
   // → + трек: новый трек развёрнут.
-  await page.locator('[data-ob="mode-track"]').first().click();
+  await page.locator('[data-ob="mode-inst"]').first().click();
   await page.waitForTimeout(200);
   await page.locator('button[aria-label="редактор волны"]').first().click();
   await page.waitForTimeout(300);
@@ -101,7 +101,7 @@ try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
   await addTrack(); // нужна вторая дорожка — будет форс-свёрнута
-  await page.locator('[data-ob="mode-track"]').first().click();
+  await page.locator('[data-ob="mode-inst"]').first().click();
   await page.waitForTimeout(200);
   await page.locator('button[aria-label="редактор волны"]').first().click();
   await page.waitForTimeout(300);

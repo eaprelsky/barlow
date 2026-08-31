@@ -3,14 +3,14 @@
 // (панель, оси мутации, уровень) живут здесь — наружу только команды.
 
 import { useState } from 'react';
-import type { Pattern, Track } from '../types';
+import type { Pattern, SoundingTrack } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { presetName } from '../music/scales';
 import { NumField } from './NumField';
 import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
-  track: Track;
+  track: SoundingTrack;
   pattern: Pattern;
   onFillAxis: (
     id: string,

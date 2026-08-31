@@ -12,13 +12,13 @@ import {
   isPatch,
   makeNote,
   makePattern,
-  makeTrack,
+  makeTrackWithInstrument,
   normalizePatch,
   patternInScene,
   scaleOf,
   uid,
 } from './types';
-import type { Patch, Pattern, Track } from './types';
+import type { Instrument, Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import { LevelBar } from './components/LevelBar';
 import { NumField } from './components/NumField';
@@ -108,6 +108,19 @@ function uniqueName(base: string, used: string[]): string {
     if (!used.includes(candidate)) return candidate;
   }
 }
+
+/** Защитный инструмент, если нормализация не нашла ссылку (не бывает). */
+const fallbackInst = (t: Track): Instrument => ({
+  id: t.instrumentId,
+  name: t.name,
+  waveform: 'sine',
+  attack: 0.002,
+  decay: 0.25,
+  pitchDrop: 1,
+  pitchTime: 0.08,
+  filterLow: 20,
+  filterFreq: 8000,
+});
 
 // Имя нового эскиза: первая свободная буква дорожки (B, C, …).
 // Штрихи форков («A′») не занимают букву — базовое имя считается «A».
@@ -463,6 +476,20 @@ export default function App() {
     setPatch((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
   }, []);
 
+  /** Инструмент дорожки (создан нормализацией, fallback — пустой). */
+  const instOf = useCallback(
+    (p: Patch, t: Track): Instrument =>
+      p.instruments.find((i) => i.id === t.instrumentId) ?? fallbackInst(t),
+    [],
+  );
+
+  const changeInst = useCallback((instId: string, inst: Instrument) => {
+    setPatch((p) => ({
+      ...p,
+      instruments: p.instruments.map((x) => (x.id === instId ? inst : x)),
+    }));
+  }, []);
+
   /** Структурная правка трека (октавы стана, смена шкалы — переиндексируют
    *  ноты): всегда отдельный шаг истории, как команды нот. */
   const changeTrackCommand = useCallback((id: string, t: Track) => {
@@ -522,8 +549,12 @@ export default function App() {
           steps: pt.steps.map((s) => ({ ...s, notes: s.notes.map((n) => ({ ...n })) })),
         };
       });
+      const srcInst =
+        p.instruments.find((i) => i.id === src.instrumentId) ?? fallbackInst(src);
+      const instrument: Instrument = { ...srcInst, id: uid('i') };
       const copy: Track = {
         ...src,
+        instrumentId: instrument.id,
         id: uid('t'),
         name: uniqueName(src.name, p.tracks.map((t) => t.name)),
         patterns,
@@ -532,7 +563,12 @@ export default function App() {
         const old = s.slots[src.id];
         return { ...s, slots: { ...s.slots, [copy.id]: (old && idMap.get(old)) ?? patterns[0].id } };
       });
-      return { ...p, tracks: [...p.tracks, copy], scenes };
+      return {
+        ...p,
+        tracks: [...p.tracks, copy],
+        instruments: [...p.instruments, instrument],
+        scenes,
+      };
     });
   }, [setPatch]);
 
@@ -548,28 +584,35 @@ export default function App() {
     }).then((ok) => {
       if (!ok) return;
       setPatchStep((p) => {
+        const victim = p.tracks.find((t) => t.id === id);
         const tracks = p.tracks.filter((x) => x.id !== id);
+        const instruments = p.instruments.filter((i) => i.id !== victim?.instrumentId);
         const scenes = p.scenes.map((s) => {
           const slots = { ...s.slots };
           delete slots[id];
           const soloTrackId = s.soloTrackId === id ? undefined : s.soloTrackId;
           return { ...s, slots, soloTrackId };
         });
-        return { ...p, tracks, scenes };
+        return { ...p, tracks, instruments, scenes };
       });
     });
   }, [patch.tracks, setPatch]);
 
   const addTrack = useCallback((preset: InstrumentPreset) => {
     setPatchStep((p) => {
-      const track = makeTrack({
+      const { track, instrument } = makeTrackWithInstrument({
         id: uid('t'),
         ...preset.track,
         name: uniqueName(preset.track.name ?? 'трек', p.tracks.map((t) => t.name)),
       });
       // Новый трек добавляется во все сцены своим первым паттерном.
       const scenes = p.scenes.map((s) => ({ ...s, slots: { ...s.slots, [track.id]: track.patterns[0].id } }));
-      return { ...p, tracks: [...p.tracks, track], scenes };
+      return {
+        ...p,
+        tracks: [...p.tracks, track],
+        instruments: [...p.instruments, instrument],
+        scenes,
+      };
     });
   }, []);
 
@@ -775,8 +818,10 @@ export default function App() {
         const meta = await putSample(blob, prompt.slice(0, 40));
         setPatch((p) => ({
           ...p,
-          tracks: p.tracks.map((t) =>
-            t.id === trackId ? { ...t, sampleId: meta.id, sampleName: meta.name } : t,
+          instruments: p.instruments.map((i) =>
+            i.id === p.tracks.find((t) => t.id === trackId)?.instrumentId
+              ? { ...i, sampleId: meta.id, sampleName: meta.name }
+              : i,
           ),
         }));
       } catch (e) {
@@ -808,7 +853,8 @@ export default function App() {
         return;
       }
       const track = patch.tracks.find((t) => t.id === trackId);
-      const blob = track?.sampleId ? await getSampleBlob(track.sampleId) : null;
+      const inst = track && instOf(patch, track);
+      const blob = inst?.sampleId ? await getSampleBlob(inst.sampleId) : null;
       if (!blob) return;
       setGenBusy((b) => ({ ...b, [trackId]: true }));
       try {
@@ -816,8 +862,10 @@ export default function App() {
         const meta = await putSample(out, prompt.slice(0, 40));
         setPatch((p) => ({
           ...p,
-          tracks: p.tracks.map((t) =>
-            t.id === trackId ? { ...t, sampleId: meta.id, sampleName: meta.name } : t,
+          instruments: p.instruments.map((i) =>
+            i.id === p.tracks.find((t) => t.id === trackId)?.instrumentId
+              ? { ...i, sampleId: meta.id, sampleName: meta.name }
+              : i,
           ),
         }));
       } catch (e) {
@@ -829,7 +877,7 @@ export default function App() {
         setGenBusy((b) => ({ ...b, [trackId]: false }));
       }
     },
-    [ai, patch.tracks],
+    [ai, patch.tracks, instOf],
   );
 
   /** Свернуть/развернуть дорожку. Пока открыт редактор волны, чужие дорожки
@@ -1153,7 +1201,7 @@ export default function App() {
 
       <Library
         open={showLib}
-        usedIds={new Set(patch.tracks.map((t) => t.sampleId).filter((v): v is string => !!v))}
+        usedIds={new Set(patch.instruments.map((i) => i.sampleId).filter((v): v is string => !!v))}
         onClose={() => setShowLib(false)}
       />
 
@@ -1435,6 +1483,8 @@ export default function App() {
           <TrackRow
             key={t.id}
             track={t}
+            inst={instOf(patch, t)}
+            onChangeInst={changeInst}
             pattern={patternInScene(t, currentScene)}
             bpm={patch.bpm}
             activeStep={activeOf(t)}
@@ -1460,7 +1510,7 @@ export default function App() {
             onScratchMove={(pos) => engine.scratchMove(pos)}
             onScratchEnd={() => engine.scratchEnd()}
             onScratchPreview={() => engine.previewScratch(t)}
-            onScratchPeaks={() => engine.getSamplePeaks(t.sampleId)}
+            onScratchPeaks={() => engine.getSamplePeaks(t.instrumentId && instOf(patch, t).sampleId)}
             patternSceneCounts={patternSceneCounts}
             allTracks={trackList}
             onGenerateSample={generateSample}
