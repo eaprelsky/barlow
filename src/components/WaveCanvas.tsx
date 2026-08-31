@@ -320,7 +320,7 @@ export function WaveCanvas({
         {toolBtn('весь', 'Показать всё', () => setView([0, 1]))}
         <span className="wc-zoom">{zoomLabel}</span>
         <span className="wc-hint">
-          {editable ? 'тяни мышью — рисуй форму · колесо — зум' : 'тяни — выдели кусок · колесо — зум'}
+          {editable ? 'рисование — протяни · зум — колесо' : 'выделение — протяни · зум — колесо'}
         </span>
       </div>
       <div

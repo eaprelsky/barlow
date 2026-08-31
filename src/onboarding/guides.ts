@@ -610,7 +610,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="we-partials"]',
-        say: 'Парциалы: ×2 — октава, ×1.5 — квинта.',
+        say: 'Гармоники: ×2 — октава, ×1.5 — квинта.',
         side: 'top',
       },
     ],

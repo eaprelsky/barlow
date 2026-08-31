@@ -74,11 +74,15 @@ export function EnvGraph({ attack, decay, sustain, voiceLen, stepSec, steps }: E
     for (let t = step; t < total - 0.001; t += step) lines.push(t);
   }
 
-  // Подпись ноты — на графике, в свободном углу (спад уходит вниз-вправо).
+  // Подпись ноты — в правом верхнем углу; слева — подписи сегментов ADSR.
   const cap =
     steps !== null
       ? `${stepsLabel(steps)} ≈ ${voiceLen.toFixed(2)} с`
       : `≈ ${voiceLen.toFixed(2)} с`;
+  // Ширины сегментов в px — короткие не подписываем, чтобы не слипались.
+  const wA = x(attackClamped);
+  const wS = x(holdEnd) - wA;
+  const wD = x(voiceLen) - x(holdEnd);
 
   return (
     <svg className="env-graph" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
@@ -90,7 +94,26 @@ export function EnvGraph({ attack, decay, sustain, voiceLen, stepSec, steps }: E
       {/* конец ноты: огибающая доигрывает здесь */}
       <line x1={x(voiceLen)} y1={4} x2={x(voiceLen)} y2={H - 6} className="env-note-end" />
       <polyline points={pts.join(' ')} className="env-amp" />
-      <text x={5} y={14} className="env-text">{cap}</text>
+      <text x={W - 5} y={14} textAnchor="end" className="env-text">{cap}</text>
+      {/* сегменты прямо на кривой: атака / плато / спад со значениями */}
+      <text x={5} y={14} className="env-text">
+        {`A ${(attackClamped * 1000).toFixed(0)} мс`}
+      </text>
+      {sus > 0.005 && wS > 26 && (
+        <text x={(wA + wA + wS) / 2} y={14} textAnchor="middle" className="env-text">
+          {`плато ${Math.round(sus * 100)}%`}
+        </text>
+      )}
+      {wD > 56 && (
+        <text
+          x={(x(holdEnd) + x(voiceLen)) / 2}
+          y={Math.min(H - 22, amp(holdEnd + (voiceLen - holdEnd) * 0.3) * (H - 22) + 8)}
+          textAnchor="middle"
+          className="env-text"
+        >
+          {`спад ${decay.toFixed(2)} с`}
+        </text>
+      )}
     </svg>
   );
 }

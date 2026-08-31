@@ -165,7 +165,7 @@ export function WaveEditor({
     <div className="wave-editor" data-ob="wave-editor">
       <div className="we-head">
         <span className="we-title">
-          редактор волны — {track.name}
+          редактор волны
           {tab === 'sample' && buffer ? ` · ${(buffer.duration).toFixed(2)} с · ${buffer.sampleRate} Гц` : ''}
         </span>
         <span className="tabs we-tabs" data-ob="we-tabs">
@@ -373,7 +373,7 @@ export function WaveEditor({
           <div className="we-partials" data-ob="we-partials">
             {wave.partials.map((p, i) => (
               <div className="partial-row" key={i}>
-                <button className="remove" title="Убрать парциал" onClick={() => removePartial(i)}>×</button>
+                <button className="remove" title="Убрать гармонику" onClick={() => removePartial(i)}>×</button>
                 <label title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
                   ×
                   <NumField
@@ -381,7 +381,7 @@ export function WaveEditor({
                     onChange={(v) => setPartial(i, { ratio: Math.round(v * 100) / 100 })}
                   />
                 </label>
-                <label title="Амплитуда парциала, %">
+                <label title="Амплитуда гармоники, %">
                   <NumField
                     value={Math.round(p.amp * 100)} min={0} max={100} step={5} narrow
                     onChange={(v) => setPartial(i, { amp: v / 100 })}
@@ -389,7 +389,7 @@ export function WaveEditor({
                 </label>
                 <select
                   value={p.type}
-                  title="Форма парциала"
+                  title="Форма гармоники"
                   onChange={(e) => setPartial(i, { type: e.target.value as WavePartial['type'] })}
                 >
                   {(Object.keys(PARTIAL_TYPE_LABELS) as WavePartial['type'][]).map((t) => (
@@ -399,9 +399,9 @@ export function WaveEditor({
               </div>
             ))}
             <div className="we-row">
-              <button onClick={addPartial} title="Добавить парциал">+ парциал</button>
+              <button onClick={addPartial} title="Добавить гармонику">+ гармоника</button>
               {hasNoise && (
-                <label title="Размер зерна шумовых парциалов, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
+                <label title="Размер зерна шумовых гармоник, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
                   зерно шума, мс
                   <NumField
                     value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
@@ -409,7 +409,7 @@ export function WaveEditor({
                   />
                 </label>
               )}
-              <span className="mini-info">{wave.partials.length}/64 парциалов</span>
+              <span className="mini-info">{wave.partials.length}/64 гармоник</span>
             </div>
           </div>
         </div>
