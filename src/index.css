@@ -2712,3 +2712,97 @@ header button svg {
   font-size: 12px;
   color: var(--text-dim);
 }
+
+
+/* Крутилка у числовых полей: потяни вертикально (Shift — мелкий шаг);
+   в сфокусированном поле — обычный ввод */
+input[type="number"]:not(:focus):not(:disabled) {
+  cursor: ns-resize;
+}
+
+input[type="number"]:not(:focus):not(:disabled):active {
+  cursor: grabbing;
+}
+
+/* Панели трека/инструмента: компактнее — подписи слева от поля */
+.more-row.panel {
+  gap: 12px;
+}
+
+.more-row.panel .panel-row .group label,
+.more-row.panel > .group label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.more-row.panel .panel-row .group,
+.more-row.panel > .group {
+  gap: 14px;
+}
+
+
+/* Границы куска сэмпла на мини-карте скрэтч-пэда */
+.scratch-map .region-dim {
+  fill: rgba(0, 0, 0, 0.55);
+}
+
+.scratch-map .region-line {
+  stroke: var(--accent);
+  stroke-width: 0.7;
+}
+
+
+/* Дуги сайдчейна: кто кого качает */
+main.main-area {
+  position: relative;
+}
+
+.sc-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+
+.sc-link {
+  fill: none;
+  stroke: var(--accent-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.55;
+}
+
+
+/* Редактор кривых партии */
+.auto-box .auto-editor {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.auto-box .seg button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.auto-box .seg button.on {
+  color: var(--accent);
+  background: rgba(255, 168, 60, 0.08);
+}
+
+/* Заголовок секции модуляций */
+.mods-box .sub-head {
+  width: 100%;
+}
+
+.mods-toggle {
+  background: transparent;
+  border: none;
+}

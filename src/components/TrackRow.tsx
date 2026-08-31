@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type {
   ArpMode,
+  AutoTarget,
   Effect,
   Instrument,
   Mod,
@@ -15,6 +16,7 @@ import type {
 } from '../types';
 import {
   ARP_MODE_LABELS,
+  AUTO_TARGET_LABELS,
   EFFECT_LABELS,
   INSTRUMENT_FIELDS,
   MOD_TARGET_LABELS,
@@ -40,6 +42,7 @@ import { NumField } from './NumField';
 import { SliderField } from './SliderField';
 import { WaveEditor } from './WaveEditor';
 import { EnvGraph, PitchGraph } from './EnvGraph';
+import { AutoEditor } from './AutoEditor';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
@@ -72,6 +75,10 @@ function panLabel(pan: number): string {
   if (pan < 0.49) return `L${Math.round((0.5 - pan) * 200)}`;
   if (pan > 0.51) return `R${Math.round((pan - 0.5) * 200)}`;
   return 'центр';
+}
+
+function clampSec(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
 }
 
 function fmtRatio(r: number): string {
@@ -128,10 +135,10 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
-  onScratchPeaks: () => Promise<number[] | null>;
+  onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
   patternSceneCounts: Record<string, number>;
-  // Для сайдчейна: все дорожки патча (id + имя).
-  allTracks: { id: string; name: string }[];
+  // Для сайдчейна и связки инструментов: все дорожки патча.
+  allTracks: { id: string; name: string; instrumentId: string }[];
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   onTransformSample: (trackId: string, prompt: string, strength: number) => void;
   genBusy: boolean;
@@ -144,6 +151,10 @@ interface Props {
   onPreviewNote: (track: Track) => void;
   /** Открыть библиотеку сэмплов из пикера. */
   onOpenLibrary: () => void;
+  /** Связать дорожку с инструментом другой дорожки. */
+  onAssignInstrument: (trackId: string, sourceTrackId: string) => void;
+  /** Отвязать: собственная копия инструмента. */
+  onDetachInstrument: (trackId: string) => void;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -187,6 +198,8 @@ export const TrackRow = memo(function TrackRow({
   onPreviewSampleRegion,
   onPreviewNote,
   onOpenLibrary,
+  onAssignInstrument,
+  onDetachInstrument,
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
@@ -282,7 +295,7 @@ export const TrackRow = memo(function TrackRow({
   const [scratchArmed, setScratchArmed] = useState(false);
   const [scratchLive, setScratchLive] = useState(false);
   const [scratchPlaying, setScratchPlaying] = useState(false);
-  const [scratchPeaks, setScratchPeaks] = useState<number[] | null>(null);
+  const [scratchMap, setScratchMap] = useState<{ peaks: number[]; duration: number } | null>(null);
   // Редактирование: во время драга точки/записи живём в локальном состоянии,
   // в патч пишем на отпускании (один undo-шаг на правку).
   const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
@@ -327,6 +340,8 @@ export const TrackRow = memo(function TrackRow({
   // Вкладки внутри «трека»; модуляции — раздел эскиза, свёрнут по умолчанию.
   const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx'>('snd');
   const [showMods, setShowMods] = useState(false);
+  // Кривые партии: какая цель рисуется.
+  const [autoTarget, setAutoTarget] = useState<AutoTarget>('volume');
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
@@ -492,8 +507,8 @@ export const TrackRow = memo(function TrackRow({
   useEffect(() => {
     if (st.waveform !== 'sample' || (st.sampleMode ?? 'plain') !== 'scratch') return;
     let alive = true;
-    void onScratchPeaks().then((p) => {
-      if (alive) setScratchPeaks(p ?? []);
+    void onScratchPeaks().then((m) => {
+      if (alive) setScratchMap(m);
     });
     return () => {
       alive = false;
@@ -1185,6 +1200,8 @@ export const TrackRow = memo(function TrackRow({
           <div className="panel-row">
             <div className="sub-head">
               <span className="sub-cap">комната — эффекты, одни для всех эскизов</span>
+              <span className="spacer" />
+              <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект в цепочку">+ эффект</button>
               <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
             </div>
             <div className="group mods-group" data-ob="fx-list">
@@ -1270,105 +1287,55 @@ export const TrackRow = memo(function TrackRow({
             <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект">+ эффект</button>
             </div>
           </div>
-          <div className="panel-cols">
-            <div className="panel-row">
+          <div className="panel-row">
+            <div className="sub-head">
               <span className="sub-cap">сайдчейн</span>
-              <div className="group">
-                <label title="Сайдчейн: ноты выбранной дорожки приглушают эту («бас качается под бочку»). Дак живёт поверх громкости эскиза">
-                  качается от
-                  <select
-                    value={track.sidechain?.sourceId ?? ''}
-                    onChange={(e) =>
-                      change({
-                        sidechain: e.target.value
-                          ? {
-                              sourceId: e.target.value,
-                              amount: track.sidechain?.amount ?? 0.5,
-                              releaseSec: track.sidechain?.releaseSec ?? 0.25,
-                            }
-                          : undefined,
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    {allTracks.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </label>
-                {track.sidechain && (
-                  <>
-                    <label title="Глубина приглушения при ударе источника">
-                      глубина, %
-                      <NumField
-                        value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
-                        onChange={(v) =>
-                          change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
-                        }
-                      />
-                    </label>
-                    <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
-                      восстановление, с
-                      <NumField
-                        value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
-                        onChange={(v) =>
-                          change({ sidechain: { ...track.sidechain!, releaseSec: v } })
-                        }
-                      />
-                    </label>
-                  </>
-                )}
-              </div>
             </div>
-            <div className="panel-row">
-              <div className="sub-head">
-                <span className="sub-cap">арпеджиатор</span>
-                <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
-              </div>
-              <div className="group" data-ob="arp-group">
-                <label
-                  title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
-                  data-ob="arp"
+            <div className="group">
+              <label title="Сайдчейн: ноты выбранной дорожки приглушают эту («бас качается под бочку»). Дак живёт поверх громкости эскиза">
+                качается от
+                <select
+                  value={track.sidechain?.sourceId ?? ''}
+                  onChange={(e) =>
+                    change({
+                      sidechain: e.target.value
+                        ? {
+                            sourceId: e.target.value,
+                            amount: track.sidechain?.amount ?? 0.5,
+                            releaseSec: track.sidechain?.releaseSec ?? 0.25,
+                          }
+                        : undefined,
+                    })
+                  }
                 >
-                  <input
-                    type="checkbox"
-                    checked={!!track.arp}
-                    onChange={(e) =>
-                      change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
-                    }
-                  />
-                  включить
-                </label>
-                {track.arp && (
-                  <>
-                    <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
-                      тип
-                      <select
-                        value={track.arp.mode}
-                        onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
-                      >
-                        {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
-                          <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
-                      дробление
-                      <NumField
-                        value={track.arp.div} min={0.25} max={8} step={0.25} narrow
-                        onChange={(div) => change({ arp: { ...track.arp!, div } })}
-                      />
-                    </label>
-                    <label title="Повтор фигуры по октавам — классика арпеджио">
-                      октавы
-                      <NumField
-                        value={track.arp.octaves} min={1} max={4} narrow
-                        onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
-                      />
-                    </label>
-                  </>
-                )}
-              </div>
+                  <option value="">—</option>
+                  {allTracks.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </label>
+              {track.sidechain && (
+                <>
+                  <label title="Глубина приглушения при ударе источника">
+                    глубина, %
+                    <NumField
+                      value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
+                      onChange={(v) =>
+                        change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
+                      }
+                    />
+                  </label>
+                  <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
+                    восстановление, с
+                    <NumField
+                      value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
+                      onChange={(v) =>
+                        change({ sidechain: { ...track.sidechain!, releaseSec: v } })
+                      }
+                    />
+                  </label>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1426,6 +1393,39 @@ export const TrackRow = memo(function TrackRow({
                 <button data-ob="inst-pick" onClick={() => setShowInstruments(true)}>выбрать…</button>
               </span>
             </div>
+            {(() => {
+              const sharedWith = allTracks.filter((t2) => t2.id !== track.id && t2.instrumentId === inst.id);
+              const source = allTracks.find((t2) => t2.id !== track.id && t2.instrumentId === inst.id);
+              return (
+                <div className="lbl" title="Инструмент можно раздать нескольким дорожкам: правка тембра меняет его у всех. «отвязать» сделает собственной копией">
+                  {sharedWith.length > 0 ? (
+                    <>
+                      <span className="sample-name">общий с: {sharedWith.map((t2) => t2.name).join(', ')}</span>
+                      <button onClick={() => onDetachInstrument(track.id)}>отвязать</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="sample-name">играть как у</span>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) onAssignInstrument(track.id, e.target.value);
+                          e.currentTarget.value = '';
+                        }}
+                      >
+                        <option value="">свой</option>
+                        {allTracks
+                          .filter((t2) => t2.id !== track.id && t2.instrumentId !== inst.id)
+                          .map((t2) => (
+                            <option key={t2.id} value={t2.id}>{t2.name}</option>
+                          ))}
+                      </select>
+                      {source && <span className="sample-name">общий</span>}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             <label title="Форма волны осциллятора — основа тембра">
               волна
               <select value={st.waveform} onChange={(e) => changeInst({ waveform: e.target.value as Waveform })}>
@@ -1677,6 +1677,56 @@ export const TrackRow = memo(function TrackRow({
               />
             </label>
           </div>
+          <div className="group sub" data-ob="arp-group">
+            <div className="sub-head">
+              <span className="sub-cap">арпеджиатор</span>
+              <span className="scope-cap" title="Арпеджиатор — свойство дорожки: общий для всех её инструментов и эскизов">дорожка</span>
+              <span className="spacer" />
+              <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
+            </div>
+            <label
+              title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
+              data-ob="arp"
+            >
+              <input
+                type="checkbox"
+                checked={!!track.arp}
+                onChange={(e) =>
+                  change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
+                }
+              />
+              включить
+            </label>
+            {track.arp && (
+              <>
+                <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
+                  тип
+                  <select
+                    value={track.arp.mode}
+                    onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
+                  >
+                    {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
+                      <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
+                  дробление
+                  <NumField
+                    value={track.arp.div} min={0.25} max={8} step={0.25} narrow
+                    onChange={(div) => change({ arp: { ...track.arp!, div } })}
+                  />
+                </label>
+                <label title="Повтор фигуры по октавам — классика арпеджио">
+                  октавы
+                  <NumField
+                    value={track.arp.octaves} min={1} max={4} narrow
+                    onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
+                  />
+                </label>
+              </>
+            )}
+          </div>
           </>
           )}
         </div>
@@ -1693,6 +1743,14 @@ export const TrackRow = memo(function TrackRow({
             >
               {scratchArmed || scratchLive ? '● веди по пэду…' : '● записать жест'}
             </button>
+            {(st.scratchPoints ?? []).length > 0 && (
+              <button
+                title="Стереть жест: пэд станет пустым (границы куска не трогаются)"
+                onClick={() => changeInst({ scratchPoints: [] })}
+              >
+                очистить жест
+              </button>
+            )}
             <button
               className={scratchPlaying ? 'on' : ''}
               data-ob="scratch-play"
@@ -1724,12 +1782,49 @@ export const TrackRow = memo(function TrackRow({
             </span>
           </div>
           <div className="scratch-row">
-            <div
+<div
               className="scratch-side"
-              title="Место в сэмпле: низ — начало, верх — конец. Полоски — громкость сэмпла в этом месте"
+              title="Кусок сэмпла: тяни верхнюю или нижнюю границу — подвинешь конец/начало куска. Полоски — громкость"
             >
-              <svg className="scratch-map" viewBox="0 0 10 100" preserveAspectRatio="none">
-                {(scratchPeaks ?? []).map((pk, i) => {
+              <svg
+                className="scratch-map"
+                viewBox="0 0 10 100"
+                preserveAspectRatio="none"
+                onPointerDown={(e) => {
+                  if (!scratchMap || e.button !== 0) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
+                  const dur = scratchMap.duration;
+                  const rs = st.sampleStart ?? 0;
+                  const re = st.sampleEnd ?? dur;
+                  const edge =
+                    Math.abs(pos - re / dur) < 0.06
+                      ? 'end'
+                      : Math.abs(pos - rs / dur) < 0.06
+                        ? 'start'
+                        : null;
+                  if (!edge) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  (e.currentTarget as unknown as HTMLElement).dataset.edge = edge;
+                }}
+                onPointerMove={(e) => {
+                  const edge = (e.currentTarget as unknown as HTMLElement).dataset.edge;
+                  if (!edge || !scratchMap) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
+                  const dur = scratchMap.duration;
+                  const rs = st.sampleStart ?? 0;
+                  const re = st.sampleEnd ?? dur;
+                  if (edge === 'end')
+                    changeInst({ sampleEnd: clampSec(Math.max(rs + 0.01, pos * dur), 0.001, dur) });
+                  else
+                    changeInst({ sampleStart: clampSec(Math.min(re - 0.01, pos * dur), 0, dur) });
+                }}
+                onPointerUp={(e) => {
+                  delete (e.currentTarget as unknown as HTMLElement).dataset.edge;
+                }}
+              >
+                {(scratchMap?.peaks ?? []).map((pk, i) => {
                   const y = 100 - ((i + 0.5) * 100) / 64;
                   const h = pk * 100;
                   return (
@@ -1744,6 +1839,20 @@ export const TrackRow = memo(function TrackRow({
                     />
                   );
                 })}
+                {scratchMap &&
+                  (() => {
+                    const dur = scratchMap.duration;
+                    const rsY = (1 - (st.sampleStart ?? 0) / dur) * 100;
+                    const reY = (1 - Math.min(st.sampleEnd ?? dur, dur) / dur) * 100;
+                    return (
+                      <>
+                        <rect x={0} y={0} width={10} height={Math.max(0, reY)} className="region-dim" />
+                        <rect x={0} y={rsY} width={10} height={Math.max(0, 100 - rsY)} className="region-dim" />
+                        <line x1={0} y1={reY} x2={10} y2={reY} className="region-line" />
+                        <line x1={0} y1={rsY} x2={10} y2={rsY} className="region-line" />
+                      </>
+                    );
+                  })()}
               </svg>
             </div>
             <div className="scratch-main">
@@ -1983,7 +2092,7 @@ export const TrackRow = memo(function TrackRow({
               title="Как партия врывается в сцену, мс: 0 — обрыв (деклик), 100–500 — мягкое вступление, 1000+ — выплывает из тишины. Заодно это вход трека при старте игры"
               data-ob="fade-in"
             >
-              вход
+              вход в сцену
               <NumField
                 value={Math.round((pattern.fadeIn ?? 0.005) * 1000)} min={0} max={8000} step={5}
                 onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeIn: ms / 1000 })}
@@ -1993,7 +2102,7 @@ export const TrackRow = memo(function TrackRow({
               title="Как партия уходит из сцены, мс: 0 — резкий обрыв, 100–400 — хвост уплывает, 1000+ — длинное растворение. Действует на границе сцен"
               data-ob="fade-out"
             >
-              выход
+              выход из сцены
               <NumField
                 value={Math.round((pattern.fadeOut ?? 0.05) * 1000)} min={0} max={8000} step={5}
                 onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeOut: ms / 1000 })}
@@ -2215,17 +2324,64 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
+          {/* Кривые партии: громкость/фильтр/панорама по ходу цикла (v35) */}
+          <div className="panel-row auto-box">
+            <div className="sub-head">
+              <span className="sub-cap">кривые партии</span>
+              <div className="seg">
+                {(Object.keys(AUTO_TARGET_LABELS) as AutoTarget[]).map((t) => (
+                  <button
+                    key={t}
+                    className={autoTarget === t ? 'on' : ''}
+                    onClick={() => setAutoTarget(t)}
+                  >
+                    {AUTO_TARGET_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+              <span className="spacer" />
+              {(pattern.automation?.some((c) => c.target === autoTarget)) && (
+                <button
+                  title="Убрать кривую: параметр вернётся к своей ручке"
+                  onClick={() =>
+                    onPatternChange(track.id, pattern.id, {
+                      automation: (pattern.automation ?? []).filter((c) => c.target !== autoTarget),
+                    })
+                  }
+                >
+                  убрать кривую
+                </button>
+              )}
+            </div>
+            <AutoEditor
+              curves={pattern.automation ?? []}
+              target={autoTarget}
+              onChange={(cs) =>
+                onPatternChange(track.id, pattern.id, { automation: cs.length > 0 ? cs : undefined })
+              }
+            />
+          </div>
+
           {/* Модуляции — свойство партии: от эскиза к эскизу свои */}
           <div className="mods-box">
-            <button
-              className={'mods-toggle' + (showMods ? ' on' : '')}
-              data-ob="mods-toggle"
-              title="Модуляции — авторучки-LFO. Живут на эскизе: у каждой партии свои. Первая правка скопирует набор трека в этот эскиз"
-              onClick={() => setShowMods((v) => !v)}
-            >
-              {showMods ? '▾' : '▸'} модуляции
-              <span className="scope-cap">эскиз</span>
-            </button>
+            <div className="sub-head">
+              <button
+                className={'mods-toggle' + (showMods ? ' on' : '')}
+                data-ob="mods-toggle"
+                title="Модуляции — авторучки-LFO. Живут на эскизе: у каждой партии свои. Первая правка скопирует набор трека в этот эскиз"
+                onClick={() => setShowMods((v) => !v)}
+              >
+                {showMods ? '▾' : '▸'} модуляции
+                <span className="scope-cap">эскиз</span>
+              </button>
+              <span className="spacer" />
+              {showMods && (
+                <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">
+                  + модуляция
+                </button>
+              )}
+              <HelpHint guide="effects" step={6} scope={scope} label="Гид: модуляции" />
+            </div>
             {showMods && (
             <div className="group mods-group" data-ob="mods-list">
               {(pattern.mods ?? track.mods).map((m, i) => (
@@ -2301,8 +2457,6 @@ export const TrackRow = memo(function TrackRow({
                   />
                 </div>
               ))}
-              <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">+ модуляция</button>
-              <HelpHint guide="effects" step={6} scope={scope} label="Гид: модуляции" />
             </div>
             )}
           </div>

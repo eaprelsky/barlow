@@ -195,6 +195,8 @@ export interface Pattern {
   // Дефолты 5/50 мс — деклик стыка, атаку нот не глотают.
   fadeIn?: number;
   fadeOut?: number;
+  // Кривые партии (v35): громкость/фильтр/панорама по ходу цикла.
+  automation?: AutoCurve[];
 }
 
 export type ModTarget =
@@ -300,6 +302,48 @@ export interface Track {
   patterns: Pattern[];
 }
 
+/** Цель кривой партии: громкость — доля от громкости партии,
+ *  фильтр — 60…12000 Гц по логарифму, панорама — L…R. */
+export type AutoTarget = 'volume' | 'filterFreq' | 'pan';
+
+export const AUTO_TARGET_LABELS: Record<AutoTarget, string> = {
+  volume: 'громкость',
+  filterFreq: 'фильтр',
+  pan: 'панорама',
+};
+
+/** Точка кривой: t — доля цикла эскиза (0..1), v — нормированное 0..1. */
+export interface AutoPoint {
+  t: number;
+  v: number;
+}
+
+export interface AutoCurve {
+  target: AutoTarget;
+  points: AutoPoint[];
+}
+
+/** Значение кривой в точке цикла; нет точек — undefined. */
+export function autoValue(points: AutoPoint[] | undefined, t: number): number | undefined {
+  if (!points || points.length === 0) return undefined;
+  const pts = points.length > 1 ? [...points].sort((a, b) => a.t - b.t) : points;
+  if (t <= pts[0].t) return pts[0].v;
+  if (t >= pts[pts.length - 1].t) return pts[pts.length - 1].v;
+  for (let i = 1; i < pts.length; i++) {
+    if (t <= pts[i].t) {
+      const f = (t - pts[i - 1].t) / Math.max(1e-9, pts[i].t - pts[i - 1].t);
+      return pts[i - 1].v + (pts[i].v - pts[i - 1].v) * f;
+    }
+  }
+  return pts[pts.length - 1].v;
+}
+
+/** Нормированное 0..1 → значение параметра. */
+export function autoToParam(target: AutoTarget, v: number): number {
+  if (target === 'filterFreq') return 60 * Math.pow(200, v); // 60…12000 Гц, лог
+  return v; // volume 0..1 (доля), pan 0..1 (позже ×2−1)
+}
+
 /** Инструмент — тембр одной ноты: источник (волна/сэмпл), огибающая,
  *  падение тона, фильтры, вибрато. Сущность патча (v34): дорожка
  *  ссылается на инструмент по id; шаринг по ссылке — opt-in на будущее,
@@ -390,6 +434,8 @@ export interface Scene {
 export interface ChainItem {
   sceneId: string;
   bars: number;
+  // Темп этого пункта (v35): undefined — как в шапке патча.
+  bpm?: number;
 }
 
 export type MasterNoise = 'off' | 'white' | 'pink';
@@ -421,7 +467,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 34;
+export const PATCH_VERSION = 35;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -864,6 +910,29 @@ export function normalizePatch(p: Patch): Patch {
             // дефолты-деклики 5/50 мс.
             fadeIn: clamp(pt.fadeIn ?? 0.005, 0, 8, 0.005),
             fadeOut: clamp(pt.fadeOut ?? 0.05, 0, 8, 0.05),
+            // Кривые партии (v35): валидируем точки, пустые кривые — долой.
+            automation: (() => {
+              const rawAuto = (pt as { automation?: unknown }).automation;
+              if (!Array.isArray(rawAuto)) return undefined;
+              const targets: AutoTarget[] = ['volume', 'filterFreq', 'pan'];
+              const out: AutoCurve[] = [];
+              for (const c of rawAuto as Partial<AutoCurve>[]) {
+                if (!c || !targets.includes(c.target as AutoTarget)) continue;
+                const points = (Array.isArray(c.points) ? c.points : [])
+                  .filter(
+                    (pt2): pt2 is AutoPoint =>
+                      !!pt2 && Number.isFinite(pt2.t) && Number.isFinite(pt2.v),
+                  )
+                  .map((pt2) => ({
+                    t: clamp(pt2.t, 0, 1, 0),
+                    v: clamp(pt2.v, 0, 1, 0),
+                  }))
+                  .sort((a2, b2) => a2.t - b2.t)
+                  .slice(0, 33);
+                if (points.length >= 2) out.push({ target: c.target as AutoTarget, points });
+              }
+              return out.length > 0 ? out : undefined;
+            })(),
           };
         });
       if (patterns.length === 0) patterns.push(makePattern('A', 16));
@@ -954,7 +1023,15 @@ export function normalizePatch(p: Patch): Patch {
   let chain: ChainItem[] = Array.isArray(p.chain)
     ? p.chain
         .filter((it) => it && sceneIds.has(it.sceneId))
-        .map((it) => ({ sceneId: it.sceneId, bars: Math.round(clamp(it.bars, 1, 256, 8)) }))
+        .map((it) => ({
+          sceneId: it.sceneId,
+          bars: Math.round(clamp(it.bars, 1, 256, 8)),
+          bpm:
+            typeof (it as { bpm?: unknown }).bpm === 'number' &&
+              (it as { bpm?: number }).bpm! >= 30
+              ? clamp((it as { bpm?: number }).bpm!, 30, 300, 120)
+              : undefined,
+        }))
     : [];
   if (chain.length === 0) {
     chain = [{ sceneId: scenes[0].id, bars: 8 }];

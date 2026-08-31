@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine } from './audio/engine';
 import { stepIndexAt } from './audio/timing';
@@ -347,9 +347,36 @@ export default function App() {
   // перерисовываются лишний раз.
   // Стабильный список дорожек для сайдчейн-селектов.
   const trackList = useMemo(
-    () => patch.tracks.map((t) => ({ id: t.id, name: t.name })),
+    () => patch.tracks.map((t) => ({ id: t.id, name: t.name, instrumentId: t.instrumentId })),
     [patch.tracks],
   );
+
+  /** Играть инструмент другой дорожки (связать). */
+  const assignInstrument = useCallback((trackId: string, sourceTrackId: string) => {
+    setPatchStep((p) => {
+      const src = p.tracks.find((t) => t.id === sourceTrackId);
+      if (!src) return p;
+      return {
+        ...p,
+        tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, instrumentId: src.instrumentId } : t)),
+      };
+    });
+  }, [setPatchStep]);
+
+  /** Отвязать: собственная копия инструмента. */
+  const detachInstrument = useCallback((trackId: string) => {
+    setPatchStep((p) => {
+      const t = p.tracks.find((x) => x.id === trackId);
+      const src = t && p.instruments.find((i) => i.id === t.instrumentId);
+      if (!t || !src) return p;
+      const inst: Instrument = { ...src, id: uid('i') };
+      return {
+        ...p,
+        tracks: p.tracks.map((x) => (x.id === trackId ? { ...x, instrumentId: inst.id } : x)),
+        instruments: [...p.instruments, inst],
+      };
+    });
+  }, [setPatchStep]);
 
   const patternSceneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -451,12 +478,15 @@ export default function App() {
     setPatchStep((p) => (p.chain.length <= 1 ? p : { ...p, chain: p.chain.filter((_, i) => i !== idx) }));
   }, [setPatchStep]);
 
-  const chainSetItem = useCallback((idx: number, item: Partial<{ sceneId: string; bars: number }>) => {
-    setPatch((p) => ({
-      ...p,
-      chain: p.chain.map((it, i) => (i === idx ? { ...it, ...item } : it)),
-    }));
-  }, []);
+  const chainSetItem = useCallback(
+    (idx: number, item: Partial<{ sceneId: string; bars: number; bpm?: number }>) => {
+      setPatch((p) => ({
+        ...p,
+        chain: p.chain.map((it, i) => (i === idx ? { ...it, ...item } : it)),
+      }));
+    },
+    [],
+  );
 
   /** Переставить пункт цепочки драгом: порядок = арранжмент. */
   const chainReorder = useCallback((from: number, to: number, place: 'before' | 'after') => {
@@ -587,7 +617,12 @@ export default function App() {
       setPatchStep((p) => {
         const victim = p.tracks.find((t) => t.id === id);
         const tracks = p.tracks.filter((x) => x.id !== id);
-        const instruments = p.instruments.filter((i) => i.id !== victim?.instrumentId);
+        const instShared = p.tracks.some(
+          (x) => x.id !== id && x.instrumentId === victim?.instrumentId,
+        );
+        const instruments = instShared
+          ? p.instruments
+          : p.instruments.filter((i) => i.id !== victim?.instrumentId);
         const scenes = p.scenes.map((s) => {
           const slots = { ...s.slots };
           delete slots[id];
@@ -797,6 +832,48 @@ export default function App() {
   // Живой уровень дорожки для тумбометров (карточка трека и микшер).
   const getTrackLevel = useCallback((id: string) => engine.trackLevel(id), [engine]);
 
+  // ---- Дуги сайдчейна: кто кого качает, видно между карточками ----
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [scLinks, setScLinks] = useState<{ key: string; d: string }[]>([]);
+  useLayoutEffect(() => {
+    const compute = () => {
+      const main = mainRef.current;
+      if (!main) return;
+      const mr = main.getBoundingClientRect();
+      const links: { key: string; d: string }[] = [];
+      for (const t of patch.tracks) {
+        const sc = t.sidechain;
+        if (!sc?.sourceId || sc.sourceId === t.id) continue;
+        const from = main.querySelector(`[data-track-id="${sc.sourceId}"]`);
+        const to = main.querySelector(`[data-track-id="${t.id}"]`);
+        if (!from || !to) continue;
+        const fr = from.getBoundingClientRect();
+        const tr = to.getBoundingClientRect();
+        if (fr.bottom < mr.top - 50 || tr.top > mr.bottom + 50) continue;
+        const x = 30;
+        const y1 = fr.top - mr.top + Math.min(fr.height / 2, 40);
+        const y2 = tr.top - mr.top + Math.min(tr.height / 2, 40);
+        links.push({
+          key: `${sc.sourceId}->${t.id}`,
+          d: `M ${x} ${y1} C ${x - 16} ${y1 + 24}, ${x - 16} ${y2 - 24}, ${x} ${y2}`,
+        });
+      }
+      setScLinks((prev) =>
+        prev.length === links.length && prev.every((l, i) => l.key === links[i].key && l.d === links[i].d)
+          ? prev
+          : links,
+      );
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (mainRef.current) ro.observe(mainRef.current);
+    window.addEventListener('resize', compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', compute);
+    };
+  }, [patch.tracks, waveEditorActive]);
+
   const saveAi = useCallback((next: Partial<AiSettings>) => {
     setAi((prev) => {
       const merged = { ...prev, ...next };
@@ -981,7 +1058,7 @@ export default function App() {
     const pattern = patternInScene(t, currentScene);
     const clock = engine.clockOf(t.id);
     if (!pattern || !clock) return -1;
-    return stepIndexAt(t, pattern, engine.now, clock.resetTime, patch.bpm);
+    return stepIndexAt(t, pattern, engine.now, clock.resetTime, engine.currentBpm);
   };
 
   return (
@@ -1491,6 +1568,13 @@ export default function App() {
                     onChange={(bars) => chainSetItem(i, { bars: Math.round(bars) })}
                   />
                 </label>
+                <label title="Темп этого пункта (30–300). 0 — как в шапке патча">
+                  bpm
+                  <NumField
+                    value={it.bpm ?? 0} min={0} max={300}
+                    onChange={(bpm) => chainSetItem(i, { bpm: bpm >= 30 ? Math.round(bpm) : undefined })}
+                  />
+                </label>
                 <button className="remove" title="Убрать из цепочки" onClick={() => chainRemove(i)}>×</button>
               </div>
             );
@@ -1500,13 +1584,20 @@ export default function App() {
         </div>
       )}
 
-      <main>
+      <main ref={mainRef} className="main-area">
+        <svg className="sc-links" width="100%" height="100%" aria-hidden="true">
+          {scLinks.map((l) => (
+            <path key={l.key} d={l.d} className="sc-link" />
+          ))}
+        </svg>
         {patch.tracks.map((t) => (
           <TrackRow
             key={t.id}
             track={t}
             inst={instOf(patch, t)}
             onChangeInst={changeInst}
+            onAssignInstrument={assignInstrument}
+            onDetachInstrument={detachInstrument}
             pattern={patternInScene(t, currentScene)}
             bpm={patch.bpm}
             activeStep={activeOf(t)}

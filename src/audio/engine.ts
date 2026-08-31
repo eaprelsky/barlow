@@ -13,7 +13,7 @@
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
-import { makeNote, patternInScene } from '../types';
+import { autoToParam, autoValue, makeNote, patternInScene } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
@@ -117,6 +117,8 @@ export class AudioEngine implements AudioBackend {
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new Map<string, Voice>();
   private sceneId = '';
+  // Живой темп: база из шапки или bpm текущего пункта цепочки (v35).
+  private liveBpm = 120;
   private pendingSceneId = '';
   private chainPos = 0;
   private manualMode = true;
@@ -129,6 +131,11 @@ export class AudioEngine implements AudioBackend {
   /** Сцена, которая звучит прямо сейчас (UI подсвечивает её). */
   get currentSceneId(): string {
     return this.sceneId;
+  }
+
+  /** Живой темп: шапка или bpm текущего пункта цепочки. */
+  get currentBpm(): number {
+    return this.liveBpm || this.patch?.bpm || 120;
   }
 
   /** Позиция в цепочке (для подсветки арранжмента). */
@@ -296,6 +303,7 @@ export class AudioEngine implements AudioBackend {
     chain: TrackChain,
     track: SoundingTrack,
     eff: { volume: number; pan: number; mods: Mod[] },
+    pattern?: import('../types').Pattern,
   ): TrackChain {
     const ctx = this.ctx;
     if (!ctx || !this.master) return chain;
@@ -313,13 +321,15 @@ export class AudioEngine implements AudioBackend {
       this.chains.set(trackId, fresh);
       return fresh;
     }
+    const autoOf = (target: string) => pattern?.automation?.some((c) => c.target === target);
     chain.hp.frequency.setTargetAtTime(track.filterLow, t0, 0.03);
-    chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
+    // Автоматизированные цели качает кривая партии — базу сюда не пишем.
+    if (!autoOf('filterFreq')) chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
     chain.filter.Q.setTargetAtTime(track.filterQ ?? 0.8, t0, 0.03);
-    chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
+    if (!autoOf('pan')) chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
     // Во время запланированного перехода сцен громкость на плане рамп —
     // setTarget здесь затёр бы их; вернёмся к обычному режиму после входа.
-    if (chain.fadeHold === undefined || t0 >= chain.fadeHold) {
+    if (!autoOf('volume') && (chain.fadeHold === undefined || t0 >= chain.fadeHold)) {
       chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
     }
     eff.mods.forEach((m, i) => {
@@ -364,7 +374,7 @@ export class AudioEngine implements AudioBackend {
   }
 
   private nextBarTime(from: number): number {
-    const tickDur = tickDuration(this.patch!.bpm);
+    const tickDur = tickDuration(this.liveBpm);
     const ticksNow = Math.max(0, (from - this.startAt) / tickDur);
     const nextBar = (Math.floor(ticksNow / BAR_TICKS) + 1) * BAR_TICKS;
     return this.startAt + nextBar * tickDur;
@@ -374,7 +384,8 @@ export class AudioEngine implements AudioBackend {
     const patch = this.patch!;
     if (patch.followChain && !this.manualMode) {
       const bars = patch.chain[this.chainPos]?.bars ?? 8;
-      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(patch.bpm);
+      const itemBpm = patch.chain[this.chainPos]?.bpm ?? this.liveBpm;
+      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(itemBpm);
     } else if (this.pendingSceneId) {
       this.sceneAdvanceTime = t + BAR_TICKS * tickDuration(patch.bpm);
     } else {
@@ -488,6 +499,11 @@ export class AudioEngine implements AudioBackend {
 
   private applyNextScene(t: number): void {
     const patch = this.patch!;
+    // Темп-карта: bpm нового пункта цепочки действует с его границы —
+    // часы треков всё равно сбрасываются на t, так что просто берём.
+    if (patch.followChain && !this.manualMode) {
+      this.liveBpm = patch.chain[this.chainPos]?.bpm ?? patch.bpm;
+    }
     if (this.pendingSceneId) {
       this.sceneId = this.validScene(this.pendingSceneId);
       this.pendingSceneId = '';
@@ -520,6 +536,7 @@ export class AudioEngine implements AudioBackend {
     const pos = patch.chain.findIndex((it) => it.sceneId === this.sceneId);
     this.chainPos = pos >= 0 ? pos : 0;
     this.startAt = ctx.currentTime + 0.1;
+    this.liveBpm = patch.bpm;
     const scene = this.scene();
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
@@ -685,11 +702,13 @@ export class AudioEngine implements AudioBackend {
     this.scratchNode = null;
   }
 
-  private peaksCache = new Map<string, number[]>();
+  private peaksCache = new Map<string, { peaks: number[]; duration: number }>();
 
-  /** Пики волны сэмпла (64 сегмента, нормированы в 0..1) — для мини-карты
-   *  скрэтч-пэда: видно, где в сэмпле удары, где тишина. */
-  async getSamplePeaks(id: string | undefined): Promise<number[] | null> {
+  /** Пики волны сэмпла (64 сегмента, нормированы в 0..1) и длительность —
+   *  для мини-карты скрэтч-пэда: видно, где в сэмпле удары, где тишина. */
+  async getSamplePeaks(
+    id: string | undefined,
+  ): Promise<{ peaks: number[]; duration: number } | null> {
     if (!id) return null;
     const cached = this.peaksCache.get(id);
     if (cached) return cached;
@@ -711,8 +730,9 @@ export class AudioEngine implements AudioBackend {
       }
       peaks.push(m);
     }
-    this.peaksCache.set(id, peaks);
-    return peaks;
+    const entry = { peaks, duration: buf.duration };
+    this.peaksCache.set(id, entry);
+    return entry;
   }
 
   /** Декодированный буфер сэмпла — редактору волны для канваса
@@ -826,6 +846,7 @@ export class AudioEngine implements AudioBackend {
     if (bpm === old || !Number.isFinite(bpm) || bpm <= 0) return;
     const now = this.ctx.currentTime;
     const ratio = tickDuration(bpm) / tickDuration(old);
+    this.liveBpm = bpm;
     const stretch = (t: number) => now + (t - now) * ratio;
     // Якорь тактов (nextBarTime) и граница сцены едут той же пропорцией.
     this.startAt = stretch(this.startAt);
@@ -860,9 +881,10 @@ export class AudioEngine implements AudioBackend {
         this.nextBarTime(this.ctx.currentTime),
       );
       const bars = this.patch.chain[this.chainPos]?.bars ?? 8;
+      const itemBpm = this.patch.chain[this.chainPos]?.bpm ?? this.liveBpm;
       // Расчёт времени следующего перехода от границы такта.
       const t = this.sceneAdvanceTime;
-      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(this.patch.bpm);
+      this.sceneAdvanceTime = t + bars * BAR_TICKS * tickDuration(itemBpm);
       this.armSceneExit(this.sceneAdvanceTime);
     } else {
       this.sceneAdvanceTime = this.pendingSceneId ? this.sceneAdvanceTime : null;
@@ -917,8 +939,8 @@ export class AudioEngine implements AudioBackend {
         this.armSceneExit(this.sceneAdvanceTime);
       }
       if (!chain) continue;
-      chain = this.applyTrackParams(track.id, chain, st, eff);
-      const stepDur = stepDuration(track, patch.bpm, pattern);
+      chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
+      const stepDur = stepDuration(track, this.liveBpm, pattern);
       let g = 0;
       while (clock.nextStepTime < horizon && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
@@ -951,6 +973,22 @@ export class AudioEngine implements AudioBackend {
             }
           }
         }
+        // Кривые партии: значение параметра на границе шага (v35).
+        if (pattern.automation?.length) {
+          const pos = clock.nextStepIndex / pattern.length;
+          for (const c of pattern.automation) {
+            const v = autoValue(c.points, pos);
+            if (v === undefined) continue;
+            const at = clock.nextStepTime;
+            if (c.target === 'filterFreq') {
+              chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
+            } else if (c.target === 'pan') {
+              chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
+            } else if (c.target === 'volume' && (chain.fadeHold === undefined || ctx.currentTime >= chain.fadeHold)) {
+              chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
+            }
+          }
+        }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
       }
@@ -966,8 +1004,8 @@ export class AudioEngine implements AudioBackend {
         : [{ sceneId: fallbackSceneId, bars: fallbackBars }]
     ).map((it) => ({ ...it, sceneId: validSceneId(patch, it.sceneId) }));
 
-    const tickDur = tickDuration(patch.bpm);
-    const duration = fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDur, 0) + 1.0;
+    const duration =
+      fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDuration(it.bpm ?? patch.bpm), 0) + 1.0;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
     // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
@@ -1006,11 +1044,13 @@ export class AudioEngine implements AudioBackend {
         const pattern = patternInScene(track, scene);
         if (!pattern) continue;
         const audible = audibleSet(patch, scene).has(pattern.id);
-        // Шаг — свой у каждого эскиза (override или шаг трека).
-        const stepDur = stepDuration(track, patch.bpm, pattern);
+        // Шаг — свой у каждого эскиза (override или шаг трека); темп —
+        // у пункта цепочки, если задан.
+        const itemBpm = item.bpm ?? patch.bpm;
+        const stepDur = stepDuration(track, itemBpm, pattern);
         // Не dispose-им: запланированные ноты привязаны к узлам.
         const chain = chainsByKey.get(`${track.id}:${item.sceneId}`)!;
-        const itemDur = item.bars * BAR_TICKS * tickDur;
+        const itemDur = item.bars * BAR_TICKS * tickDuration(item.bpm ?? patch.bpm);
         // Переходная огибающая: вход партии от начала пункта цепочки,
         // выход — к его концу. Те же правила, что и в live-планировщике
         // (armSceneExit) — рендер и живой звук сходятся.
@@ -1028,6 +1068,20 @@ export class AudioEngine implements AudioBackend {
         let idx = startStepIndex(track, pattern);
         const sample = this.sampleCache.get(st.sampleId ?? '') ?? null;
         for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
+          if (pattern.automation?.length) {
+            const pos = idx / pattern.length;
+            for (const c of pattern.automation) {
+              const v = autoValue(c.points, pos);
+              if (v === undefined) continue;
+              if (c.target === 'filterFreq') {
+                chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), tt, 0.03);
+              } else if (c.target === 'pan') {
+                chain.panner.pan.setTargetAtTime(v * 2 - 1, tt, 0.03);
+              } else if (c.target === 'volume') {
+                chain.gain.gain.setTargetAtTime(vol * v, tt, 0.03);
+              }
+            }
+          }
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {

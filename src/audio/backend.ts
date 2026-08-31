@@ -12,6 +12,8 @@ export interface AudioBackend {
   /** Сцена, которая звучит прямо сейчас (UI подсвечивает её). */
   readonly currentSceneId: string;
   /** Позиция в цепочке (для подсветки арранжмента). */
+  readonly currentBpm: number;
+
   readonly currentChainPos: number;
   /** Актуальное время аудио-часов — для расчёта playhead в UI. */
   readonly now: number;
@@ -42,7 +44,7 @@ export interface AudioBackend {
   previewScratch(track: Track): void;
 
   /** Пики волны сэмпла (64 сегмента, 0..1) для мини-карты скрэтч-пэда. */
-  getSamplePeaks(id: string | undefined): Promise<number[] | null>;
+  getSamplePeaks(id: string | undefined): Promise<{ peaks: number[]; duration: number } | null>;
 
   /** Декодированный буфер сэмпла — редактору волны (канвас, разложение). */
   getSampleBuffer(id: string | undefined): Promise<AudioBuffer | null>;
