@@ -268,6 +268,9 @@ export function triggerVoice(
   notes: Note[],
   time: number,
   stepSec: number,
+  // Готовая длина голоса (арпеджиатор: доля ноты). Undefined — по треку:
+  // сетка (noteSteps × шаг) или огибающая, гейт ноты умножает сверху.
+  durSec?: number,
 ): Voice {
   if (notes.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
   const rows = scaleOf(track);
@@ -319,7 +322,8 @@ export function triggerVoice(
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
     const baseLenG =
-      track.noteSteps && track.noteSteps > 0 ? track.noteSteps * stepSec : track.attack + track.decay;
+      durSec ??
+      (track.noteSteps && track.noteSteps > 0 ? track.noteSteps * stepSec : track.attack + track.decay);
     const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, baseLenG, regStart, regEnd);
     return { amp, sources, stopAt: lastEnd };
   }
@@ -340,11 +344,14 @@ export function triggerVoice(
   const maxGate = Math.max(1, ...gates);
   let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   const baseLen =
-    track.noteSteps && track.noteSteps > 0
+    durSec ??
+    (track.noteSteps && track.noteSteps > 0
       ? track.noteSteps * stepSec
-      : attack + track.decay;
-  let voiceLen = baseLen * maxGate;
-  if (!track.noteSteps && sus >= 0.99) {
+      : attack + track.decay);
+  // Готовая длина арп-доли уже включает гейт; «тянуть до перебоя» —
+  // только для обычных нот без сетки.
+  let voiceLen = durSec !== undefined ? durSec : baseLen * maxGate;
+  if (durSec === undefined && !track.noteSteps && sus >= 0.99) {
     voiceLen = Math.max(voiceLen, 16);
     sus = 1 - 0.05 / voiceLen;
   }

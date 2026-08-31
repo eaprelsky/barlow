@@ -912,15 +912,23 @@ export class AudioEngine implements AudioBackend {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         const notes = step ? liveNotes(step) : [];
         if (notes.length > 0 && audible.has(pattern.id)) {
-          // Арпеджиатор разворачивает аккорд шага в последовательность;
+          // Арпеджиатор дробит ноту на доли-перелив (каждая короче ноты);
           // без него — одно событие со всеми нотами (как раньше).
-          const events: { notes: Note[]; dt: number }[] = track.arp
-            ? arpEvents(notes, track.arp).map((e) => ({ notes: [e.note], dt: e.dt }))
+          const noteLenSteps =
+            track.noteSteps && track.noteSteps > 0
+              ? track.noteSteps
+              : (Math.max(track.attack, 0.0005) + track.decay) / stepDur;
+          const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
+            ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
+                notes: [e.note],
+                dt: e.dt,
+                durSec: e.len * stepDur,
+              }))
             : [{ notes, dt: 0 }];
           for (const ev of events) {
             const at = clock.nextStepTime + ev.dt * stepDur;
             if (track.mono) this.duckLastVoice(track.id, at);
-            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, ev.notes, at, stepDur);
+            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(track.sampleId ?? '') ?? null, track, ev.notes, at, stepDur, ev.durSec);
             if (track.mono) this.lastVoices.set(track.id, voice);
             // Сайдчейн: ноты этой дорожки качают приглушаемых.
             for (const rt of patch.tracks) {
@@ -1009,13 +1017,21 @@ export class AudioEngine implements AudioBackend {
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {
-            const events: { notes: Note[]; dt: number }[] = track.arp
-              ? arpEvents(notes, track.arp).map((e) => ({ notes: [e.note], dt: e.dt }))
+            const noteLenSteps =
+              track.noteSteps && track.noteSteps > 0
+                ? track.noteSteps
+                : (Math.max(track.attack, 0.0005) + track.decay) / stepDur;
+            const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
+              ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
+                  notes: [e.note],
+                  dt: e.dt,
+                  durSec: e.len * stepDur,
+                }))
               : [{ notes, dt: 0 }];
             for (const ev of events) {
               const at = tt + ev.dt * stepDur;
               if (track.mono && prevVoice && prevVoice.stopAt > at) duckVoice(prevVoice, at);
-              const voice = triggerVoice(ctx, chain, noise, sample, track, ev.notes, at, stepDur);
+              const voice = triggerVoice(ctx, chain, noise, sample, track, ev.notes, at, stepDur, ev.durSec);
               if (track.mono) prevVoice = voice;
               // Сайдчейн: ноты этой дорожки качают приглушаемых.
               for (const rt of patch.tracks) {

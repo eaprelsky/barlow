@@ -1,14 +1,17 @@
-// Арпеджиатор: аккорд шага разворачивается в последовательность нот.
+// Арпеджиатор: аккорд шага разворачивается в перелив внутри самой ноты.
+// Нота дробится на равные доли (div долей на шаг сетки); по долям идёт
+// фигура (вверх/вниз/…) — каждая доля короче ноты, всё умещается в неё.
 // Живёт на уровне нот — работает одинаково для осцилляторов и сэмплов.
-// Набор режимов как в Ableton Live; октавы повторяют фигуру выше (2^o).
 // Единая точка для live-планировщика и оффлайн-рендера — звук совпадает.
 
 import type { Arp, Note } from '../types';
 
 export interface ArpEvent {
   note: Note;
-  // Сдвиг от начала шага, в шагах (дробный — быстрее сетки).
+  // Начало доли от начала ноты, в шагах (дробное).
   dt: number;
+  // Длина доли, в шагах (уже с гейтом ноты). Ноль событий — пауза.
+  len: number;
 }
 
 /** Порядок нот фигуры по режиму (без октав). */
@@ -39,31 +42,54 @@ function figureOf(notes: Note[], mode: Arp['mode']): Note[] {
   }
 }
 
-/** Развернуть ноты шага в события арпеджиатора. dt — в шагах: события
- *  идут с плотностью arp.div на шаг. random недетерминирован — в
- *  golden-фикстуру арпеджиатор не включать (как и вероятность). */
-export function arpEvents(notes: Note[], arp: Arp, rnd: () => number = Math.random): ArpEvent[] {
+/** Развернуть ноты шага в перелив внутри ноты. noteLenSteps — длина ноты
+ *  в шагах сетки (по «нота» трека или по огибающей); нота делится на
+ *  noteLenSteps × div долей длиной 1/div, фигура по долям циклится.
+ *  random недетерминирован — в golden-фикстуру арпеджиатор не включать
+ *  (как и вероятность). */
+export function arpEvents(
+  notes: Note[],
+  arp: Arp,
+  noteLenSteps: number,
+  rnd: () => number = Math.random,
+): ArpEvent[] {
   if (notes.length === 0) return [];
   const div = Math.max(0.25, arp.div || 1);
   const octaves = Math.min(4, Math.max(1, Math.round(arp.octaves)));
-  if (arp.mode === 'chord') return notes.map((note) => ({ note, dt: 0 }));
-  const step = 1 / div;
+  const gate = (nt: Note) => Math.min(4, Math.max(0.1, nt.gate ?? 1));
+  const slot = 1 / div;
+
+  // «аккорд» — все ноты разом на всю длину ноты (как без арпеджиатора).
+  if (arp.mode === 'chord') {
+    return notes.map((note) => ({ note, dt: 0, len: gate(note) * noteLenSteps }));
+  }
+
+  const slots = Math.max(1, Math.round(noteLenSteps * div));
 
   if (arp.mode === 'random') {
-    const count = notes.length * octaves;
-    return Array.from({ length: count }, (_, i) => {
+    return Array.from({ length: slots }, (_, i) => {
       const note = notes[Math.floor(rnd() * notes.length)];
       const oct = octaves > 1 ? Math.floor(rnd() * octaves) : 0;
-      return { note: oct ? { ...note, oct: (note.oct ?? 0) + oct } : note, dt: i * step };
+      return {
+        note: oct ? { ...note, oct: (note.oct ?? 0) + oct } : note,
+        dt: i * slot,
+        len: slot * gate(note),
+      };
     });
   }
 
   const figure = figureOf(notes, arp.mode);
-  const events: ArpEvent[] = [];
+  // Полный проход фигуры с октавами — по долям ноты циклится.
+  const seq: { note: Note; oct: number }[] = [];
   for (let o = 0; o < octaves; o++) {
-    for (const note of figure) {
-      events.push({ note: o ? { ...note, oct: (note.oct ?? 0) + o } : note, dt: events.length * step });
-    }
+    for (const note of figure) seq.push({ note, oct: o });
   }
-  return events;
+  return Array.from({ length: slots }, (_, i) => {
+    const { note, oct } = seq[i % seq.length];
+    return {
+      note: oct ? { ...note, oct: (note.oct ?? 0) + oct } : note,
+      dt: i * slot,
+      len: slot * gate(note),
+    };
+  });
 }
