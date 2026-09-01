@@ -73,9 +73,8 @@ try {
     await page.waitForTimeout(300);
   };
   const addTrack = async () => {
-    await page.locator('header button', { hasText: '+ трек' }).click();
-    await page.waitForTimeout(300);
-    await page.locator('.inst-card').first().click(); // первый пресет
+    // «+ трек» добавляет дорожку сразу, без браузера инструментов
+    await page.locator('.add-track').click();
     await page.waitForTimeout(400);
   };
 

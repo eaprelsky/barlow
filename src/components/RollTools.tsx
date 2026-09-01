@@ -12,6 +12,9 @@ import { HelpHint } from '../onboarding/Onboarding';
 interface Props {
   track: SoundingTrack;
   pattern: Pattern;
+  /** Длина ноты по умолчанию, шагов (0 — «авто» по огибающей). */
+  noteSteps: number;
+  onNoteSteps: (steps: number) => void;
   onFillAxis: (
     id: string,
     axis: 'time' | 'height',
@@ -26,6 +29,8 @@ interface Props {
 export function RollTools({
   track,
   pattern,
+  noteSteps,
+  onNoteSteps,
   onFillAxis,
   onMutate,
   onPatternCommand,
@@ -59,6 +64,25 @@ export function RollTools({
           {presetName(track.scale)}
         </button>
         <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label="Гид: шкалы и строи" />
+      </label>
+      <span className="rt-sep" />
+      {/* Длина ноты по умолчанию — ровно над станом: какой длины бары
+          рисует клик (и сколько звучит нота, если у неё нет своего гейта). */}
+      <label
+        className="rt-note"
+        title={
+          noteSteps > 0
+            ? 'Длина ноты в шагах — сетка рисовалки и звучания: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
+            : '«авто» — длина ноты по огибающей инструмента (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет'
+        }
+      >
+        нота
+        <NumField
+          narrow
+          value={noteSteps} min={0} max={16} step={0.1}
+          onChange={onNoteSteps}
+        />
+        <span className="rt-label">{noteSteps > 0 ? 'шагов' : 'авто'}</span>
       </label>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по

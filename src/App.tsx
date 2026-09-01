@@ -5,9 +5,8 @@ import { stepIndexAt } from './audio/timing';
 import type { AudioBackend } from './audio/backend';
 import { euclid, randomMask } from './music/euclid';
 import { defaultPatch } from './music/defaultPatch';
+import { SCALE_PRESETS } from './music/scales';
 import { mutatePattern, scatterHeights, spreadHeights, type MutateModes } from './music/mutate';
-import { InstrumentBrowser } from './components/InstrumentBrowser';
-import type { InstrumentPreset } from './music/instrumentPresets';
 import {
   isPatch,
   makeNote,
@@ -122,6 +121,9 @@ const fallbackInst = (t: Track): Instrument => ({
   filterFreq: 8000,
 });
 
+/** Стандартный западный строй нового трека: 12 равных полутонов. */
+const CHROMATIC = SCALE_PRESETS.find((p) => p.name === '12 равных полутонов')?.ratios ?? [1];
+
 // Имя нового эскиза: первая свободная буква дорожки (B, C, …).
 // Штрихи форков («A′») не занимают букву — базовое имя считается «A».
 const nextPatternName = (track: Track): string => {
@@ -203,7 +205,6 @@ export default function App() {
   }, [undo, redo]);
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
-  const [showInstruments, setShowInstruments] = useState(false);
   const [ui, setUi] = useState(loadUiState);
   const [sceneId, setSceneId] = useState(() => patch.scenes[0]?.id ?? '');
   const [showChain, setShowChain] = useState(false);
@@ -351,32 +352,26 @@ export default function App() {
     [patch.tracks],
   );
 
-  /** Играть инструмент другой дорожки (связать). */
-  const assignInstrument = useCallback((trackId: string, sourceTrackId: string) => {
-    setPatchStep((p) => {
-      const src = p.tracks.find((t) => t.id === sourceTrackId);
-      if (!src) return p;
-      return {
-        ...p,
-        tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, instrumentId: src.instrumentId } : t)),
-      };
-    });
-  }, [setPatchStep]);
-
-  /** Отвязать: собственная копия инструмента. */
-  const detachInstrument = useCallback((trackId: string) => {
-    setPatchStep((p) => {
+  /** Правка инструмента дорожки. Инструмент — свойство дорожки: если он
+   *  зачем-то оказался общим у нескольких (старый патч), правка с этой
+   *  дорожки сначала отвязывает её — копия «на себя», соседей не задевает. */
+  const changeInst = useCallback((trackId: string, inst: Instrument) => {
+    setPatch((p) => {
       const t = p.tracks.find((x) => x.id === trackId);
-      const src = t && p.instruments.find((i) => i.id === t.instrumentId);
-      if (!t || !src) return p;
-      const inst: Instrument = { ...src, id: uid('i') };
+      if (!t) return p;
+      const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === t.instrumentId);
+      const instId = shared ? uid('i') : t.instrumentId;
       return {
         ...p,
-        tracks: p.tracks.map((x) => (x.id === trackId ? { ...x, instrumentId: inst.id } : x)),
-        instruments: [...p.instruments, inst],
+        tracks: shared
+          ? p.tracks.map((x) => (x.id === trackId ? { ...x, instrumentId: instId } : x))
+          : p.tracks,
+        instruments: shared
+          ? [...p.instruments, { ...inst, id: instId }]
+          : p.instruments.map((x) => (x.id === instId ? inst : x)),
       };
     });
-  }, [setPatchStep]);
+  }, []);
 
   const patternSceneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -514,13 +509,6 @@ export default function App() {
     [],
   );
 
-  const changeInst = useCallback((instId: string, inst: Instrument) => {
-    setPatch((p) => ({
-      ...p,
-      instruments: p.instruments.map((x) => (x.id === instId ? inst : x)),
-    }));
-  }, []);
-
   /** Структурная правка трека (октавы стана, смена шкалы — переиндексируют
    *  ноты): всегда отдельный шаг истории, как команды нот. */
   const changeTrackCommand = useCallback((id: string, t: Track) => {
@@ -634,18 +622,20 @@ export default function App() {
     });
   }, [patch.tracks, setPatch]);
 
-  const addTrack = useCallback((preset: InstrumentPreset) => {
+  /** Новый трек — сразу, без браузера: чистый синус, западные 12 полутонов,
+   *  стан 16 шагов. Встаёт ПЕРВЫМ: добавил — и работаешь с ним, не скролля. */
+  const addTrack = useCallback(() => {
     setPatchStep((p) => {
       const { track, instrument } = makeTrackWithInstrument({
         id: uid('t'),
-        ...preset.track,
-        name: uniqueName(preset.track.name ?? 'трек', p.tracks.map((t) => t.name)),
+        name: uniqueName('трек', p.tracks.map((t) => t.name)),
+        scale: CHROMATIC,
       });
       // Новый трек добавляется во все сцены своим первым паттерном.
       const scenes = p.scenes.map((s) => ({ ...s, slots: { ...s.slots, [track.id]: track.patterns[0].id } }));
       return {
         ...p,
-        tracks: [...p.tracks, track],
+        tracks: [track, ...p.tracks],
         instruments: [...p.instruments, instrument],
         scenes,
       };
@@ -1165,13 +1155,6 @@ export default function App() {
           циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}
         </span>
         <span className="spacer" />
-        <button
-          data-ob="add-track"
-          onClick={() => setShowInstruments(true)}
-          title="Браузер инструментов: выбрать тембр и добавить дорожку"
-        >
-          + трек
-        </button>
         <span className="tb-sep" />
         <button
           className={showChain ? 'on' : ''}
@@ -1590,14 +1573,21 @@ export default function App() {
             <path key={l.key} d={l.d} className="sc-link" />
           ))}
         </svg>
+        {/* Кнопка строго над треками: нажал — новый трек появился сразу под ней */}
+        <button
+          className="add-track"
+          data-ob="add-track"
+          onClick={addTrack}
+          title="Новый трек: чистый синус и 12 равных полутонов. Тембр потом — «инструмент» на дорожке"
+        >
+          + трек
+        </button>
         {patch.tracks.map((t) => (
           <TrackRow
             key={t.id}
             track={t}
             inst={instOf(patch, t)}
             onChangeInst={changeInst}
-            onAssignInstrument={assignInstrument}
-            onDetachInstrument={detachInstrument}
             pattern={patternInScene(t, currentScene)}
             bpm={patch.bpm}
             activeStep={activeOf(t)}
@@ -1685,17 +1675,6 @@ export default function App() {
             </div>
           </div>
         </div>
-      )}
-
-      {showInstruments && (
-        <InstrumentBrowser
-          title="добавить дорожку"
-          onPick={(preset: InstrumentPreset) => {
-            addTrack(preset);
-            setShowInstruments(false);
-          }}
-          onClose={() => setShowInstruments(false)}
-        />
       )}
 
       <DialogHost />

@@ -2,7 +2,7 @@
 // Клик — добавить точку, тянуть — двигать, правый клик — убрать.
 // Значение кривой нормировано 0..1; в параметр его переводит autoToParam.
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { AutoCurve, AutoPoint, AutoTarget } from '../types';
 
@@ -22,13 +22,24 @@ export function AutoEditor({
 }) {
   const ref = useRef<SVGSVGElement | null>(null);
   const drag = useRef<number | null>(null);
+  // Кривая коммитится в патч от двух точек: пока их меньше, живёт локально —
+  // иначе первый клик по пустому графику пропадал и линию не нарисовать.
+  const [pending, setPending] = useState<AutoPoint[] | null>(null);
   const curve = curves.find((c) => c.target === target);
-  const points = curve?.points ?? [];
+  const points = pending ?? curve?.points ?? [];
+
+  // Смена цели (или внешняя правка) — недозревшая кривая не про эту вкладку.
+  useEffect(() => setPending(null), [target]);
 
   const setPoints = (pts: AutoPoint[]) => {
-    const rest = curves.filter((c) => c.target !== target);
     const sorted = [...pts].sort((a, b) => a.t - b.t);
-    onChange(sorted.length >= 2 ? [...rest, { target, points: sorted }] : rest);
+    if (sorted.length >= 2) {
+      setPending(null);
+      const rest = curves.filter((c) => c.target !== target);
+      onChange([...rest, { target, points: sorted }]);
+    } else {
+      setPending(sorted);
+    }
   };
 
   const fromEvent = (e: ReactPointerEvent<SVGSVGElement>): AutoPoint => {
@@ -55,6 +66,7 @@ export function AutoEditor({
   };
 
   const down = (e: ReactPointerEvent<SVGSVGElement>) => {
+    e.preventDefault(); // драг не выделяет текст страницы
     if (e.button !== 0 || points.length >= MAXPTS) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = fromEvent(e);
@@ -95,6 +107,7 @@ export function AutoEditor({
 
   const removeAt = (i: number) => {
     if (points.length <= 2) {
+      setPending(null);
       onChange(curves.filter((c) => c.target !== target));
       return;
     }
@@ -136,6 +149,14 @@ export function AutoEditor({
       {[0.25, 0.5, 0.75].map((g) => (
         <line key={g} x1={g * W} y1={4} x2={g * W} y2={H - 4} className="env-grid" />
       ))}
+      {points.length < 2 && (
+        <>
+          <line x1={0} y1={H / 2} x2={W} y2={H / 2} className="env-grid mid" />
+          <text x={W / 2} y={H / 2 - 8} textAnchor="middle" className="env-text dim">
+            пусто — клик поставит точку, параметр держится на ручке
+          </text>
+        </>
+      )}
       {points.length >= 2 && <polyline points={line} className="env-amp" />}
       {points.map((p, i) => {
         const xy = toXY(p);

@@ -979,45 +979,54 @@ header button.on {
   text-align: left;
 }
 
-/* Вкладки «ещё…» — язычки, сидящие на линии контейнера */
+/* Вкладки одной группы: текст с палками-разделителями — «сэмпл | волна».
+   Активная подсвечена, никакие рамки-пилюли не нужны. */
 
 .tabs {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  width: 100%;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
 }
 
 .tab {
-  padding: 6px 16px 8px;
+  position: relative;
+  padding: 4px 12px;
   font-size: 12.5px;
   color: var(--text-dim);
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
+  border: none;
   background: transparent;
-  margin-bottom: -1px; /* сесть на линию, перекрыв её у активной */
+  border-radius: 0;
+}
+
+/* палка-разделитель между соседними вкладками группы */
+.tab + .tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background: var(--border);
 }
 
 .tab:hover {
-  border-color: transparent;
   color: var(--accent);
 }
 
 .tab.on {
   color: var(--accent);
-  border-color: var(--border) var(--border) var(--panel);
-  background: var(--panel);
+  font-weight: 600;
 }
 
 /* Дискета «сохранить инструмент» — правый край ряда вкладок */
 .tabs > button {
-  align-self: center;
   padding: 3px 7px;
   line-height: 0;
   color: var(--text-dim);
+}
+
+/* Ряд вкладок панели инструмента — на всю ширину: «?» и дискета у правого края */
+.inst-tabs {
+  width: 100%;
 }
 
 .env-tab {
@@ -1034,6 +1043,9 @@ header button.on {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border);
   border-radius: 8px;
+  /* драг не выделяет подписи синим */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .env-amp {
@@ -1206,9 +1218,10 @@ header button.on {
   opacity: 0.75;
 }
 
-/* График падения тона: тянут мышью — курсор и подсказка это показывают */
-.pitch-graph.editable {
-  cursor: crosshair;
+/* Графики тянутся мышью: курсоры ставятся per-element (ручки — ew-resize,
+   кривая тона — move), общий курсор не врёт про число осей */
+.pitch-graph.editable,
+.env-graph.editable {
   touch-action: none;
 }
 
@@ -2432,15 +2445,6 @@ button.danger:hover {
   letter-spacing: 0.4px;
 }
 
-.ob-num {
-  font-size: 11px;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1px 7px;
-  white-space: nowrap;
-}
-
 .ob-x {
   margin-left: auto;
   padding: 1px 7px;
@@ -2609,21 +2613,59 @@ button.danger:hover {
   border-bottom: 1px dashed var(--border);
 }
 
-/* Огибающая: две колонки — «форма ноты» и «падение тона»,
-   поля живут под своим графиком */
-.env-col {
+/* Заголовок секции в строке с контролами: заголовок слева, его «+»
+   рядом с ним, справка — у правого края (шапки «комната», «кривые
+   партии», «арпеджиатор», «модуляции») */
+.sub-head .sub-cap {
+  width: auto;
+  padding-right: 4px;
+}
+
+/* Форма ноты: один график — громкость + падение тона, поля в одну строку */
+.env-tab {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
+  margin-top: 8px;
 }
 
-.env-col .env-fields {
-  align-items: flex-end;
-}
-
-.env-graph.editable {
-  cursor: ew-resize;
+/* Совмещённый график на всю ширину панели (как кривые партии) */
+.note-graph {
+  width: 100%;
+  max-width: 560px;
   touch-action: none;
+}
+
+/* Кривая падения тона: тянут по двум осям — прозрачная зона схвата
+   с курсором «move»; ручки огибающей — горизонтальный драг */
+.pitch-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: move;
+}
+
+.env-handle {
+  cursor: ew-resize;
+}
+
+/* октавные уровни оси тона — бледнее сетки шагов */
+.env-grid.oct {
+  opacity: 0.55;
+}
+
+.env-grid.mid {
+  stroke-dasharray: 3 4;
+  opacity: 0.7;
+}
+
+/* размерная линия длины ноты: риски и стрелки, как на чертеже */
+.env-dim-line {
+  stroke: var(--text-dim);
+  fill: none;
+  stroke-width: 1;
 }
 
 .env-handle {
@@ -2805,4 +2847,57 @@ main.main-area {
 .mods-toggle {
   background: transparent;
   border: none;
+}
+
+/* «+ трек» — кнопка строго над списком дорожек: нажал — новый трек
+   появился сразу под ней */
+.add-track {
+  align-self: flex-start;
+  margin: 2px 0 10px;
+  padding: 3px 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.add-track:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Шапка плашки эскиза: чипы выбора эскиза и настройка эскиза в одном
+   блоке — видно, что именно правишь */
+.sketch-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 6px;
+}
+
+.sketch-head .mini-info {
+  cursor: help;
+}
+
+/* Крестик редактора волны: маленький, в ряду вкладок */
+.we-close {
+  padding: 1px 9px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.we-close:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Кривые партии: драг не выделяет текст */
+.auto-editor {
+  user-select: none;
+  -webkit-user-select: none;
 }

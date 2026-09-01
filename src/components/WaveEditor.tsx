@@ -165,13 +165,13 @@ export function WaveEditor({
   return (
     <div className="wave-editor" data-ob="wave-editor">
       <div className="we-head">
-        <span className="we-title">
-          редактор волны
-          {tab === 'sample' && buffer ? ` · ${(buffer.duration).toFixed(2)} с · ${buffer.sampleRate} Гц` : ''}
-        </span>
         <span className="tabs we-tabs" data-ob="we-tabs">
           <button className={tab === 'sample' ? 'tab on' : 'tab'} onClick={() => setTab('sample')}>сэмпл</button>
           <button className={tab === 'wave' ? 'tab on' : 'tab'} onClick={() => setTab('wave')}>волна</button>
+        </span>
+        <span className="we-title">
+          редактор волны
+          {tab === 'sample' && buffer ? ` · ${(buffer.duration).toFixed(2)} с · ${buffer.sampleRate} Гц` : ''}
         </span>
         <span className="spacer" />
         <HelpHint
@@ -181,11 +181,12 @@ export function WaveEditor({
           label="Гид: обрезка сэмпла и свой тембр"
         />
         <button
-          className="on"
-          title="Вернуть дорожку в обычный режим"
+          className="we-close"
+          title="Закрыть редактор волны"
+          aria-label="закрыть редактор волны"
           onClick={onClose}
         >
-          закрыть
+          ✕
         </button>
       </div>
 

@@ -274,9 +274,6 @@ export function Onboarding({
         style={{ left: cardPos.left, top: cardPos.top }}
       >
         <div className="ob-cap">
-          <span className="ob-num">
-            {run.step + 1}/{guide.steps.length}
-          </span>
           <b>{guide.title}</b>
           <button className="ob-x" title="Закончить гид (Esc)" onClick={onDone}>
             ✕

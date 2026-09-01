@@ -91,26 +91,15 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'tracks',
-    title: '1. добавить инструмент',
+    title: 'добавить инструмент',
     goal: 'Первый звук в проекте: «+ трек» — и он играет',
     section: 'path',
     steps: [
       {
         target: '[data-ob="add-track"]',
-        say: 'Жми «+ трек» — откроется браузер звуков.',
+        say: 'Жми «+ трек» — дорожка с чистым синусом появится сразу.',
         expect: 'click',
         side: 'bottom',
-      },
-      {
-        target: '[data-ob="inst-search"]',
-        say: 'Ищи слово: «бочка», «воббл», «пила»…',
-        side: 'bottom',
-      },
-      {
-        target: '[data-ob="inst-cards"] .inst-card',
-        say: 'Кликни звук — добавится дорожка и заиграет.',
-        expect: 'click',
-        side: 'top',
       },
       {
         target: '[data-ob="track-name"]',
@@ -125,7 +114,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="mode"]',
-        say: 'Переключатель «эскиз / трек»: эскиз — ноты партии, трек — общий звук.',
+        say: 'Переключатель «эскиз / трек / инструмент»: эскиз — ноты партии, трек — общее, инструмент — тембр.',
         side: 'bottom',
       },
       {
@@ -138,7 +127,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'sound',
-    title: '2. поменять звук',
+    title: 'поменять звук',
     goal: 'Другой тембр, огибающая, свой пресет',
     section: 'path',
     steps: [
@@ -179,7 +168,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'roll',
-    title: '3. заполнить нотами',
+    title: 'заполнить нотами',
     goal: 'Нарисовать ноты, аккорды, перенести',
     section: 'path',
     steps: [
@@ -221,7 +210,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'generators',
-    title: '4. ноты без рисования',
+    title: 'ноты без рисования',
     goal: 'Узор одной кнопкой, доводка мутацией',
     section: 'path',
     steps: [
@@ -253,7 +242,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'sketches',
-    title: '5. сделать вариации',
+    title: 'сделать вариации',
     goal: 'Копия-вариация, свой рисунок и ручки',
     section: 'path',
     steps: [
@@ -294,7 +283,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'arp',
-    title: '6. перелив: арпеджиатор',
+    title: 'перелив: арпеджиатор',
     goal: 'Нота дробится на доли — играет фигуру',
     section: 'path',
     steps: [
@@ -332,7 +321,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'arrangement',
-    title: '7. собрать сцену',
+    title: 'собрать сцену',
     goal: 'Вариации партий — в часть пьесы',
     section: 'path',
     steps: [
@@ -374,7 +363,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'effects',
-    title: '8. комната: эффекты',
+    title: 'комната: эффекты',
     goal: 'Эхо, реверб, перегруз; порядок = цепочка',
     section: 'path',
     steps: [
@@ -427,7 +416,7 @@ export const GUIDES: Guide[] = [
   },
   {
     id: 'mix',
-    title: '9. сведение: шум, компрессия',
+    title: 'сведение: шум, компрессия',
     goal: 'Выровнять микс и дожать мастер',
     section: 'path',
     steps: [

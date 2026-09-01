@@ -41,7 +41,7 @@ import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
 import { SliderField } from './SliderField';
 import { WaveEditor } from './WaveEditor';
-import { EnvGraph, PitchGraph } from './EnvGraph';
+import { NoteGraph } from './EnvGraph';
 import { AutoEditor } from './AutoEditor';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
@@ -101,7 +101,8 @@ interface Props {
   track: Track;
   /** Инструмент дорожки: тембр, огибающая ноты, фильтры (v34). */
   inst: Instrument;
-  onChangeInst: (instId: string, inst: Instrument) => void;
+  /** Правка инструмента этой дорожки (App отвяжет копией, если он общий). */
+  onChangeInst: (trackId: string, inst: Instrument) => void;
   pattern: Pattern;
   bpm: number;
   activeStep: number;
@@ -151,10 +152,6 @@ interface Props {
   onPreviewNote: (track: Track) => void;
   /** Открыть библиотеку сэмплов из пикера. */
   onOpenLibrary: () => void;
-  /** Связать дорожку с инструментом другой дорожки. */
-  onAssignInstrument: (trackId: string, sourceTrackId: string) => void;
-  /** Отвязать: собственная копия инструмента. */
-  onDetachInstrument: (trackId: string) => void;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -198,8 +195,6 @@ export const TrackRow = memo(function TrackRow({
   onPreviewSampleRegion,
   onPreviewNote,
   onOpenLibrary,
-  onAssignInstrument,
-  onDetachInstrument,
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
@@ -288,6 +283,11 @@ export const TrackRow = memo(function TrackRow({
   // Три сущности карточки: «эскиз» — партия (ноты и её ручки, вид по
   // умолчанию), «трек» — общее и комната, «инструмент» — тембр.
   const [view, setView] = useState<'sketch' | 'track' | 'inst'>('sketch');
+  // Редактор волны живёт поверх содержимого вида: смена вида закрывает его.
+  const switchView = (v: 'sketch' | 'track' | 'inst') => {
+    if (waveEditor) onToggleWaveEditor(track.id);
+    setView(v);
+  };
   const [showPicker, setShowPicker] = useState(false);
   const [showScales, setShowScales] = useState(false);
   const scratchRef = useRef<HTMLDivElement | null>(null);
@@ -349,7 +349,7 @@ export const TrackRow = memo(function TrackRow({
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
   const changeInst = (patch: Partial<Instrument>) =>
-    onChangeInst(inst.id, { ...inst, ...patch });
+    onChangeInst(track.id, { ...inst, ...patch });
   // Слитый вид: дорожка + инструмент — для чтения звука и вызовов синтеза.
   const st: SoundingTrack = { ...inst, ...track };
   const changeSteps = (steps: Step[]) => onPatternCommand(track.id, pattern.id, { steps });
@@ -1080,14 +1080,15 @@ export const TrackRow = memo(function TrackRow({
           >S</button>
         </span>
         {/* Переключатель сущности карточки: партия (эскиз) или общий звук
-            (трек). Слева, у имени — основная работа идёт здесь. */}
+            (трек). Слева, у имени — основная работа идёт здесь. Работает
+            и при открытом редакторе волны: тот закрывается сам. */}
         <div className="seg mode-seg" data-ob="mode">
           <button
             className={view === 'sketch' ? 'on' : ''}
             data-ob="mode-sketch"
             aria-label="эскиз"
             title="Эскиз — партия: ноты и её ручки (длина, шаг, громкость/пан, вход/выход, модуляции)"
-            onClick={() => setView('sketch')}
+            onClick={() => switchView('sketch')}
           >
             эскиз
           </button>
@@ -1095,8 +1096,8 @@ export const TrackRow = memo(function TrackRow({
             className={view === 'track' ? 'on' : ''}
             data-ob="mode-track"
             aria-label="настройка трека"
-            title="Трек — общее и комната: громкость/пан, длина ноты, фаза, эффекты, арпеджиатор, сайдчейн"
-            onClick={() => setView('track')}
+            title="Трек — общее и комната: громкость/пан, фаза, тоника, эффекты, сайдчейн"
+            onClick={() => switchView('track')}
           >
             трек
           </button>
@@ -1105,25 +1106,10 @@ export const TrackRow = memo(function TrackRow({
             data-ob="mode-inst"
             aria-label="инструмент"
             title="Инструмент — тембр: волна/сэмпл, огибающая ноты, падение тона, фильтры, вибрато"
-            onClick={() => setView('inst')}
+            onClick={() => switchView('inst')}
           >
             инструмент
           </button>
-        </div>
-        {view === 'sketch' && (
-          <div className="group" data-ob="patterns">
-            {/* div, не label: label переносит hover/клики на первый
-                вложенный контрол — чип M загорался при наведении на любой эскиз */}
-            <div className="lbl" title="Эскизы дорожки: партии. Какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
-              эскизы
-              {patternChips}
-            </div>
-          </div>
-        )}
-        {/* «?» в правом хвосте: с отступом от угловых кнопок
-            «копировать/удалить», чтобы не наезжать */}
-        <div className="head-tail">
-          <HelpHint guide="tracks" scope={scope} label="Гид: добавить инструмент" />
         </div>
       </div>
 
@@ -1132,10 +1118,7 @@ export const TrackRow = memo(function TrackRow({
           trackId={track.id}
           inst={inst}
           onChangeInst={changeInst}
-          onClose={() => {
-            onToggleWaveEditor(track.id);
-            setView('track');
-          }}
+          onClose={() => onToggleWaveEditor(track.id)}
           getBuffer={onGetSampleBuffer}
           onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i }, a, b)}
           onPreviewNote={(i) => onPreviewNote({ ...st, ...i })}
@@ -1149,22 +1132,6 @@ export const TrackRow = memo(function TrackRow({
           <div className="panel-row">
             <span className="sub-cap">общее</span>
             <div className="group" data-ob="common-row">
-              <label
-                title={
-                  track.noteSteps && track.noteSteps > 0
-                    ? 'Длина ноты в шагах — привязана к сетке инструмента: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних'
-                    : '«авто» — длина ноты по огибающей инструмента (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет. Важно и для стана, и для звука'
-                }
-              >
-                нота
-                <span className="inline">
-                  <NumField
-                    value={track.noteSteps ?? 0} min={0} max={16} step={0.1}
-                    onChange={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
-                  />
-                  <span className="pan-label">{(track.noteSteps ?? 0) > 0 ? 'шагов' : 'авто'}</span>
-                </span>
-              </label>
               <SliderField
                 variant="inline"
                 label="громкость"
@@ -1200,8 +1167,8 @@ export const TrackRow = memo(function TrackRow({
           <div className="panel-row">
             <div className="sub-head">
               <span className="sub-cap">комната — эффекты, одни для всех эскизов</span>
-              <span className="spacer" />
               <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект в цепочку">+ эффект</button>
+              <span className="spacer" />
               <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
             </div>
             <div className="group mods-group" data-ob="fx-list">
@@ -1284,9 +1251,8 @@ export const TrackRow = memo(function TrackRow({
                 />
               </div>
             ))}
-            <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект">+ эффект</button>
-            </div>
           </div>
+        </div>
           <div className="panel-row">
             <div className="sub-head">
               <span className="sub-cap">сайдчейн</span>
@@ -1343,7 +1309,7 @@ export const TrackRow = memo(function TrackRow({
 
       {!waveEditor && view === 'inst' && (
         <div className="track-head more-row panel" data-ob="inst-panel">
-          <div className="tabs">
+          <div className="tabs inst-tabs">
             {(
               [
                 ['snd', 'источник'],
@@ -1393,39 +1359,6 @@ export const TrackRow = memo(function TrackRow({
                 <button data-ob="inst-pick" onClick={() => setShowInstruments(true)}>выбрать…</button>
               </span>
             </div>
-            {(() => {
-              const sharedWith = allTracks.filter((t2) => t2.id !== track.id && t2.instrumentId === inst.id);
-              const source = allTracks.find((t2) => t2.id !== track.id && t2.instrumentId === inst.id);
-              return (
-                <div className="lbl" title="Инструмент можно раздать нескольким дорожкам: правка тембра меняет его у всех. «отвязать» сделает собственной копией">
-                  {sharedWith.length > 0 ? (
-                    <>
-                      <span className="sample-name">общий с: {sharedWith.map((t2) => t2.name).join(', ')}</span>
-                      <button onClick={() => onDetachInstrument(track.id)}>отвязать</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="sample-name">играть как у</span>
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) onAssignInstrument(track.id, e.target.value);
-                          e.currentTarget.value = '';
-                        }}
-                      >
-                        <option value="">свой</option>
-                        {allTracks
-                          .filter((t2) => t2.id !== track.id && t2.instrumentId !== inst.id)
-                          .map((t2) => (
-                            <option key={t2.id} value={t2.id}>{t2.name}</option>
-                          ))}
-                      </select>
-                      {source && <span className="sample-name">общий</span>}
-                    </>
-                  )}
-                </div>
-              );
-            })()}
             <label title="Форма волны осциллятора — основа тембра">
               волна
               <select value={st.waveform} onChange={(e) => changeInst({ waveform: e.target.value as Waveform })}>
@@ -1548,10 +1481,7 @@ export const TrackRow = memo(function TrackRow({
               data-ob="we-open"
               aria-label="редактор волны"
               title="Редактор волны: обрезать сэмпл, разложить его в гармоники, нарисовать или дообогатить свою волну"
-              onClick={() => {
-                setView('track');
-                onToggleWaveEditor(track.id);
-              }}
+              onClick={() => onToggleWaveEditor(track.id)}
             >
               править волну…
             </button>
@@ -1559,78 +1489,68 @@ export const TrackRow = memo(function TrackRow({
           )}
                     {tab === 'env' && (
           <div className="env-tab" data-ob="env-tab">
-            <div className="env-col">
-              <span className="sub-cap">форма ноты — тяни ручки на графике</span>
-              <EnvGraph
-                attack={st.attack}
-                decay={st.decay}
-                sustain={st.sustain ?? 0}
-                voiceLen={noteSec}
-                stepSec={tickDuration(bpm) * (pattern.rate ?? track.rate)}
-                steps={st.noteSteps && st.noteSteps > 0 ? st.noteSteps : null}
-                onEdit={(u) => changeInst(u)}
-                decayEditable={!st.noteSteps}
-              />
-              <div className="env-fields">
-                <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие">
-                  атака, мс
-                  <NumField
-                    value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
-                    onChange={(ms) => changeInst({ attack: Math.max(0.0005, ms / 1000) })}
-                  />
-                </label>
-                <label
-                  title={
-                    st.waveform === 'sample'
-                      ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
-                      : 'Сколько секунд звучит нота после удара'
-                  }
-                >
-                  спад, с
-                  <NumField value={st.decay} min={0.01} max={4} step={0.01} onChange={(decay) => changeInst({ decay })} />
-                </label>
-                <label
-                  title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит"
-                >
-                  плато, %
-                  <NumField
-                    value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
-                    onChange={(v) => changeInst({ sustain: v / 100 })}
-                  />
-                </label>
-                <button
-                  className="env-listen"
-                  title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
-                  onClick={() => onPreviewNote(st)}
-                >
-                  ▶ послушать
-                </button>
-              </div>
-            </div>
-            <div className="env-col">
-              <span className="sub-cap">падение тона — тяни график</span>
-              <PitchGraph
-                pitchDrop={st.pitchDrop}
-                pitchTime={st.pitchTime}
-                total={noteSec}
-                onChange={(u) => changeInst(u)}
-              />
-              <div className="env-fields">
-                <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
-                  глубина, ×
-                  <NumField
-                    value={st.pitchDrop} min={1} max={16} step={0.5}
-                    onChange={(pitchDrop) => changeInst({ pitchDrop })}
-                  />
-                </label>
-                <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-                  время, с
-                  <NumField
-                    value={st.pitchTime} min={0} max={2} step={0.01}
-                    onChange={(pitchTime) => changeInst({ pitchTime })}
-                  />
-                </label>
-              </div>
+            <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
+            <NoteGraph
+              attack={st.attack}
+              decay={st.decay}
+              sustain={st.sustain ?? 0}
+              pitchDrop={st.pitchDrop}
+              pitchTime={st.pitchTime}
+              voiceLen={noteSec}
+              stepSec={tickDuration(bpm) * (pattern.rate ?? track.rate)}
+              steps={st.noteSteps && st.noteSteps > 0 ? st.noteSteps : null}
+              onEdit={(u) => changeInst(u)}
+              onPitch={(u) => changeInst(u)}
+              decayEditable={!st.noteSteps}
+            />
+            <div className="env-fields">
+              <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие">
+                атака, мс
+                <NumField
+                  value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
+                  onChange={(ms) => changeInst({ attack: Math.max(0.0005, ms / 1000) })}
+                />
+              </label>
+              <label
+                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит"
+              >
+                плато, %
+                <NumField
+                  value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
+                  onChange={(v) => changeInst({ sustain: v / 100 })}
+                />
+              </label>
+              <label
+                title={
+                  st.waveform === 'sample'
+                    ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
+                    : 'Сколько секунд звучит нота после удара'
+                }
+              >
+                спад, с
+                <NumField value={st.decay} min={0.01} max={4} step={0.01} onChange={(decay) => changeInst({ decay })} />
+              </label>
+              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
+                падение, ×
+                <NumField
+                  value={st.pitchDrop} min={1} max={16} step={0.5}
+                  onChange={(pitchDrop) => changeInst({ pitchDrop })}
+                />
+              </label>
+              <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
+                время падения, с
+                <NumField
+                  value={st.pitchTime} min={0} max={2} step={0.01}
+                  onChange={(pitchTime) => changeInst({ pitchTime })}
+                />
+              </label>
+              <button
+                className="env-listen"
+                title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
+                onClick={() => onPreviewNote(st)}
+              >
+                ▶ послушать
+              </button>
             </div>
           </div>
           )}
@@ -1770,7 +1690,7 @@ export const TrackRow = memo(function TrackRow({
             <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
             <span
               className="mini-info"
-              title="Длительность жеста = длина ноты. Меняется во вкладке «огибающая»: «длина ноты, шагов» или атака+спад"
+              title="Длительность жеста = длина ноты: «нота» в тулбаре стана (шаги) или атака+спад во вкладке «огибающая»"
             >
               жест ≈{' '}
               {(
@@ -2042,6 +1962,14 @@ export const TrackRow = memo(function TrackRow({
 
       {!waveEditor && view === 'sketch' && (
         <div className="sketch-box" data-ob="sketch-box">
+          {/* Чипы эскизов — шапка плашки: выбор эскиза и настройка эскиза
+              в одном блоке, активный чип называет то, что правишь */}
+          <div className="sketch-head">
+            <span className="mini-info" title="Эскизы дорожки: партии. Какой играет — решает сцена. Правый клик по эскизу — вариация (форк)">
+              эскизы
+            </span>
+            {patternChips}
+          </div>
           <div className="sketch-bar">
             <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
               длина
@@ -2125,6 +2053,8 @@ export const TrackRow = memo(function TrackRow({
           <RollTools
             track={st}
             pattern={pattern}
+            noteSteps={track.noteSteps ?? 0}
+            onNoteSteps={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
             onFillAxis={onFillAxis}
             onMutate={onMutate}
             onPatternCommand={onPatternCommand}
@@ -2372,14 +2302,13 @@ export const TrackRow = memo(function TrackRow({
                 onClick={() => setShowMods((v) => !v)}
               >
                 {showMods ? '▾' : '▸'} модуляции
-                <span className="scope-cap">эскиз</span>
               </button>
-              <span className="spacer" />
               {showMods && (
                 <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">
                   + модуляция
                 </button>
               )}
+              <span className="spacer" />
               <HelpHint guide="effects" step={6} scope={scope} label="Гид: модуляции" />
             </div>
             {showMods && (
