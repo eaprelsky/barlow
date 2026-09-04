@@ -398,18 +398,22 @@ export function triggerVoice(
   // Огибающая: атака → плато (sustain, доля звуковой части) → спад.
   // Спад управляется decay и при сеточной длине ноты: хвост падает до
   // тишины за decay секунд (если помещается), иначе тянется до конца
-  // ноты и мягко досыпает в ноль.
+  // ноты и мягко досыпает в ноль. КРОМЕ перкуссии (плато 0): у бочки/хэта/
+  // звона длина ноты — триггер, как в драм-машине — спад звучит свой
+  // полный хвост, слот его не рубит. Иначе бочка в один шаг обрубалась
+  // на середине удара.
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + atk);
   const plateauEnd = time + atk + (voiceLen - atk) * sus;
   amp.gain.setValueAtTime(peak, plateauEnd);
-  const fallEnd = Math.min(plateauEnd + Math.max(track.decay, 0.01), time + voiceLen + 0.05);
+  const decayEnd = plateauEnd + Math.max(track.decay, 0.01);
+  const fallEnd = sus <= 0 ? decayEnd : Math.min(decayEnd, time + voiceLen + 0.05);
   amp.gain.exponentialRampToValueAtTime(0.0001, fallEnd);
   if (fallEnd < time + voiceLen - 0.001) {
     amp.gain.setValueAtTime(0.0001, fallEnd);
     amp.gain.linearRampToValueAtTime(0.00002, time + voiceLen);
   }
-  stopAt = time + voiceLen + 0.05;
+  stopAt = time + Math.max(voiceLen, fallEnd - time) + 0.05;
   const finish = (): Voice => ({ amp, sources, stopAt });
 
   if (track.waveform === 'noise') {
