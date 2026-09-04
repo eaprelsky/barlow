@@ -8,6 +8,8 @@ import { defaultPatch } from './music/defaultPatch';
 import { SCALE_PRESETS } from './music/scales';
 import { mutatePattern, scatterHeights, spreadHeights, type MutateModes } from './music/mutate';
 import {
+  INSTRUMENT_FIELDS,
+  instrumentOfFields,
   isPatch,
   makeNote,
   makePattern,
@@ -26,12 +28,15 @@ import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
 import { PROVIDERS } from './ai/providers';
 import { putSample, getSampleBlob } from './audio/library';
+import type { SampleMeta } from './audio/library';
+import type { InstrumentPreset } from './music/instrumentPresets';
+import { clip } from './music/clip';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { createBridge, setByPointer } from './bridge';
 import { slugify } from './utils/slug';
-import { Library } from './components/Library';
+import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
 import type { GuideRun } from './onboarding/Onboarding';
 import {
@@ -308,10 +313,17 @@ export default function App() {
     [engine],
   );
   const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
-  const openLibrary = useCallback(() => {
-    setShowLib(true);
-    if (showAi) setShowAi(false);
-  }, [showAi]);
+  // Библиотека звуков (левая док-панель): открывается с целевой дорожкой —
+  // той, чей чип нажали; из шапки — последний работавший стан.
+  const [libTarget, setLibTarget] = useState<string | null>(null);
+  const openLibraryAt = useCallback(
+    (trackId: string | null) => {
+      setShowLib(true);
+      if (showAi) setShowAi(false);
+      if (trackId) setLibTarget(trackId);
+    },
+    [showAi],
+  );
 
   // Режим редактора гаснет сам, когда его дорожка исчезла (очистить всё,
   // удаление, undo, импорт): стухший id иначе держал бы все новые треки
@@ -596,6 +608,103 @@ export default function App() {
     setPatchStep((p) => ({ ...p, tracks: p.tracks.map((x) => (x.id === id ? t : x)) }));
   }, [setPatchStep]);
 
+  /** Применить пресет из библиотеки к дорожке: тембр — в инструмент
+   *  (v34; копия, если инструмент общий), строй/тоника/эффекты/моно — на
+   *  трек, ноты клемпятся в новую шкалу. Ноты и ритм — пользователя.
+   *  Отдельный шаг undo. */
+  const applyPreset = useCallback(
+    (trackId: string, preset: InstrumentPreset) => {
+      setPatchStep((p) => {
+        const track = p.tracks.find((t) => t.id === trackId);
+        const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
+        if (!track || !inst) return p;
+        const t = preset.track;
+        const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
+        const instUpd: Record<string, unknown> = {};
+        for (const f of INSTRUMENT_FIELDS) {
+          if (t[f] !== undefined) instUpd[f] = t[f];
+        }
+        // Поля, у которых пресет задаёт базу, а не «пусто»:
+        const instDefaults: Partial<Instrument> = {
+          sustain: t.sustain ?? 0,
+          pitchDrop: t.pitchDrop ?? 1,
+          pitchTime: t.pitchTime ?? 0.08,
+          filterLow: t.filterLow ?? 20,
+          filterFreq: t.filterFreq ?? 8000,
+          filterQ: t.filterQ ?? 0.8,
+          fmRatio: t.fmRatio ?? 2,
+          fmIndex: t.fmIndex ?? 3,
+          voiceMorph: t.voiceMorph ?? 0.5,
+          ksLife: t.ksLife ?? 2.5,
+          sampleMode: t.sampleMode ?? 'plain',
+          grainSizeMs: t.grainSizeMs ?? 120,
+          grainCount: t.grainCount ?? 10,
+          grainPos: t.grainPos ?? 0.3,
+          grainScatter: t.grainScatter ?? 0.15,
+          vibratoRate: t.vibratoRate ?? 5,
+          vibratoDepth: t.vibratoDepth ?? 0,
+        };
+        const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
+        // Ноты выше новой шкалы — вниз; дубли строк (шкала схлопнулась) — один.
+        const patterns = track.patterns.map((pt) => ({
+          ...pt,
+          steps: pt.steps.map((s) => ({
+            ...s,
+            notes: s.notes
+              .map((nt) => ({ ...nt, n: Math.min(nt.n, scale.length - 1) }))
+              .filter((nt, i, arr) => arr.findIndex((x) => x.n === nt.n) === i),
+          })),
+        }));
+        const updTrack: Track = {
+          ...track,
+          freq: t.freq ?? track.freq,
+          scale,
+          scaleOctUp: 0,
+          scaleOctDown: 0,
+          effects: t.effects ?? [],
+          mono: t.mono,
+          mods: t.mods ? t.mods.map((m) => ({ ...m })) : track.mods,
+          patterns,
+        };
+        // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
+        const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);
+        const instId = shared ? uid('i') : track.instrumentId;
+        updTrack.instrumentId = instId;
+        return {
+          ...p,
+          tracks: p.tracks.map((x) => (x.id === trackId ? updTrack : x)),
+          instruments: shared
+            ? [...p.instruments, { ...merged, id: instId }]
+            : p.instruments.map((i) => (i.id === instId ? merged : i)),
+        };
+      });
+    },
+    [setPatchStep],
+  );
+
+  /** Слушать пресет в библиотеке: нота тоники дорожки, тембр пресета —
+   *  без применения (тот же triggerVoice, что будет в паттерне). */
+  const auditionPreset = useCallback(
+    (trackId: string, preset: InstrumentPreset) => {
+      const track = patch.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      const inst = instrumentOfFields(preset.track, uid('i'), preset.name);
+      engine.previewSounding({ ...track, ...inst });
+    },
+    [patch.tracks, engine],
+  );
+
+  /** Сэмпл из библиотеки — в инструмент дорожки (волна «сэмпл»). */
+  const assignSample = useCallback(
+    (trackId: string, meta: SampleMeta) => {
+      const track = patch.tracks.find((t) => t.id === trackId);
+      const inst = track && instOf(patch, track);
+      if (!track || !inst) return;
+      changeInst(trackId, { ...inst, waveform: 'sample', sampleId: meta.id, sampleName: meta.name });
+    },
+    [patch, instOf, changeInst],
+  );
+
   const clearAll = useCallback(() => {
     if (engine.playing) {
       engine.stop();
@@ -706,9 +815,12 @@ export default function App() {
   /** Новый трек — сразу, без браузера: чистый синус, западные 12 полутонов,
    *  стан 16 шагов. Встаёт ПЕРВЫМ: добавил — и работаешь с ним, не скролля. */
   const addTrack = useCallback(() => {
+    // id — снаружи апдейтера: StrictMode прогоняет апдейтер дважды, id
+    // должен остаться тем же (и он нужен, чтобы открыть библиотеку).
+    const id = uid('t');
     setPatchStep((p) => {
       const { track, instrument } = makeTrackWithInstrument({
-        id: uid('t'),
+        id,
         name: uniqueName('трек', p.tracks.map((t) => t.name)),
         scale: CHROMATIC,
       });
@@ -721,7 +833,11 @@ export default function App() {
         scenes,
       };
     });
-  }, []);
+    // Библиотека сразу предлагает тембр: старт по умолчанию — синус,
+    // но перебрать пресеты на слух можно не отходя.
+    setLibTarget(id);
+    setShowLib(true);
+  }, [setPatchStep]);
 
   const changePatternCommand = useCallback(
     (trackId: string, patternId: string, patchUpd: Partial<Pattern>) => {
@@ -1133,6 +1249,28 @@ export default function App() {
   };
 
   return (
+    <div className="app-shell">
+      {showLib && (
+        <SoundBrowser
+          tracks={patch.tracks}
+          targetId={
+            libTarget && patch.tracks.some((t) => t.id === libTarget)
+              ? libTarget
+              : clip.activeTrackId && patch.tracks.some((t) => t.id === clip.activeTrackId)
+                ? clip.activeTrackId
+                : patch.tracks[0]?.id ?? null
+          }
+          onTarget={setLibTarget}
+          onApply={applyPreset}
+          onAudition={auditionPreset}
+          onAssignSample={assignSample}
+          usedSampleIds={
+            new Set(patch.instruments.map((i) => i.sampleId).filter((v): v is string => !!v))
+          }
+          onAddTrack={addTrack}
+          onClose={() => setShowLib(false)}
+        />
+      )}
     <div className="app">
       <div className="topbar">
       <header>
@@ -1269,15 +1407,18 @@ export default function App() {
         <button
           className={showLib ? 'on' : ''}
           data-ob="library-btn"
-          onClick={() => { setShowLib((v) => !v); if (showAi) setShowAi(false); }}
-          title="Библиотека сэмплов: прослушать, скачать, удалить"
+          onClick={() => {
+            if (showLib) setShowLib(false);
+            else openLibraryAt(null);
+          }}
+          title="Библиотека звуков: инструменты и сэмплы — дерево, поиск, прослушивание. Клик по пресету меняет тембр выбранной дорожки"
         >
           <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
             {/* волна в рамке */}
             <rect x="1.2" y="2.2" width="11.6" height="9.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
             <path d="M3 8.4c1-.2 1.4-3 2.2-3s.9 4 1.8 4 1.1-5 2-5 1 2.6 2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
-          сэмплы
+          библиотека
         </button>
         <div className="menu">
           <button
@@ -1361,12 +1502,6 @@ export default function App() {
           }}
         />
       </header>
-
-      <Library
-        open={showLib}
-        usedIds={new Set(patch.instruments.map((i) => i.sampleId).filter((v): v is string => !!v))}
-        onClose={() => setShowLib(false)}
-      />
 
       {showMix && (
         <div className="mix-panel" data-ob="mix-panel">
@@ -1659,7 +1794,7 @@ export default function App() {
           className="add-track"
           data-ob="add-track"
           onClick={addTrack}
-          title="Новый трек: чистый синус и 12 равных полутонов. Тембр потом — «инструмент» на дорожке"
+          title="Новый трек: синус и 12 равных полутонов — библиотека звуков сразу предложит тембр на слух"
         >
           + трек
         </button>
@@ -1705,7 +1840,7 @@ export default function App() {
             onGetSampleBuffer={getSampleBuffer}
             onPreviewSampleRegion={previewSampleRegion}
             onPreviewNote={previewNote}
-            onOpenLibrary={openLibrary}
+            onOpenBrowser={openLibraryAt}
           />
         ))}
         {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
@@ -1762,6 +1897,7 @@ export default function App() {
       {obRun && (
         <Onboarding run={obRun} onDone={stopGuide} onStep={stepGuide} onOpenPanel={openGuidePanel} />
       )}
+    </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 // же интерфейсом — через Tauri-команды и события. Пока контракт не
 // выписан, «замена слоя» — надежда, а не план (см. docs/DESIGN.md).
 
-import type { Note, Patch, Track } from '../types';
+import type { Note, Patch, SoundingTrack, Track } from '../types';
 import type { TrackClock } from './timing';
 
 export interface AudioBackend {
@@ -56,6 +56,8 @@ export interface AudioBackend {
   previewSampleRegion(track: Track, fromSec: number, toSec: number): void;
   /** Прослушать одну ноту инструмента — проверка тембра в редакторе. */
   previewNote(track: Track, noteRow?: number): void;
+  /** Прослушать тембр слитого трека (библиотека: пресет до применения). */
+  previewSounding(st: SoundingTrack, noteRow?: number): void;
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
   renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number): Promise<Blob>;

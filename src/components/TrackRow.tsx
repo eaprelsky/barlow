@@ -18,7 +18,6 @@ import {
   ARP_MODE_LABELS,
   AUTO_TARGET_LABELS,
   EFFECT_LABELS,
-  INSTRUMENT_FIELDS,
   MOD_TARGET_LABELS,
   MORPH_LABELS,
   WAVEFORM_LABELS,
@@ -32,8 +31,6 @@ import {
   loadUserPresets,
   saveUserPreset,
 } from '../music/instrumentPresets';
-import type { InstrumentPreset } from '../music/instrumentPresets';
-import { InstrumentBrowser } from './InstrumentBrowser';
 import { ScalePicker } from './ScalePicker';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
@@ -150,8 +147,8 @@ interface Props {
   onGetSampleBuffer: (id?: string) => Promise<AudioBuffer | null>;
   onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
   onPreviewNote: (track: Track) => void;
-  /** Открыть библиотеку сэмплов из пикера. */
-  onOpenLibrary: () => void;
+  /** Открыть библиотеку звуков с применением к этой дорожке. */
+  onOpenBrowser: (trackId: string) => void;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -194,57 +191,12 @@ export const TrackRow = memo(function TrackRow({
   onGetSampleBuffer,
   onPreviewSampleRegion,
   onPreviewNote,
-  onOpenLibrary,
+  onOpenBrowser,
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
   const [prompt, setPrompt] = useState('');
   const [genSeconds, setGenSeconds] = useState(3);
-  const [showInstruments, setShowInstruments] = useState(false);
-
-  /** Сменить инструмент: тембр/огибающая/фильтры — в инструмент (v34),
-   *  строй/тоника/эффекты/моно — на дорожку; ноты и ритм — пользователя. */
-  const applyInstrumentPreset = (preset: InstrumentPreset) => {
-    if (!preset) return;
-    const t = preset.track;
-    const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
-    const instUpd: Record<string, unknown> = {};
-    for (const f of INSTRUMENT_FIELDS) {
-      if (t[f] !== undefined) instUpd[f] = t[f];
-    }
-    // Поля, у которых пресет задаёт базу, а не «пусто»:
-    const instDefaults: Partial<Instrument> = {
-      sustain: t.sustain ?? 0,
-      pitchDrop: t.pitchDrop ?? 1,
-      pitchTime: t.pitchTime ?? 0.08,
-      filterLow: t.filterLow ?? 20,
-      filterFreq: t.filterFreq ?? 8000,
-      filterQ: t.filterQ ?? 0.8,
-      fmRatio: t.fmRatio ?? 2,
-      fmIndex: t.fmIndex ?? 3,
-      voiceMorph: t.voiceMorph ?? 0.5,
-      ksLife: t.ksLife ?? 2.5,
-      sampleMode: t.sampleMode ?? 'plain',
-      grainSizeMs: t.grainSizeMs ?? 120,
-      grainCount: t.grainCount ?? 10,
-      grainPos: t.grainPos ?? 0.3,
-      grainScatter: t.grainScatter ?? 0.15,
-      vibratoRate: t.vibratoRate ?? 5,
-      vibratoDepth: t.vibratoDepth ?? 0,
-    };
-    changeInst({ ...instDefaults, ...instUpd } as Partial<Instrument>);
-    const upd: Partial<Track> = {
-      freq: t.freq ?? track.freq,
-      scale,
-      scaleOctUp: 0,
-      scaleOctDown: 0,
-      effects: t.effects ?? [],
-      mono: t.mono,
-      patterns: clampAllNotes(scale.length - 1),
-    };
-    if (t.mods) upd.mods = t.mods.map((m) => ({ ...m }));
-    change(upd);
-  };
 
   /** Сохранить звук дорожки как свой пресет: категория «мои» в браузере
    *  инструментов, применение — как у встроенных. Триггер перерисовки
@@ -1119,8 +1071,8 @@ export const TrackRow = memo(function TrackRow({
         <button
           className="inst-chip"
           data-ob="inst-chip"
-          title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — сменить из библиотеки пресетов`}
-          onClick={() => setShowInstruments(true)}
+          title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — библиотека звуков: пресеты и сэмплы`}
+          onClick={() => onOpenBrowser(track.id)}
         >
           {instrumentNameOf(st)}
         </button>
@@ -1363,13 +1315,13 @@ export const TrackRow = memo(function TrackRow({
             {/* div, не label: label переносит hover/клики на первый
                 вложенный контрол — «выбрать…» подсвечивался при наведении
                 на соседей */}
-            <div className="lbl" title="Сменить инструмент: тембр, огибающая, фильтры и эффекты — из пресета; ноты, громкость и ритм останутся твоими">
+            <div className="lbl" title="Текущий инструмент: вычислен по параметрам — покрутил ручки, стал «свой». Сменить — чип в шапке дорожки (или «библиотека» в шапке приложения)">
               инструмент
               <span className="inline">
                 <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
                   {instrumentNameOf(st)}
                 </span>
-                <button data-ob="inst-pick" onClick={() => setShowInstruments(true)}>выбрать…</button>
+                <button data-ob="inst-pick" onClick={() => onOpenBrowser(track.id)}>выбрать…</button>
               </span>
             </div>
             <label title="Форма волны осциллятора — основа тембра">
@@ -2404,17 +2356,6 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-      {showInstruments && (
-        <InstrumentBrowser
-          title="сменить инструмент трека"
-          onPick={(preset) => {
-            applyInstrumentPreset(preset);
-            setShowInstruments(false);
-          }}
-          onClose={() => setShowInstruments(false)}
-        />
-      )}
-
       {showScales && (
         <ScalePicker
           current={track.scale}
@@ -2434,7 +2375,7 @@ export const TrackRow = memo(function TrackRow({
           }}
           onOpenLibrary={() => {
             setShowPicker(false);
-            onOpenLibrary();
+            onOpenBrowser(track.id);
           }}
           onClose={() => setShowPicker(false)}
         />

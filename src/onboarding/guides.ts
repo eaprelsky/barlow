@@ -97,7 +97,7 @@ export const GUIDES: Guide[] = [
     steps: [
       {
         target: '[data-ob="add-track"]',
-        say: 'Жми «+ трек» — дорожка с чистым синусом появится сразу.',
+        say: 'Жми «+ трек» — дорожка появится сразу, а библиотека звуков предложит тембр (можно закрыть и остаться с синусом).',
         expect: 'click',
         side: 'bottom',
       },
@@ -507,7 +507,7 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="library-btn"]',
-        say: 'Жми «сэмплы» — вся библиотека.',
+        say: 'Жми «библиотека» — инструменты и сэмплы в одной панели.',
         expect: 'click',
         side: 'bottom',
       },

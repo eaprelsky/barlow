@@ -28,9 +28,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Оболочка: док-панель библиотеки слева + центральная колонка */
+.app-shell {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
+}
+
 .app {
-  max-width: 1280px;
-  margin: 0 auto;
+  flex: 0 1 1280px;
+  min-width: 0;
   padding: 20px 24px 40px;
 }
 
@@ -1774,40 +1782,98 @@ button.danger:hover {
   white-space: nowrap;
 }
 
-/* Браузер инструментов */
+/* Библиотека звуков: левая док-панель (дерево инструментов + сэмплы) */
+.dock {
+  flex: 0 0 272px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .browser-search {
   width: 100%;
 }
 
-.browser-grid {
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 120px;
+.sb-head button,
+.sb-mini {
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
-.browser-cat-label {
+.sb-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-target select {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-cat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.browser-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  margin-top: 6px;
+.sb-caret {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.12s;
 }
 
-.inst-card {
+.sb-caret.open {
+  transform: rotate(90deg);
+}
+
+.sb-count {
+  color: var(--border);
+}
+
+.sb-cards {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  align-items: flex-start;
+}
+
+/* Строка пресета: имя + волна + прослушать (+ удалить у своих) */
+.inst-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   text-align: left;
-  padding: 10px 12px;
+  padding: 6px 8px;
+  font-size: 12px;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1815,6 +1881,52 @@ button.danger:hover {
 
 .inst-card:hover {
   border-color: var(--accent);
+}
+
+.inst-card:disabled {
+  opacity: 0.45;
+}
+
+.sb-wave {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-audition {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.sb-audition:hover {
+  color: var(--accent);
+}
+
+.inst-card .inst-del {
+  position: static;
+  flex: none;
+}
+
+/* Сэмплы в доке: тот же список, имя — кнопка «посадить в дорожку» */
+.sb-samples .sb-sample-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-samples .empty {
+  margin: 4px 0;
+}
+
+.sb-samples .lib-item {
+  padding: 2px 0;
+  background: transparent;
+  border: none;
 }
 
 /* Карточка своего пресета — div с кнопкой удаления (button в button

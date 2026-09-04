@@ -780,10 +780,11 @@ export class AudioEngine implements AudioBackend {
     })();
   }
 
-  /** Прослушать одну ноту инструмента (редактор волны: тембр на слух).
-   *  Тот же triggerVoice, что и в планировщике — слышим ровно то, что
-   *  будет в паттерне. */
-  previewNote(track: Track, noteRow = 0): void {
+  /** Прослушать одну ноту слитого трека (SoundingTrack). Так браузер
+   *  звуков слушает пресеты ещё до применения; previewNote — обёртка
+   *  для трека из текущего патча. Тот же triggerVoice, что и в
+   *  планировщике — слышим ровно то, что будет в паттерне. */
+  previewSounding(st: SoundingTrack, noteRow = 0): void {
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
@@ -791,15 +792,14 @@ export class AudioEngine implements AudioBackend {
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
       if (!this.master || !this.noiseBuffer) return;
-      const st = stOf(patch, track);
-      const chain = this.chains.get(track.id);
+      const chain = this.chains.get(st.id);
       // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
       const pseudo: TrackChain = chain
         ? chain
         : ({ hp: ctx.createGain() } as unknown as TrackChain);
       if (!chain) (pseudo.hp as GainNode).connect(this.master.input);
-      const pattern = patternInScene(track, this.scene());
-      const stepSec = stepDuration(track, patch.bpm, pattern);
+      const pattern = patternInScene(st, this.scene());
+      const stepSec = stepDuration(st, patch.bpm, pattern);
       const notes = [makeNote(noteRow, 0.9, 1)];
       const voice = triggerVoice(
         ctx,
@@ -819,6 +819,13 @@ export class AudioEngine implements AudioBackend {
         /* уже остановлен */
       }
     })();
+  }
+
+  /** Прослушать одну ноту инструмента дорожки (редактор волны: тембр на слух). */
+  previewNote(track: Track, noteRow = 0): void {
+    const patch = this.patch;
+    if (!patch) return;
+    this.previewSounding(stOf(patch, track), noteRow);
   }
 
   /** Ручное переключение сцены: применяется на ближайшей границе такта. */
