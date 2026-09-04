@@ -95,6 +95,9 @@ function validSceneId(patch: Patch | null, want: string): string {
 }
 
 export class AudioEngine implements AudioBackend {
+  // Дебаг-мост: приёмник событий нот live-планировщика.
+  noteSink?: (trackId: string, at: number, notes: Note[]) => void;
+
   private ctx: AudioContext | null = null;
   private master: MasterNodes | null = null;
   // Слой мастер-шума (после лимитера) и его текущий вид. Живёт только
@@ -964,6 +967,8 @@ export class AudioEngine implements AudioBackend {
             if (track.mono) this.duckLastVoice(track.id, at);
             const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null, st, ev.notes, at, stepDur, ev.durSec);
             if (track.mono) this.lastVoices.set(track.id, voice);
+            // Дебаг-мост: что реально триггернулось (включая доли арпеджиатора).
+            this.noteSink?.(track.id, at, ev.notes);
             // Сайдчейн: ноты этой дорожки качают приглушаемых.
             for (const rt of patch.tracks) {
               const sc = rt.sidechain;

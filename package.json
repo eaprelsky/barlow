@@ -12,7 +12,8 @@
     "desktop": "bash scripts/desktop.sh",
     "deploy-web": "bash scripts/deploy-web.sh",
     "golden": "node scripts/golden.mjs",
-    "smoke": "node scripts/smoke-collapse.mjs"
+    "smoke": "node scripts/smoke-collapse.mjs",
+    "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -29,6 +30,7 @@
     "oxlint": "^1.75.0",
     "playwright-core": "^1.62.1",
     "typescript": "~6.0.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "ws": "^8.21.3"
   }
 }

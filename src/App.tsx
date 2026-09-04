@@ -29,6 +29,7 @@ import { putSample, getSampleBlob } from './audio/library';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
+import { createBridge, setByPointer } from './bridge';
 import { slugify } from './utils/slug';
 import { Library } from './components/Library';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
@@ -422,6 +423,86 @@ export default function App() {
     },
     [engine],
   );
+
+  // ---- Дебаг-мост (ИИ-агент по MCP): приложение — WS-клиент хоста.
+  // Хендлеры видят свежие стейты через liveRef: мост создаётся один раз,
+  // а замыкания не должны протухать. Правки идут через перехваченный
+  // setPatch/setPatchStep — undo-история общая с ручными правками.
+  const bridgeRef = useRef<ReturnType<typeof createBridge> | null>(null);
+  const liveRef = useRef({ patch, sceneId, playing });
+  liveRef.current = { patch, sceneId, playing };
+
+  useEffect(() => {
+    const bridge = createBridge({
+      appKind: isDesktop ? 'desktop' : 'web',
+      getPatch: () => liveRef.current.patch,
+      getTransport: () => ({
+        playing: liveRef.current.playing,
+        sceneId: liveRef.current.sceneId,
+        sceneName:
+          liveRef.current.patch.scenes.find((s) => s.id === liveRef.current.sceneId)?.name ?? '',
+        bpm: engine.currentBpm || liveRef.current.patch.bpm,
+      }),
+      onSetPatch(raw) {
+        if (!isPatch(raw)) throw new Error('JSON не похож на патч barlow');
+        const norm = normalizePatch(raw);
+        setPatchStep(norm);
+        setSceneId(norm.scenes[0].id);
+      },
+      onSetParam(pointer, value) {
+        // Путь проверяем на копии текущего патча: исключение должно уйти
+        // в ack моста, а не в рендер React (апдейтер setPatch выполняется
+        // позже и уронил бы всё дерево).
+        setByPointer(liveRef.current.patch, pointer, value);
+        setPatch((p) => setByPointer(p, pointer, value));
+      },
+      onTransport(cmd) {
+        const live = liveRef.current;
+        if (cmd.action === 'play') {
+          if (engine.playing) return;
+          void engine.ensureSamples(live.patch).then(() => {
+            engine.play(live.patch, live.sceneId);
+            setPlaying(true);
+          });
+        } else if (cmd.action === 'stop') {
+          engine.stop();
+          setPlaying(false);
+        } else if (cmd.action === 'scene' && cmd.sceneId) {
+          if (!live.patch.scenes.some((s) => s.id === cmd.sceneId)) {
+            throw new Error(`сцены «${cmd.sceneId}» нет в патче`);
+          }
+          if (engine.playing) engine.setScene(cmd.sceneId);
+          setSceneId(cmd.sceneId);
+        } else if (cmd.action === 'bpm' && cmd.value) {
+          const v = Math.max(30, Math.min(300, Math.round(cmd.value)));
+          if (engine.playing) engine.setBpm(v);
+          setPatch((p) => ({ ...p, bpm: v }));
+        }
+      },
+    });
+    bridgeRef.current = bridge;
+    // Ноты — в мост батчем: видно, что реально триггернулось (доли арпеджиатора тоже).
+    engine.noteSink = (trackId, at, notes) =>
+      bridge.pushNotes([{ trackId, at, notes: notes.map((nt) => ({ n: nt.n, oct: nt.oct, vel: nt.vel })) }]);
+    return () => {
+      engine.noteSink = undefined;
+      bridge.dispose();
+      bridgeRef.current = null;
+    };
+  }, [engine, setPatch, setPatchStep]);
+
+  // Патч и транспорт — стрим в мост (коалесценция внутри моста).
+  useEffect(() => {
+    bridgeRef.current?.pushPatch(patch);
+  }, [patch]);
+  useEffect(() => {
+    bridgeRef.current?.pushTransport({
+      playing,
+      sceneId,
+      sceneName: patch.scenes.find((s) => s.id === sceneId)?.name ?? '',
+      bpm: engine.currentBpm || patch.bpm,
+    });
+  }, [playing, sceneId, patch, engine]);
 
   const addScene = useCallback(() => {
     // Новая сцена — снимок ансамбля ссылками на те же эскизы (общие:

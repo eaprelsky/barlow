@@ -3,7 +3,7 @@
 // же интерфейсом — через Tauri-команды и события. Пока контракт не
 // выписан, «замена слоя» — надежда, а не план (см. docs/DESIGN.md).
 
-import type { Patch, Track } from '../types';
+import type { Note, Patch, Track } from '../types';
 import type { TrackClock } from './timing';
 
 export interface AudioBackend {
@@ -17,6 +17,10 @@ export interface AudioBackend {
   readonly currentChainPos: number;
   /** Актуальное время аудио-часов — для расчёта playhead в UI. */
   readonly now: number;
+
+  /** Приёмник событий нот (дебаг-мост): срабатывает на каждый triggerVoice
+   *  live-планировщика. Undefined — никого не зовём. */
+  noteSink?: (trackId: string, at: number, notes: Note[]) => void;
 
   play(patch: Patch, sceneId: string): void;
   stop(): void;
