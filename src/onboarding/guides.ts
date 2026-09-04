@@ -499,6 +499,12 @@ export const GUIDES: Guide[] = [
         side: 'top',
       },
       {
+        target: '[data-ob="sb-tab-samples"]',
+        say: 'Жми вкладку «сэмплы» — библиотека сэмплов.',
+        expect: 'click',
+        side: 'bottom',
+      },
+      {
         target: '[data-ob="library"]',
         say: 'Сэмплы: ▶ — прослушать, клик по имени — посадить в дорожку волной «сэмпл».',
         side: 'top',

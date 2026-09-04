@@ -741,13 +741,19 @@ export function triggerVoice(
   }
 
   if (track.waveform === 'modal') {
-    // Колокол/маримба: шумовой щелчок в банк параллельных резонаторов.
-    // Морф = материал (частоты партиалов) и время звона (Q).
+    // Колокол/маримба: шумовой удар в банк параллельных резонаторов.
+    // Морф = материал (частоты партиалов) и время звона (Q). Узкая полоса
+    // Q30–160 выуживает из резкого 4-мс щелчка крохи энергии — звоны
+    // выходили на порядок тише осцилляторов: удар удлинён до 12 мс
+    // и усилен ×2.2 — слышный удар и длинный хвост.
     const m = track.voiceMorph ?? 0.5;
     const q0 = 30 + m * 130;
     freqs.forEach((f, fi) => {
       const src = ctx.createBufferSource();
       src.buffer = noise;
+      const hit = ctx.createGain();
+      hit.gain.value = 2.2;
+      src.connect(hit);
       PARTIALS_A.forEach((pa, i) => {
         const ratio = pa + (PARTIALS_B[i] - pa) * m;
         const bp = ctx.createBiquadFilter();
@@ -756,12 +762,12 @@ export function triggerVoice(
         bp.Q.value = q0 / (1 + i * 0.55);
         const g = ctx.createGain();
         g.gain.value = 0.9 / (i + 1);
-        src.connect(bp);
+        hit.connect(bp);
         bp.connect(g);
         g.connect(noteDest(fi));
       });
-      src.start(time, Math.random() * 1.5, 0.004);
-      src.stop(time + 0.02);
+      src.start(time, Math.random() * 1.5, 0.012);
+      src.stop(time + 0.03);
       sources.push(src);
     });
     return finish();

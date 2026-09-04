@@ -60,9 +60,11 @@ export function SoundBrowser({
   onClose,
 }: Props) {
   const [query, setQuery] = useState('');
-  // Схлопнутые категории (по умолчанию все раскрыты).
+  // Схлопнутые категории инструментов (по умолчанию все раскрыты).
   const [closed, setClosed] = useState<Set<string>>(new Set());
-  const [samplesClosed, setSamplesClosed] = useState(false);
+  // Вкладки: инструменты | сэмплы. Пресеты без сэмпла перебрасывают на
+  // «сэмплы» сами — сэмпл-пресет без сэмпла молчит.
+  const [tab, setTab] = useState<'inst' | 'smp'>('inst');
   // Удаление своего пресета/сэмпла перечитывает списки из хранилищ.
   const [listVersion, setListVersion] = useState(0);
   const [samples, setSamples] = useState<SampleMeta[]>([]);
@@ -156,6 +158,9 @@ export function SoundBrowser({
 
   const presetRow = (p: InstrumentPreset) => {
     const user = p.category === USER_CATEGORY;
+    // Сэмпл-пресет без сэмпла не звучит: ▶ неактуален, а применение
+    // перебрасывает на вкладку «сэмплы» — сэмпл выбрать сразу.
+    const needsSample = p.track.waveform === 'sample' && !p.track.sampleId;
     const card = (
       <>
         <span className="inst-name">{p.name}</span>
@@ -163,12 +168,16 @@ export function SoundBrowser({
         <span className="spacer" />
         <button
           className="sb-audition"
-          title="Послушать тембр (нота тоники дорожки) — без применения"
+          title={
+            needsSample
+              ? 'Слушать нечего: сэмпл ещё не выбран — примени пресет и выбери сэмпл на вкладке «сэмплы»'
+              : 'Послушать тембр (нота тоники дорожки) — без применения'
+          }
           onClick={(e) => {
             e.stopPropagation();
-            if (applyTo) onAudition(applyTo, p);
+            if (applyTo && !needsSample) onAudition(applyTo, p);
           }}
-          disabled={!applyTo}
+          disabled={!applyTo || needsSample}
         >
           ▶
         </button>
@@ -194,9 +203,16 @@ export function SoundBrowser({
         role="button"
         tabIndex={0}
         title={p.hint ?? `волна: ${waveOf(p)}`}
-        onClick={() => applyTo && onApply(applyTo, p)}
+        onClick={() => {
+          if (!applyTo) return;
+          onApply(applyTo, p);
+          if (needsSample) setTab('smp');
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && applyTo) onApply(applyTo, p);
+          if (e.key === 'Enter' && applyTo) {
+            onApply(applyTo, p);
+            if (needsSample) setTab('smp');
+          }
         }}
       >
         {card}
@@ -207,7 +223,11 @@ export function SoundBrowser({
         className="inst-card"
         title={p.hint ?? `волна: ${waveOf(p)}`}
         disabled={!applyTo}
-        onClick={() => applyTo && onApply(applyTo, p)}
+        onClick={() => {
+          if (!applyTo) return;
+          onApply(applyTo, p);
+          if (needsSample) setTab('smp');
+        }}
       >
         {card}
       </button>
@@ -222,10 +242,30 @@ export function SoundBrowser({
         <span className="spacer" />
         <button onClick={onClose} title="Скрыть панель">скрыть</button>
       </div>
+      {/* Вкладки: инструменты и сэмплы — явные, не теряются. Сэмпл-пресет
+          без сэмпла сам перебрасывает сюда на «сэмплы». */}
+      <div className="seg sb-tabs">
+        <button
+          className={tab === 'inst' ? 'on' : ''}
+          data-ob="sb-tab-instruments"
+          onClick={() => setTab('inst')}
+          title="Пресеты-инструменты по категориям: клик применяет к дорожке из селектора ниже"
+        >
+          инструменты
+        </button>
+        <button
+          className={tab === 'smp' ? 'on' : ''}
+          data-ob="sb-tab-samples"
+          onClick={() => setTab('smp')}
+          title="Библиотека сэмплов: клик по имени сажает сэмпл в дорожку"
+        >
+          сэмплы ({samples.length})
+        </button>
+      </div>
       <input
         className="browser-search"
         data-ob="inst-search"
-        placeholder="поиск: имя, тембр, категория…"
+        placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -247,80 +287,75 @@ export function SoundBrowser({
         )}
       </div>
 
-      <div className="sb-list" data-ob="inst-cards">
-        {groups.map((g) => (
-          <div className="sb-cat" key={g.cat}>
-            <div
-              className="sb-cat-label"
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleCat(g.cat)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') toggleCat(g.cat);
-              }}
-            >
-              <span className={'sb-caret' + (closed.has(g.cat) ? '' : ' open')}>▸</span>
-              {g.cat}
-              <span className="sb-count">{g.items.length}</span>
-            </div>
-            {!closed.has(g.cat) && <div className="sb-cards">{g.items.map(presetRow)}</div>}
+      {tab === 'inst' && (
+        <>
+          <div className="sb-list" data-ob="inst-cards">
+            {groups.map((g) => (
+              <div className="sb-cat" key={g.cat}>
+                <div
+                  className="sb-cat-label"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleCat(g.cat)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') toggleCat(g.cat);
+                  }}
+                >
+                  <span className={'sb-caret' + (closed.has(g.cat) ? '' : ' open')}>▸</span>
+                  {g.cat}
+                  <span className="sb-count">{g.items.length}</span>
+                </div>
+                {!closed.has(g.cat) && <div className="sb-cards">{g.items.map(presetRow)}</div>}
+              </div>
+            ))}
+            {groups.length === 0 && (
+              <p className="empty">
+                {q && samplesShown.length > 0
+                  ? `Здесь нет, но в сэмплах есть совпадения (${samplesShown.length}) — вкладка «сэмплы»`
+                  : 'Ничего не нашлось'}
+              </p>
+            )}
           </div>
-        ))}
-        {groups.length === 0 && samplesShown.length === 0 && (
-          <p className="empty">Ничего не нашлось</p>
-        )}
-      </div>
+        </>
+      )}
 
-      <div className="sb-cat sb-samples" data-ob="library">
-        <div
-          className="sb-cat-label"
-          role="button"
-          tabIndex={0}
-          onClick={() => setSamplesClosed((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') setSamplesClosed((v) => !v);
-          }}
-        >
-          <span className={'sb-caret' + (samplesClosed ? '' : ' open')}>▸</span>
-          сэмплы
-          <span className="sb-count">{samples.length}</span>
-          <span className="spacer" />
-          {dirLabel && (
-            <button
-              className="sb-mini"
-              title="Открыть папку сэмплов в проводнике"
-              onClick={(e) => {
-                e.stopPropagation();
-                void revealSamplesDir();
-              }}
-            >
-              папка
-            </button>
-          )}
-          {isDesktop && (
-            <button
-              className="sb-mini"
-              title="Выбрать другую папку: сэмплы переедут туда. Если в новой папке уже лежит библиотека (index.json) — будет использована она"
-              onClick={(e) => {
-                e.stopPropagation();
-                void samplesDirPick().then((p) => {
-                  if (p) {
-                    setDirLabel(p);
-                    refreshSamples();
-                  }
-                });
-              }}
-            >
-              сменить…
-            </button>
-          )}
-        </div>
-        {!samplesClosed && (
+      {tab === 'smp' && (
+        <div className="sb-samples" data-ob="library">
+          <div className="sb-cat-label static">
+            сэмплы
+            <span className="spacer" />
+            {dirLabel && (
+              <button
+                className="sb-mini"
+                title="Открыть папку сэмплов в проводнике"
+                onClick={() => void revealSamplesDir()}
+              >
+                папка
+              </button>
+            )}
+            {isDesktop && (
+              <button
+                className="sb-mini"
+                title="Выбрать другую папку: сэмплы переедут туда. Если в новой папке уже лежит библиотека (index.json) — будет использована она"
+                onClick={() => {
+                  void samplesDirPick().then((p) => {
+                    if (p) {
+                      setDirLabel(p);
+                      refreshSamples();
+                    }
+                  });
+                }}
+              >
+                сменить…
+              </button>
+            )}
+          </div>
+          {dirLabel && <p className="sb-dir">{dirLabel}</p>}
           <div className="sb-sample-list">
             {samples.length === 0 && (
               <p className="empty">
-                Пусто: загрузи файл или сгенерируй по описанию в сэмпл-треке
-                {dirLabel ? `. Папка: ${dirLabel}` : ' (библиотека этого браузера)'}.
+                Пусто: загрузи файл («загрузить» в настройке инструмента дорожки)
+                или сгенерируй по описанию.
               </p>
             )}
             {samplesShown.map((meta) => {
@@ -390,9 +425,12 @@ export function SoundBrowser({
                 </div>
               );
             })}
+            {samples.length > 0 && samplesShown.length === 0 && (
+              <p className="empty">Ничего не нашлось</p>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 }
