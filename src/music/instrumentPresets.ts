@@ -14,6 +14,7 @@ export interface InstrumentPreset {
 
 export const CATEGORY_ORDER = [
   'мои', // пользовательские пресеты (USER_CATEGORY) — пустая группа скрыта
+  'стартовые', // архетипы: минимальные основы классов звуков с рецептом в подсказке
   'бас',
   'тоны и лиды',
   'перкуссия',
@@ -54,6 +55,99 @@ export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): s
 }
 
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
+  // ---- Архетипы: отправные точки классов звуков. Минимум настроек,
+  // рецепт — в подсказке: почему именно атака/спад/фильтр такие и что
+  // крутить дальше. Готовые характеры — ниже по категориям.
+  {
+    name: 'удар',
+    category: 'стартовые',
+    hint: 'Рецепт удара: атака ~1 мс, короткий спад, падение тона сверху. Спад длиннее — тон короче — щелчок. Шум в волне — треск',
+    track: {
+      name: 'удар', waveform: 'sine', freq: 60, scale: [1],
+      length: 8, rate: 4, attack: 0.001, decay: 0.25,
+      pitchDrop: 3, pitchTime: 0.07,
+      filterFreq: 3000,
+    },
+  },
+  {
+    name: 'щипок',
+    category: 'стартовые',
+    hint: 'Рецепт щипка: Karplus-Strong сам гаснет как струна, спад короткий. ksLife дольше — тянется; фильтр ниже — глухой палец',
+    track: {
+      name: 'щипок', waveform: 'karplus', freq: 220, scale: PENTATONIC_MINOR,
+      ksLife: 2, length: 8, rate: 2, attack: 0.002, decay: 0.35, filterFreq: 6000,
+    },
+  },
+  {
+    name: 'пад',
+    category: 'стартовые',
+    hint: 'Рецепт пада: медленная атака, долгий спад, унисон (супер-пила), реверб. Убери реверб — стена чистая',
+    track: {
+      name: 'пад', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      voiceMorph: 0.45,
+      length: 4, rate: 8, attack: 0.4, decay: 3, sustain: 0.9,
+      filterFreq: 4000, volume: 0.4,
+      effects: [{ type: 'reverb', sizeSec: 3, mix: 0.35 }],
+    },
+  },
+  {
+    name: 'лид-основа',
+    category: 'стартовые',
+    hint: 'Рецепт лида: пила, плато-сустейн, вибрато (пока без задержки), лёгкий фильтр. Глубина вибрато 30–60 центов — живой голос',
+    track: {
+      name: 'лид', waveform: 'sawtooth', freq: 330, scale: PENTATONIC_MINOR,
+      length: 8, rate: 2, attack: 0.01, decay: 0.8, sustain: 0.75,
+      vibratoRate: 5.5, vibratoDepth: 40, filterFreq: 6000,
+    },
+  },
+  {
+    name: 'язычок',
+    category: 'стартовые',
+    hint: 'Рецепт язычка (кларнет/шахней): нечётные гармоники 1,3,5 — полый тон, вибрато узкое. Проверни фильтр — саксофон',
+    track: {
+      name: 'язычок', waveform: 'wave', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      wave: {
+        partials: [
+          { ratio: 1, amp: 1, type: 'sine' },
+          { ratio: 3, amp: 0.35, type: 'sine' },
+          { ratio: 5, amp: 0.15, type: 'sine' },
+        ],
+      },
+      length: 8, rate: 2, attack: 0.03, decay: 1, sustain: 0.8,
+      vibratoRate: 5, vibratoDepth: 25, filterFreq: 4000,
+    },
+  },
+  {
+    name: 'колокол-основа',
+    category: 'стартовые',
+    hint: 'Рецепт звона: модальные резонаторы (негармоничные частоты), атака мгновенная, спад долгий. Морф — от маримбы к колоколу',
+    track: {
+      name: 'звон', waveform: 'modal', freq: 220, scale: [1, 6 / 5, 3 / 2, 2],
+      voiceMorph: 0.5,
+      length: 8, rate: 2, attack: 0.001, decay: 1.5, filterFreq: 12000,
+    },
+  },
+  {
+    name: 'шум-основа',
+    category: 'стартовые',
+    hint: 'Рецепт шума: белый шум + фильтр решает всё. Верх 6–8к — хэт; 300–600 — ветер; спад 0.03 — тик, 2 с — прибой',
+    track: {
+      name: 'шум', waveform: 'noise', freq: 440, scale: [1],
+      length: 8, rate: 1, attack: 0.005, decay: 0.4, filterFreq: 7000,
+    },
+  },
+  {
+    name: 'бас-основа',
+    category: 'стартовые',
+    hint: 'Рецепт баса: синус (или треугольник), фильтр 300–500, монолит. pitchDrop 1.2 — мягкий тычок; квадрат + дисторшн — рейв',
+    track: {
+      name: 'бас', waveform: 'sine', freq: 55, scale: [1, 6 / 5, 3 / 2, 2],
+      length: 8, rate: 4, attack: 0.004, decay: 0.5,
+      pitchDrop: 1.2, pitchTime: 0.12,
+      filterFreq: 400, mono: true,
+    },
+  },
+  // ---- Готовые пресеты ----
   {
     name: 'бас',
     category: 'бас',

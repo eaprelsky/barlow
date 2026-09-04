@@ -36,6 +36,8 @@ import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
+import { Knob } from './Knob';
+import { WaveIcon } from './WaveIcon';
 import { SliderField } from './SliderField';
 import { WaveEditor } from './WaveEditor';
 import { NoteGraph } from './EnvGraph';
@@ -1324,14 +1326,24 @@ export const TrackRow = memo(function TrackRow({
                 <button data-ob="inst-pick" onClick={() => onOpenBrowser(track.id)}>выбрать…</button>
               </span>
             </div>
-            <label title="Форма волны осциллятора — основа тембра">
+            {/* Волна — иконками, «как на приборе»: одна форма — один глиф.
+                Подпись-подсказка на каждой. */}
+            <div className="lbl" title="Форма волны осциллятора — основа тембра">
               волна
-              <select value={st.waveform} onChange={(e) => changeInst({ waveform: e.target.value as Waveform })}>
+              <span className="wave-pick" data-ob="wave-pick">
                 {WAVEFORMS.map((w) => (
-                  <option key={w} value={w}>{WAVEFORM_LABELS[w]}</option>
+                  <button
+                    key={w}
+                    className={st.waveform === w ? 'on' : ''}
+                    title={WAVEFORM_LABELS[w]}
+                    aria-label={WAVEFORM_LABELS[w]}
+                    onClick={() => changeInst({ waveform: w })}
+                  >
+                    <WaveIcon wave={w} />
+                  </button>
                 ))}
-              </select>
-            </label>
+              </span>
+            </div>
             {st.waveform === 'fm' && (
               <>
                 <label title="Отношение частоты модулятора к ноте. Целые (1, 2, 3) — гармоничные тембры; иррациональные (1.41 ≈ √2) — колокольный негармоничный звон">
@@ -1345,16 +1357,13 @@ export const TrackRow = memo(function TrackRow({
               </>
             )}
             {MORPH_LABELS[st.waveform] && (
-              <label
-                title={`Морф модели «${WAVEFORM_LABELS[st.waveform]}»: ${MORPH_LABELS[st.waveform]}`}
-              >
-                морф
-                <NumField
-                  value={Math.round((st.voiceMorph ?? 0.5) * 100)}
-                  min={0} max={100} step={5}
-                  onChange={(v) => changeInst({ voiceMorph: v / 100 })}
-                />
-              </label>
+              <Knob
+                label="морф"
+                title={`Морф модели «${WAVEFORM_LABELS[st.waveform]}»: ${MORPH_LABELS[st.waveform]}. Двойной клик — точное число`}
+                value={Math.round((st.voiceMorph ?? 0.5) * 100)}
+                min={0} max={100} step={1}
+                onChange={(v) => changeInst({ voiceMorph: v / 100 })}
+              />
             )}
             {st.waveform === 'karplus' && (
               <label title="Сколько секунд струна звенит до полной тишины — собственное затухание струны, поверх обычной огибающей ноты">
@@ -1521,46 +1530,41 @@ export const TrackRow = memo(function TrackRow({
           )}
                     {tab === 'timbre' && (
           <>
-          <div className="group sub" data-ob="timbre-tab">
+          <div className="group sub knob-row" data-ob="timbre-tab">
             <span className="sub-cap">фильтры</span>
-            <label title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай">
-              низ, Гц
-              <NumField
-                value={st.filterLow} min={20} max={4000} step={10}
-                onChange={(filterLow) => changeInst({ filterLow })}
-              />
-            </label>
-            <label title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+">
-              верх, Гц
-              <NumField
-                value={st.filterFreq} min={60} max={12000} step={10}
-                onChange={(filterFreq) => changeInst({ filterFreq })}
-              />
-            </label>
-            <label title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе">
-              резонанс, Q
-              <NumField
-                value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
-                onChange={(filterQ) => changeInst({ filterQ })}
-              />
-            </label>
+            <Knob
+              label="низ"
+              title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай. Двойной клик — точное число"
+              value={st.filterLow} min={20} max={4000} step={10} log
+              onChange={(filterLow) => changeInst({ filterLow })}
+            />
+            <Knob
+              label="верх"
+              title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"
+              value={st.filterFreq} min={60} max={12000} step={10} log
+              onChange={(filterFreq) => changeInst({ filterFreq })}
+            />
+            <Knob
+              label="резонанс"
+              title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе. Двойной клик — точное число"
+              value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
+              onChange={(filterQ) => changeInst({ filterQ })}
+            />
           </div>
-          <div className="group sub">
+          <div className="group sub knob-row">
             <span className="sub-cap">вибрато</span>
-            <label title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса">
-              скорость, Гц
-              <NumField
-                value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
-                onChange={(vibratoRate) => changeInst({ vibratoRate })}
-              />
-            </label>
-            <label title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава">
-              глубина, центы
-              <NumField
-                value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
-                onChange={(vibratoDepth) => changeInst({ vibratoDepth })}
-              />
-            </label>
+            <Knob
+              label="скорость"
+              title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
+              value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
+              onChange={(vibratoRate) => changeInst({ vibratoRate })}
+            />
+            <Knob
+              label="глубина"
+              title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
+              value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
+              onChange={(vibratoDepth) => changeInst({ vibratoDepth })}
+            />
           </div>
           <div className="group sub" data-ob="arp-group">
             <div className="sub-head">

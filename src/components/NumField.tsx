@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 
 interface Props {
   value: number;
@@ -15,6 +15,11 @@ interface Props {
   /** Колесо мыши: ±step на щелчок, Shift — step/10. Не всем полям нужно:
    *  страница может скроллиться мимо. */
   wheel?: boolean;
+  /** Пробросы фокуса/клавиш (крутилка Knob подменяет себя полем). */
+  autoFocus?: boolean;
+  onFocus?: (e: ReactFocusEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
+  onKeyDown?: (e: ReactKeyboardEvent<HTMLInputElement>) => void;
   onChange: (v: number) => void;
 }
 
@@ -25,7 +30,7 @@ const PX_PER_STEP = 4; // пикселей на один шаг
 // стереть, поставить '.'), нормализация при blur/Enter — и крутилка:
 // потяни поле вертикально, Shift — мелкий шаг. Порог отделяет клик-в-поле
 // от начала драга, поэтому набор текста не ломается.
-export function NumField({ value, min, max, step = 1, title, disabled, narrow, w, wheel, onChange }: Props) {
+export function NumField({ value, min, max, step = 1, title, disabled, narrow, w, wheel, autoFocus, onFocus, onBlur, onKeyDown, onChange }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const drag = useRef<{ y0: number; v0: number } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -107,9 +112,14 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, w
       step={step}
       title={title}
       disabled={disabled}
+      autoFocus={autoFocus}
       value={shown}
       onChange={(e) => commit(e.target.value)}
-      onBlur={settle}
+      onFocus={onFocus}
+      onBlur={() => {
+        settle();
+        onBlur?.();
+      }}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
@@ -117,6 +127,7 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, w
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         if (e.key === 'Escape') setDraft(null);
+        onKeyDown?.(e);
       }}
     />
   );

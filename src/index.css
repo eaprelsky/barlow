@@ -2951,6 +2951,78 @@ main.main-area {
 }
 
 
+/* Крутилка-регулятор: дуга значения, риски, указатель; драг/колесо/
+   даблклик-в-число (как у полей) */
+.knob-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+svg.knob {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.knob-track {
+  stroke: var(--border);
+  stroke-width: 3.5;
+}
+
+.knob-arc {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+}
+
+.knob-pointer {
+  stroke: var(--text);
+  stroke-width: 1.2;
+}
+
+.knob-tick {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.knob-value {
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+.knob-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Ряд крутилок (фильтры, вибрато): подписи-«приборы» под одной шапкой */
+.knob-row {
+  align-items: flex-end;
+}
+
+/* Выбор волны иконками: одна форма — один глиф */
+.wave-pick {
+  display: inline-flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.wave-pick button {
+  padding: 3px 4px;
+  line-height: 0;
+  color: var(--text-dim);
+}
+
+.wave-pick button.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(255, 168, 60, 0.08);
+}
+
 /* Дорожка автоматизации: под колонками стана, ширина = length × 27 − 3,
    вертикали сетки — границы шагов */
 svg.auto-lane {
