@@ -15,7 +15,7 @@ export interface GuideRun {
   scope?: string;
 }
 
-interface Rect {
+export interface Rect {
   left: number;
   top: number;
   width: number;
@@ -40,8 +40,9 @@ function findTarget(run: GuideRun, target?: string): HTMLElement | null {
 
 /** Карточка шага: где встать относительно подсвеченной цели.
  *  Пробуем стороны по порядку, берём первую, что влезла целиком;
- *  ни одна не влезла — прижимаем preferred к краям экрана. */
-function cardPosition(hole: Rect, size: Rect, sides: string[]): { left: number; top: number } {
+ *  ни одна не влезла — прижимаем preferred к краям экрана.
+ *  Экспорт: позиционирование переиспользует режим «что это?». */
+export function cardPosition(hole: Rect, size: Rect, sides: string[]): { left: number; top: number } {
   const m = 10; // зазор до цели
   const edge = 12; // поля экрана
   const vw = window.innerWidth;
@@ -343,8 +344,18 @@ export function HelpHint({
   );
 }
 
-/** Меню «?»: вводный гид + все гиды-сценарии + шпаргалка. */
-export function HelpMenu({ onClose, onCheatSheet }: { onClose: () => void; onCheatSheet: () => void }) {
+/** Меню «?»: вводный гид + все гиды-сценарии + режим «что это?» + шпаргалка. */
+export function HelpMenu({
+  onClose,
+  onCheatSheet,
+  onPointHelp,
+  pointHelpOn,
+}: {
+  onClose: () => void;
+  onCheatSheet: () => void;
+  onPointHelp: () => void;
+  pointHelpOn: boolean;
+}) {
   useEffect(() => {
     markInvited();
     const onKey = (e: KeyboardEvent) => {
@@ -387,6 +398,16 @@ export function HelpMenu({ onClose, onCheatSheet }: { onClose: () => void; onChe
         <span className="hm-cap">отдельные умения</span>
         {GUIDES.filter((g) => g.section === 'more').map(item)}
         <span className="hm-sep" />
+        <button
+          className={'gm-item' + (pointHelpOn ? ' gm-main' : '')}
+          onClick={() => {
+            onPointHelp();
+            onClose();
+          }}
+        >
+          <span className="gm-title">{pointHelpOn ? '■ выключить «что это?»' : '? что это?'}</span>
+          <span className="gm-goal">тыкни в любой контрол — карточка расскажет, что он делает (F1)</span>
+        </button>
         <button
           className="gm-item"
           onClick={() => {

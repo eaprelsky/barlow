@@ -38,6 +38,7 @@ import { createBridge, setByPointer } from './bridge';
 import { slugify } from './utils/slug';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
+import { PointHelp } from './onboarding/PointHelp';
 import type { GuideRun } from './onboarding/Onboarding';
 import {
   guideById,
@@ -221,6 +222,9 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   // Онбординг: меню гидов у «?» и текущий гид (id + шаг + зона-скоуп).
   const [showHelpMenu, setShowHelpMenu] = useState(false);
+  // Режим «что это?»: клик по контролу показывает его карточку (cards.ts),
+  // контролы не активируются. F1 — вход/выход.
+  const [pointHelp, setPointHelp] = useState(false);
   const [obRun, setObRun] = useState<GuideRun | null>(null);
   const [helpInvite, setHelpInvite] = useState(needsInvite);
   const obRef = useRef<GuideRun | null>(null);
@@ -268,8 +272,8 @@ export default function App() {
     else if (what === 'lib') setShowLib(true);
   }, []);
 
-  // «?» — меню гидов; Esc — закрыть. Проверки по e.key — символы,
-  // не зависящие от раскладки (?, Esc).
+  // «?» — меню гидов; F1 — режим «что это?»; Esc — закрыть. Проверки по
+  // e.key — символы, не зависящие от раскладки (?, Esc).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -277,6 +281,9 @@ export default function App() {
         el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       if (e.key === 'Escape' && showHelp) {
         setShowHelp(false);
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        setPointHelp((v) => !v);
       } else if (e.key === '?' && !typing) {
         e.preventDefault();
         setShowHelpMenu((v) => !v);
@@ -1357,6 +1364,8 @@ export default function App() {
                 setHelpInvite(needsInvite());
               }}
               onCheatSheet={() => setShowHelp(true)}
+              onPointHelp={() => setPointHelp((v) => !v)}
+              pointHelpOn={pointHelp}
             />
           )}
         </span>
@@ -1868,8 +1877,8 @@ export default function App() {
                   <li>клик по клетке — нота · столбик — аккорд · правый клик — убрать</li>
                   <li>рамка с пустой клетки — выделение · Shift-клик — добавить к выделению</li>
                   <li>тянуть выделенное — перенос · колесо над нотой — громкость (Shift — вероятность, Alt — длина)</li>
-                  <li>тянуть правый край ноты — длительность</li>
-                  <li>клик по номеру шага — панель шага</li>
+                  <li>тянуть правый край ноты — длительность · клик по номеру шага — панель шага</li>
+                  <li>кривые партии — дорожка под станом (кнопка «кривые»): клик — точка на границе шага, правый клик — убрать; рампы по краям — вход/выход сцены</li>
                 </ul>
               </div>
               <div className="help-col">
@@ -1879,6 +1888,7 @@ export default function App() {
                   <li>Ctrl+C / V — копипаст нот (и между треками) · Ctrl+D — дубль выделения</li>
                   <li>Delete — стереть выделенное · Esc — снять выделение</li>
                   <li>Ctrl+Z / Ctrl+Shift+Z — отменить / вернуть</li>
+                  <li>F1 — режим «что это?»: тыкни в контрол — карточка расскажет</li>
                 </ul>
               </div>
             </div>
@@ -1890,6 +1900,7 @@ export default function App() {
               <li><span className="help-term">цепочка</span> — порядок сцен и их длины: арранжмент от начала до конца</li>
               <li><span className="help-term">стан</span> — нотная сетка: колонки-шаги × строки-высоты</li>
               <li><span className="help-term">шкала</span> — набор высот стана: мировые строи, N-ET, свои дроби</li>
+              <li><span className="help-term">кривая партии</span> — ход громкости/фильтра/пана по циклу, рисуется на дорожке под станом</li>
             </ul>
             <div className="modal-btns">
               <span className="spacer" />
@@ -1900,6 +1911,7 @@ export default function App() {
       )}
 
       <DialogHost />
+      {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}
       {obRun && (
         <Onboarding run={obRun} onDone={stopGuide} onStep={stepGuide} onOpenPanel={openGuidePanel} />
       )}
