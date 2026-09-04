@@ -355,6 +355,11 @@ export function triggerVoice(
     voiceLen = Math.max(voiceLen, 16);
     sus = 1 - 0.05 / voiceLen;
   }
+  // Атака не бывает длиннее самой ноты: иначе план огибающей строится
+  // «назад во времени» (спад раньше конца атаки, осциллятор стопается
+  // посреди разгона) и Web Audio гасит голос в абсолютный ноль — нота
+  // молчит целиком. Длинная атака просто сжимается до 90% ноты.
+  const atk = Math.min(attack, voiceLen * 0.9);
   const noteGainOf = (i: number): GainNode | null => {
     if (gates[i] >= maxGate - 1e-9) return null;
     const ng = ctx.createGain();
@@ -371,8 +376,8 @@ export function triggerVoice(
   // тишины за decay секунд (если помещается), иначе тянется до конца
   // ноты и мягко досыпает в ноль.
   amp.gain.setValueAtTime(0, time);
-  amp.gain.linearRampToValueAtTime(peak, time + attack);
-  const plateauEnd = time + attack + (voiceLen - attack) * sus;
+  amp.gain.linearRampToValueAtTime(peak, time + atk);
+  const plateauEnd = time + atk + (voiceLen - atk) * sus;
   amp.gain.setValueAtTime(peak, plateauEnd);
   const fallEnd = Math.min(plateauEnd + Math.max(track.decay, 0.01), time + voiceLen + 0.05);
   amp.gain.exponentialRampToValueAtTime(0.0001, fallEnd);
@@ -568,7 +573,7 @@ export function triggerVoice(
       const modGain = ctx.createGain();
       const dev = index * f * ratio;
       modGain.gain.setValueAtTime(dev, time);
-      modGain.gain.setTargetAtTime(0, time + attack, Math.max(0.02, track.decay * 0.4));
+      modGain.gain.setTargetAtTime(0, time + atk, Math.max(0.02, track.decay * 0.4));
       mod.connect(modGain);
       modGain.connect(carrier.frequency);
       // Падение тона тянет обе частоты, сохраняя отношение.
