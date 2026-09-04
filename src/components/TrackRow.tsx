@@ -42,11 +42,11 @@ import { NumField } from './NumField';
 import { SliderField } from './SliderField';
 import { WaveEditor } from './WaveEditor';
 import { NoteGraph } from './EnvGraph';
-import { AutoEditor } from './AutoEditor';
+import { AutoLane } from './AutoLane';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
-import { tickDuration } from '../audio/timing';
+import { tickDuration, stepDuration } from '../audio/timing';
 import { clip } from '../music/clip';
 import { HelpHint } from '../onboarding/Onboarding';
 
@@ -342,6 +342,8 @@ export const TrackRow = memo(function TrackRow({
   const [showMods, setShowMods] = useState(false);
   // Кривые партии: какая цель рисуется.
   const [autoTarget, setAutoTarget] = useState<AutoTarget>('volume');
+  // Дорожка автоматизации под станом — открыта/закрыта (UI-состояние).
+  const [autoLane, setAutoLane] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
   const sampleFileRef = useRef<HTMLInputElement>(null);
 
@@ -2027,26 +2029,8 @@ export const TrackRow = memo(function TrackRow({
               display={panLabel(pattern.pan ?? track.pan)}
               onChange={(pan) => onPatternChange(track.id, pattern.id, { pan: pan / 100 })}
             />
-            <label
-              title="Как партия врывается в сцену, мс: 0 — обрыв (деклик), 100–500 — мягкое вступление, 1000+ — выплывает из тишины. Заодно это вход трека при старте игры"
-              data-ob="fade-in"
-            >
-              вход в сцену
-              <NumField
-                value={Math.round((pattern.fadeIn ?? 0.005) * 1000)} min={0} max={8000} step={5}
-                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeIn: ms / 1000 })}
-              />
-            </label>
-            <label
-              title="Как партия уходит из сцены, мс: 0 — резкий обрыв, 100–400 — хвост уплывает, 1000+ — длинное растворение. Действует на границе сцен"
-              data-ob="fade-out"
-            >
-              выход из сцены
-              <NumField
-                value={Math.round((pattern.fadeOut ?? 0.05) * 1000)} min={0} max={8000} step={5}
-                onChange={(ms) => onPatternChange(track.id, pattern.id, { fadeOut: ms / 1000 })}
-              />
-            </label>
+            {/* Вход/выход сцены (fadeIn/fadeOut) живут на дорожке кривых
+                громкости: рампы по краям, тянутся за вершину. */}
             {st.waveform === 'sample' && (
               <button
                 className={(st.sampleMode ?? 'plain') === 'scratch' ? 'scratch-quick on' : 'scratch-quick'}
@@ -2070,6 +2054,8 @@ export const TrackRow = memo(function TrackRow({
             onMutate={onMutate}
             onPatternCommand={onPatternCommand}
             onPickScale={() => setShowScales(true)}
+            autoOn={autoLane}
+            onAutoToggle={() => setAutoLane((v) => !v)}
           />
           <div className="roll" ref={rollRef} data-ob="roll">        <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
@@ -2096,6 +2082,7 @@ export const TrackRow = memo(function TrackRow({
             >−</button>
           </div>
         </div>
+        <div className="roll-body">
         <div className="roll-cols">
           {pattern.steps.map((s, col) => (
             <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
@@ -2209,6 +2196,24 @@ export const TrackRow = memo(function TrackRow({
             </div>
           ))}
         </div>
+        {autoLane && (
+          <AutoLane
+            curves={pattern.automation ?? []}
+            target={autoTarget}
+            length={pattern.length}
+            activeStep={activeStep}
+            fadeIn={pattern.fadeIn ?? 0.005}
+            fadeOut={pattern.fadeOut ?? 0.05}
+            stepSec={stepDuration(st, bpm, pattern)}
+            onCurves={(cs) =>
+              onPatternChange(track.id, pattern.id, { automation: cs.length > 0 ? cs : undefined })
+            }
+            onFade={(which, sec) =>
+              onPatternChange(track.id, pattern.id, which === 'in' ? { fadeIn: sec } : { fadeOut: sec })
+            }
+          />
+        )}
+        </div>
       </div>
 
       {selectedStep && selectedCol !== null && (
@@ -2265,7 +2270,9 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-          {/* Кривые партии: громкость/фильтр/панорама по ходу цикла (v35) */}
+          {/* Кривые партии: цель рисуется на дорожке под станом (кнопка
+              «кривые» в тулбаре стана); здесь — только выбор цели. */}
+          {autoLane && (
           <div className="panel-row auto-box">
             <div className="sub-head">
               <span className="sub-cap">кривые партии</span>
@@ -2294,14 +2301,8 @@ export const TrackRow = memo(function TrackRow({
                 </button>
               )}
             </div>
-            <AutoEditor
-              curves={pattern.automation ?? []}
-              target={autoTarget}
-              onChange={(cs) =>
-                onPatternChange(track.id, pattern.id, { automation: cs.length > 0 ? cs : undefined })
-              }
-            />
           </div>
+          )}
 
           {/* Модуляции — свойство партии: от эскиза к эскизу свои */}
           <div className="mods-box">

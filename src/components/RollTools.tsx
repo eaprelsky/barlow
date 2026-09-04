@@ -24,6 +24,9 @@ interface Props {
   onMutate: (id: string, modes: MutateModes, edits: number) => void;
   onPatternCommand: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   onPickScale: () => void;
+  /** Дорожка автоматизации под станом открыта. */
+  autoOn: boolean;
+  onAutoToggle: () => void;
 }
 
 export function RollTools({
@@ -35,6 +38,8 @@ export function RollTools({
   onMutate,
   onPatternCommand,
   onPickScale,
+  autoOn,
+  onAutoToggle,
 }: Props) {
   const [pulses, setPulses] = useState(3);
   const [showFill, setShowFill] = useState(false);
@@ -84,6 +89,17 @@ export function RollTools({
         />
         <span className="rt-label">{noteSteps > 0 ? 'шагов' : 'авто'}</span>
       </label>
+      <span className="rt-sep" />
+      {/* Кривые партии: дорожка под станом на сетке шагов; на цели
+          «громкость» по краям — рампы входа/выхода сцены. */}
+      <button
+        className={autoOn ? 'on' : ''}
+        data-ob="auto-toggle"
+        title="Кривые партии: громкость/фильтр/панорама по ходу цикла — дорожка под станом, на сетке шагов. На громкости по краям — вход/выход сцены"
+        onClick={onAutoToggle}
+      >
+        кривые
+      </button>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по
           кнопке оси применяет только её — время и тон компонуются. */}

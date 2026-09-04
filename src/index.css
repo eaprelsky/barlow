@@ -452,6 +452,12 @@ header .master-vol input[type='range'] {
   white-space: nowrap;
 }
 
+.roll-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .roll-cols {
   display: flex;
   gap: 3px;
@@ -2833,16 +2839,41 @@ main.main-area {
 }
 
 
-/* Редактор кривых партии */
-.auto-box .auto-editor {
+/* Дорожка автоматизации: под колонками стана, ширина = length × 27 − 3,
+   вертикали сетки — границы шагов */
+svg.auto-lane {
   display: block;
-  width: 100%;
-  max-width: 560px;
+  flex: none;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border);
   border-radius: 8px;
   touch-action: none;
   cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.auto-lane .lane-ph {
+  stroke: var(--accent-2);
+  stroke-width: 1.5;
+  opacity: 0.4;
+}
+
+/* Рампы входа/выхода сцены на дорожке громкости */
+.auto-lane .lane-fade {
+  fill: rgba(126, 200, 255, 0.10);
+}
+
+.auto-lane .lane-fade-edge {
+  stroke: var(--accent-2);
+  stroke-width: 1.2;
+  opacity: 0.7;
+}
+
+.auto-lane .lane-fade-handle {
+  fill: var(--accent-2);
+  stroke: rgba(0, 0, 0, 0.4);
+  cursor: ew-resize;
 }
 
 .auto-box .seg button {
