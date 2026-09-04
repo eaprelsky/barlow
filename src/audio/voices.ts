@@ -360,18 +360,27 @@ export function triggerVoice(
 
   // Длина ноты: по умолчанию — огибающая трека (атака + спад); при
   // noteSteps — привязка к сетке инструмента (шаг эскиза × темп), тогда
-  // тягучесть не едет при смене темпа. Гейт ноты умножает сверху.
-  // 100% плато без сетки — «тянуть до перебоя»: голос живёт до потолка
-  // 16 с, пока его не срежет mono-retrigger или смена партии; релиз —
-  // мягкие 50 мс вместо обрыва (внутренний sus чуть меньше единицы).
-  const gates = notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4));
-  const maxGate = Math.max(1, ...gates);
-  let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
+  // тягучесть не едет при смене темпа. У каждой ноты может быть своя
+  // абсолютная длина (len, v37, в шагах) — пересчитываем в множитель
+  // базы. Легаси-гейт (v36-) встречается только у непрошедших миграцию
+  // патчей. 100% плато без сетки — «тянуть до перебоя»: голос живёт до
+  // потолка 16 с, пока его не срежет mono-retrigger или смена партии;
+  // релиз — мягкие 50 мс вместо обрыва (внутренний sus чуть меньше
+  // единицы).
   const baseLen =
     durSec ??
     (track.noteSteps && track.noteSteps > 0
       ? track.noteSteps * stepSec
       : attack + track.decay);
+  const gates = notes.map((nt) => {
+    if (typeof nt.len === 'number' && nt.len > 0) {
+      const lenSec = clampNum(nt.len, 0.05, 64) * stepSec;
+      return clampNum(lenSec / Math.max(baseLen, 1e-6), 0.05, 64);
+    }
+    return clampNum(nt.gate ?? 1, 0.1, 4);
+  });
+  const maxGate = Math.max(1, ...gates);
+  let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   // Готовая длина арп-доли уже включает гейт; «тянуть до перебоя» —
   // только для обычных нот без сетки.
   let voiceLen = durSec !== undefined ? durSec : baseLen * maxGate;

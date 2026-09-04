@@ -6,6 +6,8 @@ export interface ClipNote {
   n: number;
   vel: number;
   prob: number;
+  /** Длина ноты в шагах (v37) — переносится с нотами. */
+  len?: number;
 }
 
 export const clip: { notes: ClipNote[]; activeTrackId: string } = {

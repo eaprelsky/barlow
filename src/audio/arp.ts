@@ -42,8 +42,9 @@ function figureOf(notes: Note[], mode: Arp['mode']): Note[] {
   }
 }
 
-/** Развернуть ноты шага в перелив внутри ноты. noteLenSteps — длина ноты
- *  в шагах сетки (по «нота» трека или по огибающей); нота делится на
+/** Развернуть ноты шага в перелив внутри ноты. noteLenSteps — длина
+ *  аккорда в шагах сетки (максимум по нотам: своя длина len (v37), иначе
+ *  «нота» трека или огибающая × гейт); нота делится на
  *  noteLenSteps × div долей длиной 1/div, фигура по долям циклится.
  *  random недетерминирован — в golden-фикстуру арпеджиатор не включать
  *  (как и вероятность). */
@@ -56,12 +57,16 @@ export function arpEvents(
   if (notes.length === 0) return [];
   const div = Math.max(0.25, arp.div || 1);
   const octaves = Math.min(4, Math.max(1, Math.round(arp.octaves)));
-  const gate = (nt: Note) => Math.min(4, Math.max(0.1, nt.gate ?? 1));
+  // Своя длина ноты — абсолютная (v37); легаси-гейт множит базу аккорда.
+  const noteLen = (nt: Note) =>
+    typeof nt.len === 'number' && nt.len > 0
+      ? Math.min(64, Math.max(0.05, nt.len))
+      : noteLenSteps * Math.min(4, Math.max(0.1, nt.gate ?? 1));
   const slot = 1 / div;
 
-  // «аккорд» — все ноты разом на всю длину ноты (как без арпеджиатора).
+  // «аккорд» — все ноты разом, каждая своей длины (как без арпеджиатора).
   if (arp.mode === 'chord') {
-    return notes.map((note) => ({ note, dt: 0, len: gate(note) * noteLenSteps }));
+    return notes.map((note) => ({ note, dt: 0, len: noteLen(note) }));
   }
 
   const slots = Math.max(1, Math.round(noteLenSteps * div));
@@ -73,7 +78,7 @@ export function arpEvents(
       return {
         note: oct ? { ...note, oct: (note.oct ?? 0) + oct } : note,
         dt: i * slot,
-        len: slot * gate(note),
+        len: slot,
       };
     });
   }
@@ -89,7 +94,7 @@ export function arpEvents(
     return {
       note: oct ? { ...note, oct: (note.oct ?? 0) + oct } : note,
       dt: i * slot,
-      len: slot * gate(note),
+      len: slot,
     };
   });
 }

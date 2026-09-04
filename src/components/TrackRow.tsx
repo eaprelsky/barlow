@@ -308,6 +308,15 @@ export const TrackRow = memo(function TrackRow({
     onChangeInst(track.id, { ...inst, ...patch });
   // Слитый вид: дорожка + инструмент — для чтения звука и вызовов синтеза.
   const st: SoundingTrack = { ...inst, ...track };
+  // Истинная длительность НОВОЙ ноты в клетках стана: по сетке (noteSteps)
+  // или по огибающей (атака + спад), в шагах эффективного темпа. Ноты со
+  // своей длиной (len, v37) от этой базы не зависят. Объявлено рано:
+  // нужно и колесу над станом (stateRef), и рисовалке.
+  const noteCellsBase =
+    st.noteSteps && st.noteSteps > 0
+      ? st.noteSteps
+      : (Math.max(st.attack, 0.0005) + st.decay) /
+        ((pattern.rate ?? track.rate) * tickDuration(bpm));
   const changeSteps = (steps: Step[]) => onPatternCommand(track.id, pattern.id, { steps });
 
   const loadSampleFile = (f: File) => {
@@ -392,13 +401,16 @@ export const TrackRow = memo(function TrackRow({
   };
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
-  // колонке — аккорд; когда нот не остаётся — пауза.
+  // колонке — аккорд; когда нот не остаётся — пауза. Новая нота фиксирует
+  // текущую длину рисовалки (len) — смена «ноты» трека её уже не тронет.
   const clickCell = (col: number, row: number) => {
     changeSteps(
       pattern.steps.map((s, j) => {
         if (j !== col) return s;
         const has = s.notes.some((nt) => nt.n === row);
-        const notes = has ? s.notes.filter((nt) => nt.n !== row) : [...s.notes, makeNote(row)];
+        const notes = has
+          ? s.notes.filter((nt) => nt.n !== row)
+          : [...s.notes, makeNote(row, 0.8, 1, +noteCellsBase.toFixed(2))];
         return { ...s, notes };
       }),
     );
@@ -414,7 +426,7 @@ export const TrackRow = memo(function TrackRow({
 
   // Слайдер панели шага — коалесцируется (движение = один шаг undo),
   // в отличие от командных правок нот.
-  const setNoteField = (col: number, row: number, field: 'vel' | 'prob' | 'gate', v: number) => {
+  const setNoteField = (col: number, row: number, field: 'vel' | 'prob' | 'len', v: number) => {
     onPatternChange(
       track.id,
       pattern.id,
@@ -437,15 +449,15 @@ export const TrackRow = memo(function TrackRow({
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [box, setBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(null);
   const [ghost, setGhost] = useState<{ dc: number; dr: number } | null>(null);
-  // Растяжение ноты за правый край бара: стартовая ширина в клетках.
-  // Если тянут выделенную ноту — гейт-дельту получают все выделенные.
+  // Растяжение ноты за правый край бара: стартовая длина в клетках.
+  // Если тянут выделенную ноту — дельту длины получают все выделенные.
   const grabRef = useRef<null | {
     col: number;
     row: number;
     pointerId: number;
     startX: number;
     startCells: number;
-    startGates: Map<string, number>;
+    startLens: Map<string, number>;
   }>(null);
   const dragRef = useRef<null | {
     mode: 'pending' | 'box' | 'move';
@@ -575,12 +587,12 @@ export const TrackRow = memo(function TrackRow({
     const ddc = Math.max(-minC, Math.min(steps.length - 1 - maxC, dc));
     const ddr = Math.max(-minN, Math.min(rowsN - 1 - maxN, dr));
     if (!ddc && !ddr) return;
-    const taken: { c: number; n: number; vel: number; prob: number }[] = [];
+    const taken: { c: number; n: number; vel: number; prob: number; len?: number }[] = [];
     const out = steps.map((st, c) => ({
       ...st,
       notes: st.notes.filter((nt) => {
         if (sel.has(`${c}:${nt.n}`)) {
-          taken.push({ c, n: nt.n, vel: nt.vel, prob: nt.prob });
+          taken.push({ c, n: nt.n, vel: nt.vel, prob: nt.prob, len: nt.len });
           return false;
         }
         return true;
@@ -591,7 +603,7 @@ export const TrackRow = memo(function TrackRow({
       const nc = t.c + ddc;
       const nn = t.n + ddr;
       if (out[nc].notes.some((x) => x.n === nn)) continue;
-      out[nc].notes = [...out[nc].notes, { n: nn, vel: t.vel, prob: t.prob }];
+      out[nc].notes = [...out[nc].notes, { n: nn, vel: t.vel, prob: t.prob, len: t.len }];
       moved.add(`${nc}:${nn}`);
     }
     changeSteps(out);
@@ -612,7 +624,7 @@ export const TrackRow = memo(function TrackRow({
       if (c < 0 || c >= steps.length) continue;
       const n = Math.min(Math.max(cn.n, 0), maxN);
       if (steps[c].notes.some((x) => x.n === n)) continue;
-      steps[c].notes = [...steps[c].notes, { n, vel: cn.vel, prob: cn.prob }];
+      steps[c].notes = [...steps[c].notes, { n, vel: cn.vel, prob: cn.prob, len: cn.len }];
       added.add(`${c}:${n}`);
     }
     changeSteps(steps);
@@ -638,7 +650,7 @@ export const TrackRow = memo(function TrackRow({
       const c = en.c + shift;
       if (c >= steps.length) continue;
       if (steps[c].notes.some((x) => x.n === en.n)) continue;
-      steps[c].notes = [...steps[c].notes, { n: en.n, vel: nt.vel, prob: nt.prob }];
+      steps[c].notes = [...steps[c].notes, { n: en.n, vel: nt.vel, prob: nt.prob, len: nt.len }];
       added.add(`${c}:${en.n}`);
     }
     changeSteps(steps);
@@ -659,7 +671,7 @@ export const TrackRow = memo(function TrackRow({
         clip.notes = [...sel].map((k) => {
           const [c, n] = k.split(':').map(Number);
           const nt = pattern.steps[c]?.notes.find((x) => x.n === n);
-          return { col: c, n, vel: nt?.vel ?? 0.8, prob: nt?.prob ?? 1 };
+          return { col: c, n, vel: nt?.vel ?? 0.8, prob: nt?.prob ?? 1, len: nt?.len };
         });
       } else if (meta && e.code === 'KeyV' && clip.notes.length > 0) {
         e.preventDefault();
@@ -686,8 +698,8 @@ export const TrackRow = memo(function TrackRow({
 
   // Колесо над нотой — шорткат громкости/вероятности (как в панели шага).
   // Нативный слушатель с passive:false — React-овый onWheel пассивный.
-  const stateRef = useRef({ track, pattern, onPatternChange, sel });
-  stateRef.current = { track, pattern, onPatternChange, sel };
+  const stateRef = useRef({ track, pattern, onPatternChange, sel, noteCellsBase });
+  stateRef.current = { track, pattern, onPatternChange, sel, noteCellsBase };
   useEffect(() => {
     const el = rollRef.current;
     if (!el) return;
@@ -701,12 +713,21 @@ export const TrackRow = memo(function TrackRow({
       const nt = s?.notes.find((x) => x.n === row);
       if (!nt) return;
       e.preventDefault();
-      // Alt — длина ноты (шаг 0.1), Shift — вероятность, просто колесо — громкость.
+      // Alt — длина ноты в шагах (шаг 0.1), Shift — вероятность, просто колесо — громкость.
       const step = e.altKey ? 0.1 : 0.05;
       const d = e.deltaY < 0 ? step : -step;
       const field = (x: Note) =>
         e.altKey
-          ? { ...x, gate: Math.min(4, Math.max(0.1, +((x.gate ?? 1) + d).toFixed(2))) }
+          ? {
+              ...x,
+              len: Math.min(
+                64,
+                Math.max(
+                  0.1,
+                  +((x.len ?? stateRef.current.noteCellsBase * (x.gate ?? 1)) + d).toFixed(2),
+                ),
+              ),
+            }
           : e.shiftKey
             ? { ...x, prob: Math.min(1, Math.max(0, x.prob + d)) }
             : { ...x, vel: Math.min(1, Math.max(0.05, x.vel + d)) };
@@ -920,12 +941,14 @@ export const TrackRow = memo(function TrackRow({
   const octRows = (dir: 'up' | 'down') =>
     scaleRows.length -
     scaleOf({ ...track, [dir === 'up' ? 'scaleOctUp' : 'scaleOctDown']: (dir === 'up' ? up : down) - 1 }).length;
-  // Истинная длительность ноты в клетках стана: по сетке (noteSteps) или по
-  // огибающей (атака + спад), в шагах эффективного темпа; гейт умножает сверху.
-  const noteCellsBase =
-    st.noteSteps && st.noteSteps > 0
-      ? st.noteSteps
-      : (Math.max(st.attack, 0.0005) + st.decay) / ((pattern.rate ?? track.rate) * tickDuration(bpm));
+  // Истинная длительность НОВОЙ ноты в клетках стана: по сетке (noteSteps)
+  // или по огибающей (атака + спад), в шагах эффективного темпа. Ноты со
+  // своей длиной (len, v37) от этой базы не зависят.
+  /** Длина ноты в клетках: своя (v37), иначе база (легаси-гейт множит). */
+  const noteCellsOf = (nt: Note): number =>
+    typeof nt.len === 'number' && nt.len > 0
+      ? Math.min(64, Math.max(0.05, nt.len))
+      : noteCellsBase * Math.min(4, Math.max(0.1, nt.gate ?? 1));
   // Длина ноты в секундах (без гейта) — как её посчитает triggerVoice:
   // сетка («нота», шагов × шаг эскиза) или огибающая (атака + спад).
   const noteSec =
@@ -938,55 +961,56 @@ export const TrackRow = memo(function TrackRow({
     for (let c = col - 1; c >= 0; c--) {
       const prev = pattern.steps[c]?.notes.find((x) => x.n === row);
       if (!prev) continue;
-      if (c + noteCellsBase * (prev.gate ?? 1) > col + 0.08) return true;
+      if (c + noteCellsOf(prev) > col + 0.08) return true;
     }
     return false;
   };
 
-  // ---- Растяжение ноты мышкой: тянуть за правый край бара — меняется гейт
-  // (длительность ×). Тянут выделенную — дельта применяется ко всему
-  // выделению (как Alt+колесо). Правка коалесцируется как слайдер: весь драг
-  // — один шаг undo. 27px = --pitch, видимая ширина клетки с гэпом.
+  // ---- Растяжение ноты мышкой: тянуть за правый край бара — меняется
+  // длина (шагов, абсолютная, v37). Тянут выделенную — дельта применяется
+  // ко всему выделению (как Alt+колесо). Правка коалесцируется как
+  // слайдер: весь драг — один шаг undo. 27px = --pitch, видимая ширина
+  // клетки с гэпом.
   const PITCH_PX = 27;
   const grabDown = (e: ReactPointerEvent<HTMLSpanElement>, col: number, row: number) => {
     if (e.button !== 0 || e.shiftKey) return;
     e.stopPropagation(); // это не клик по клетке и не рамка выделения
     e.currentTarget.setPointerCapture(e.pointerId);
     clip.activeTrackId = track.id;
-    // Стартовые гейты всех затронутых нот: драг считает дельту от них,
+    // Стартовые длины всех затронутых нот: драг считает дельту от них,
     // а не от текущих — иначе каждое движение наращивало бы их повторно.
-    const startGates = new Map<string, number>();
+    const startLens = new Map<string, number>();
     const key = `${col}:${row}`;
     const keys = sel.has(key) ? [...sel] : [key];
     for (const k of keys) {
       const [c, n] = k.split(':').map(Number);
-      const g = pattern.steps[c]?.notes.find((x) => x.n === n)?.gate ?? 1;
-      startGates.set(k, g);
+      const nt = pattern.steps[c]?.notes.find((x) => x.n === n);
+      startLens.set(k, nt ? noteCellsOf(nt) : noteCellsBase);
     }
     grabRef.current = {
       col,
       row,
       pointerId: e.pointerId,
       startX: e.clientX,
-      startCells: noteCellsBase * (startGates.get(key) ?? 1),
-      startGates,
+      startCells: startLens.get(key) ?? noteCellsBase,
+      startLens,
     };
   };
   const grabMove = (e: ReactPointerEvent<HTMLSpanElement>) => {
     const g = grabRef.current;
     if (!g || e.pointerId !== g.pointerId) return;
     const cells = g.startCells + (e.clientX - g.startX) / PITCH_PX;
-    const newGate = Math.min(4, Math.max(0.1, Math.round((cells / noteCellsBase) * 10) / 10));
-    const delta = newGate - (g.startGates.get(`${g.col}:${g.row}`) ?? 1);
-    // Раскладываем целевые гейты и проверяем, есть ли реальное изменение.
+    const newLen = Math.min(64, Math.max(0.1, Math.round(cells * 10) / 10));
+    const delta = newLen - (g.startLens.get(`${g.col}:${g.row}`) ?? noteCellsBase);
+    // Раскладываем целевые длины и проверяем, есть ли реальное изменение.
     const targets = new Map<string, number>();
     let dirty = false;
-    for (const [k, sg] of g.startGates) {
-      const [c, n] = k.split(':').map(Number);
-      const cur = pattern.steps[c]?.notes.find((x) => x.n === n)?.gate ?? 1;
-      const target = Math.min(4, Math.max(0.1, Math.round((sg + delta) * 10) / 10));
+    for (const [k, sl] of g.startLens) {
+      const target = Math.min(64, Math.max(0.1, Math.round((sl + delta) * 10) / 10));
       targets.set(k, target);
-      if (target !== cur) dirty = true;
+      const [c, n] = k.split(':').map(Number);
+      const cur = pattern.steps[c]?.notes.find((x) => x.n === n);
+      if (!cur || noteCellsOf(cur) !== target) dirty = true;
     }
     if (!dirty) return;
     onPatternChange(track.id, pattern.id, {
@@ -994,7 +1018,7 @@ export const TrackRow = memo(function TrackRow({
         ...s,
         notes: s.notes.map((x) => {
           const t = targets.get(`${j}:${x.n}`);
-          return t === undefined ? x : { ...x, gate: t };
+          return t === undefined ? x : { ...x, len: t };
         }),
       })),
     });
@@ -2144,7 +2168,7 @@ export const TrackRow = memo(function TrackRow({
                           // бара: 100% — вся нота, без цифры.
                           // Пенёк в ~1 шаг занимает клетку целиком: длина
                           // ближе 0.2 клетки к единице — визуальный квант сетки.
-                          const cells = noteCellsBase * (nt!.gate ?? 1);
+                          const cells = noteCellsOf(nt!);
                           const snapped = Math.abs(cells - 1) <= 0.2 ? 1 : cells;
                           const shown = Math.max(0.12, Math.min(snapped, pattern.length - col));
                           const ret = overlapsTail(col, i);
@@ -2250,12 +2274,12 @@ export const TrackRow = memo(function TrackRow({
               />
               <label
                 className="sp-field"
-                title="Длина ноты: множитель от ноты трека (сетка или огибающая). 1 — как у трека; 0.2–0.5 — короткие тычки; 2–4 — подтяжки поверх соседних шагов. Alt+колесо над нотой тоже крутит"
+                title="Длина ноты в шагах — своя у каждой ноты. 0.5 — тычок, 1 — встык, 4+ — подтяжки поверх соседних. Alt+колесо над нотой крутит её же"
               >
-                длина ×
+                длина
                 <NumField
-                  value={nt.gate ?? 1} min={0.1} max={4} step={0.1}
-                  onChange={(v) => setNoteField(selectedCol, nt.n, 'gate', Math.max(0.1, Math.round(v * 10) / 10))}
+                  value={nt.len ?? noteCellsBase} min={0.1} max={64} step={0.1} wheel
+                  onChange={(v) => setNoteField(selectedCol, nt.n, 'len', Math.max(0.1, Math.round(v * 10) / 10))}
                 />
               </label>
               <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>

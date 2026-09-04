@@ -149,8 +149,13 @@ export interface Note {
   vel: number;
   // Вероятность срабатывания этой ноты 0..1.
   prob: number;
-  // Длина ноты: множитель 0.1–4× от огибающей трека (атака + спад).
-  // 1 — как у трека, короче — тычки, длиннее — подтяжки.
+  // Длина ноты, шагов (абсолютная, v37): своя у каждой ноты, поле «нота»
+  // трека — только рисовалка по умолчанию для новых. До v37 длина была
+  // множителем (gate) от базы трека — миграция пересчитывает в шаги,
+  // поле больше не пишется.
+  len?: number;
+  // Легаси-множитель длины 0.1–4× (v36-): встречается только в старых
+  // патчах до нормализации.
   gate?: number;
   // Сдвиг на октавы для арпеджиатора (умножение частоты на 2^oct).
   // В патч не пишется — появляется только в планировщике.
@@ -483,7 +488,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 36;
+export const PATCH_VERSION = 37;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -493,7 +498,8 @@ export function makeStep(on = false, note = 0, vel = 0.8, prob = 1): Step {
   return { notes: on ? [{ n: note, vel, prob }] : [] };
 }
 
-export function makeNote(n = 0, vel = 0.8, prob = 1): Note {
+export function makeNote(n = 0, vel = 0.8, prob = 1, len?: number): Note {
+  if (len !== undefined && len > 0) return { n, vel, prob, len: Math.round(len * 100) / 100 };
   return { n, vel, prob };
 }
 
@@ -757,6 +763,10 @@ function normalizeSteps(
           n: Math.min(Math.max(Math.round(nt.n!), 0), maxNote),
           vel: clamp(nt.vel ?? 0.8, 0, 1, 0.8),
           prob: clamp(nt.prob ?? 1, 0, 1, 1),
+          len:
+            typeof nt.len === 'number' && nt.len > 0
+              ? clamp(nt.len, 0.1, 64, 1)
+              : undefined,
           gate: clamp(nt.gate ?? 1, 0.1, 4, 1),
         }));
     } else if (Array.isArray(s?.notes)) {
@@ -1065,6 +1075,32 @@ export function normalizePatch(p: Patch): Patch {
     : [];
   if (chain.length === 0) {
     chain = [{ sceneId: scenes[0].id, bars: 8 }];
+  }
+
+  // v37: длина ноты — абсолютная, в шагах. Легаси-гейт (множитель базы,
+  // v36-) и безгейтовые ноты фиксируются: len = база × гейт. База — «нота»
+  // трека (шаги) или огибающая в шагах при темпе патча. После миграции
+  // смена «ноты» трека трогает только новые ноты, потолок растягивания
+  // — длина цикла, а не 4×.
+  for (const t of tracks) {
+    const inst = instruments.find((i) => i.id === t.instrumentId);
+    const atk = inst?.attack ?? 0.002;
+    const dec = inst?.decay ?? 0.25;
+    const tick = 60 / (Math.round(clamp(p.bpm, 30, 300, 120)) || 120) / 4;
+    for (const pt of t.patterns) {
+      const stepSec = Math.max((pt.rate ?? t.rate) * tick, 1e-6);
+      const base =
+        t.noteSteps && t.noteSteps > 0
+          ? t.noteSteps
+          : (Math.max(atk, 0.0005) + dec) / stepSec;
+      for (const s of pt.steps) {
+        for (const nt of s.notes) {
+          const cur = typeof nt.len === 'number' && nt.len > 0 ? nt.len : base * (nt.gate ?? 1);
+          nt.len = Math.round(clamp(cur, 0.1, 64, 1) * 100) / 100;
+          delete nt.gate;
+        }
+      }
+    }
   }
 
   return {

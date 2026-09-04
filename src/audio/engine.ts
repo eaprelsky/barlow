@@ -958,10 +958,20 @@ export class AudioEngine implements AudioBackend {
         if (notes.length > 0 && audible.has(pattern.id)) {
           // Арпеджиатор дробит ноту на доли-перелив (каждая короче ноты);
           // без него — одно событие со всеми нотами (как раньше).
-          const noteLenSteps =
+          // База аккорда — максимум по нотам: своя длина (len, v37),
+          // иначе «нота» трека или огибающая (легаси-гейт множит).
+          const chordBase =
             st.noteSteps && st.noteSteps > 0
               ? st.noteSteps
               : (Math.max(st.attack, 0.0005) + st.decay) / stepDur;
+          const noteLenSteps = Math.max(
+            0.05,
+            ...notes.map((nt) =>
+              typeof nt.len === 'number' && nt.len > 0
+                ? Math.min(64, Math.max(0.05, nt.len))
+                : chordBase * Math.min(4, Math.max(0.1, nt.gate ?? 1)),
+            ),
+          );
           const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
             ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
                 notes: [e.note],
@@ -1097,10 +1107,17 @@ export class AudioEngine implements AudioBackend {
           const step = pattern.steps[idx % pattern.steps.length];
           const notes = step ? liveNotes(step) : [];
           if (notes.length > 0 && audible) {
-            const noteLenSteps =
-              st.noteSteps && st.noteSteps > 0
-                ? st.noteSteps
-                : (Math.max(st.attack, 0.0005) + st.decay) / stepDur;
+            const noteLenSteps = Math.max(
+              0.05,
+              ...notes.map((nt) =>
+                typeof nt.len === 'number' && nt.len > 0
+                  ? Math.min(64, Math.max(0.05, nt.len))
+                  : (st.noteSteps && st.noteSteps > 0
+                      ? st.noteSteps
+                      : (Math.max(st.attack, 0.0005) + st.decay) / stepDur) *
+                    Math.min(4, Math.max(0.1, nt.gate ?? 1)),
+              ),
+            );
             const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
               ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
                   notes: [e.note],
