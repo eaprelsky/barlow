@@ -406,6 +406,18 @@ export interface Instrument {
   // Резонанс lowpass (Q): 0.8 — ровный обрез, 4–10 — звонкое «горло»
   // (воббл, сквелч), 15+ — самозвон на частоте среза.
   filterQ?: number;
+  // Унисон (базовые волны): N расстроенных копий осциллятора на ноту.
+  // Детюн — центы на крайнем голосе, разброс 0..1 — по каналам.
+  unisonVoices?: number;
+  unisonDetune?: number;
+  unisonSpread?: number;
+  // Вибрато с задержкой: глубина нарастает от нуля за это время, с —
+  // певческое «дойти до вибрато» вместо мгновенного дрожания.
+  vibratoDelay?: number;
+  // Огибающая фильтра на голос: старт в ±полутонах от ручки «верх»
+  // и съезд к базе за время. Плюс — яркая атака (плак), минус — свелл.
+  filterEnvAmount?: number;
+  filterEnvTime?: number;
 }
 
 /** Поля Track, принадлежащие инструменту: маршрутизация пресетов и
@@ -416,6 +428,8 @@ export const INSTRUMENT_FIELDS = [
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'vibratoRate', 'vibratoDepth',
+  'unisonVoices', 'unisonDetune', 'unisonSpread', 'vibratoDelay',
+  'filterEnvAmount', 'filterEnvTime',
 ] as const;
 
 /** Дорожка со слитым инструментом — то, что получает синтез. */
@@ -467,7 +481,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 35;
+export const PATCH_VERSION = 36;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -523,6 +537,12 @@ export function makeInstrument(
     grainScatter: partial.grainScatter,
     scratchPoints: partial.scratchPoints,
     filterQ: partial.filterQ,
+    unisonVoices: partial.unisonVoices,
+    unisonDetune: partial.unisonDetune,
+    unisonSpread: partial.unisonSpread,
+    vibratoDelay: partial.vibratoDelay,
+    filterEnvAmount: partial.filterEnvAmount,
+    filterEnvTime: partial.filterEnvTime,
     id: partial.id,
     name: partial.name,
   };
@@ -813,6 +833,14 @@ function normalizeInstrument(
           .sort((a, b) => a.t - b.t)
           .slice(0, 256)
       : undefined,
+    // Унисон/вибрато-задержка/огибающая фильтра (v36): всё опционально,
+    // дефолты выключены — старые патчи звучат как звучали.
+    unisonVoices: Math.round(clamp(t.unisonVoices ?? 1, 1, 8, 1)),
+    unisonDetune: clamp(t.unisonDetune ?? 12, 0, 50, 12),
+    unisonSpread: clamp(t.unisonSpread ?? 0, 0, 1, 0),
+    vibratoDelay: clamp(t.vibratoDelay ?? 0, 0, 4, 0),
+    filterEnvAmount: clamp(t.filterEnvAmount ?? 0, -24, 24, 0),
+    filterEnvTime: clamp(t.filterEnvTime ?? 0.3, 0.01, 4, 0.3),
   };
 }
 

@@ -1550,6 +1550,19 @@ export const TrackRow = memo(function TrackRow({
               value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
               onChange={(filterQ) => changeInst({ filterQ })}
             />
+            <Knob
+              label="огиб. ↑↓"
+              bipolar
+              title="Огибающая фильтра: старт в полутонах от ручки «верх». Плюс — яркая атака-плак, минус — тёмный свелл; за «время» фильтр съезжает к базе. Двойной клик — точное число"
+              value={st.filterEnvAmount ?? 0} min={-24} max={24} step={0.5}
+              onChange={(filterEnvAmount) => changeInst({ filterEnvAmount })}
+            />
+            <Knob
+              label="время"
+              title="Огибающая фильтра: за сколько секунд фильтр съезжает к базе. 0.05–0.2 — щипок, 1+ — плавный свелл. Двойной клик — точное число"
+              value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}
+              onChange={(filterEnvTime) => changeInst({ filterEnvTime })}
+            />
           </div>
           <div className="group sub knob-row">
             <span className="sub-cap">вибрато</span>
@@ -1564,6 +1577,34 @@ export const TrackRow = memo(function TrackRow({
               title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
               value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
               onChange={(vibratoDepth) => changeInst({ vibratoDepth })}
+            />
+            <Knob
+              label="задержка"
+              title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
+              value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
+              onChange={(vibratoDelay) => changeInst({ vibratoDelay })}
+            />
+          </div>
+          <div className="group sub knob-row" data-ob="unison-group">
+            <span className="sub-cap">унисон</span>
+            <span className="scope-cap" title="Унисон — для базовых волн (синус/пила/квадрат/треугольник)">базовые волны</span>
+            <Knob
+              label="голоса"
+              title="Унисон: сколько расстроенных копий осциллятора играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире. Двойной клик — точное число"
+              value={st.unisonVoices ?? 1} min={1} max={8} step={1}
+              onChange={(unisonVoices) => changeInst({ unisonVoices })}
+            />
+            <Knob
+              label="детюн"
+              title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
+              value={st.unisonDetune ?? 12} min={0} max={50} step={1}
+              onChange={(unisonDetune) => changeInst({ unisonDetune })}
+            />
+            <Knob
+              label="разброс"
+              title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
+              value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
+              onChange={(v) => changeInst({ unisonSpread: v / 100 })}
             />
           </div>
           <div className="group sub" data-ob="arp-group">

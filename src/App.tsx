@@ -643,6 +643,12 @@ export default function App() {
           grainScatter: t.grainScatter ?? 0.15,
           vibratoRate: t.vibratoRate ?? 5,
           vibratoDepth: t.vibratoDepth ?? 0,
+          unisonVoices: t.unisonVoices ?? 1,
+          unisonDetune: t.unisonDetune ?? 12,
+          unisonSpread: t.unisonSpread ?? 0,
+          vibratoDelay: t.vibratoDelay ?? 0,
+          filterEnvAmount: t.filterEnvAmount ?? 0,
+          filterEnvTime: t.filterEnvTime ?? 0.3,
         };
         const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
         // Ноты выше новой шкалы — вниз; дубли строк (шкала схлопнулась) — один.

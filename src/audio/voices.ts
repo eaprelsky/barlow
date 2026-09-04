@@ -292,7 +292,23 @@ export function triggerVoice(
   const topVel = Math.max(...notes.map((nt) => nt.vel));
   const peak = Math.max(0.0001, (topVel * headroom) / notes.length);
   const amp = ctx.createGain();
-  amp.connect(chain.hp);
+  // Огибающая фильтра (v36): свой lowpass на голос — старт в ±полутонах
+  // от ручки «верх» и съезд к базе за время. Плюс — яркая атака-плак,
+  // минус — тёмный свелл. Выключена (0) — голос идёт напрямую, как раньше.
+  const feAmt = clampNum(track.filterEnvAmount ?? 0, -24, 24);
+  if (Math.abs(feAmt) > 0.01) {
+    const base = clampNum(track.filterFreq, 60, 12000);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.8;
+    const from = clampNum(base * Math.pow(2, feAmt / 12), 40, 18000);
+    lp.frequency.setValueAtTime(from, time);
+    lp.frequency.exponentialRampToValueAtTime(base, time + clampNum(track.filterEnvTime ?? 0.3, 0.01, 4));
+    amp.connect(lp);
+    lp.connect(chain.hp);
+  } else {
+    amp.connect(chain.hp);
+  }
   const sources: (AudioScheduledSourceNode | AudioWorkletNode)[] = [];
   // Реальная длина голоса: vibBus ниже замыкается на эту переменную,
   // значение присваивается после расчёта огибающей (до первого вызова).
@@ -300,7 +316,10 @@ export function triggerVoice(
 
   // Вибрато: один LFO на голос, ветки с нужным масштабом (центы — на
   // detune осцилляторов; доли скорости — на playbackRate сэмплов).
+  // С задержкой (v36) глубина нарастает от нуля за vibratoDelay — голос
+  // «доплывает» до дрожания, как живое пение, а не дрожит с первой мс.
   const vibDepth = track.vibratoDepth ?? 0;
+  const vibDelay = clampNum(track.vibratoDelay ?? 0, 0, 4);
   let vibOut: GainNode | null = null;
   const vibBus = (scale: number): GainNode | null => {
     if (vibDepth <= 0 || scale === 0) return null;
@@ -314,7 +333,12 @@ export function triggerVoice(
       sources.push(lfo);
     }
     const g = ctx.createGain();
-    g.gain.value = vibDepth * scale;
+    if (vibDelay > 0.001) {
+      g.gain.setValueAtTime(0, time);
+      g.gain.linearRampToValueAtTime(vibDepth * scale, time + vibDelay);
+    } else {
+      g.gain.value = vibDepth * scale;
+    }
     vibOut.connect(g);
     return g;
   };
@@ -743,24 +767,70 @@ export function triggerVoice(
     return finish();
   }
 
-  // Аккорд: по осциллятору на ноту, огибающая общая.
-  for (const f of freqs) {
-    const osc = ctx.createOscillator();
-    osc.type = track.waveform;
-    // Падение тона: нота стартует выше тоники и слетает вниз —
-    // так рождается бочка. При pitchDrop = 1 рампа вырождается.
-    if (track.pitchDrop > 1 && track.pitchTime > 0) {
-      osc.frequency.setValueAtTime(f * track.pitchDrop, time);
-      osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
-    } else {
-      osc.frequency.setValueAtTime(f, time);
+  // Унисон (v36): N расстроенных копий осциллятора на ноту (базовые
+  // волны). Громкость — треугольное окно (центр громче), сумма
+  // нормирована; разброс разводит голоса по каналам. Голосов 1 —
+  // обычный осциллятор, звук в точности как раньше.
+  const uniN = Math.round(clampNum(track.unisonVoices ?? 1, 1, 8));
+  const uniDet = clampNum(track.unisonDetune ?? 12, 0, 50);
+  const uniSpread = clampNum(track.unisonSpread ?? 0, 0, 1);
+  const unisonOsc = (make: (detCents: number) => OscillatorNode, dest: AudioNode): void => {
+    if (uniN <= 1) {
+      const osc = make(0);
+      const vb = vibBus(1);
+      if (vb) vb.connect(osc.detune);
+      osc.connect(dest);
+      osc.start(time);
+      osc.stop(stopAt);
+      sources.push(osc);
+      return;
     }
-    const vbO = vibBus(1);
-    if (vbO) vbO.connect(osc.detune);
-    osc.connect(noteDest(freqs.indexOf(f)));
-    osc.start(time);
-    osc.stop(stopAt);
-    sources.push(osc);
-  }
+    const shape = (k: number) => 1 - Math.abs(k) * 0.68;
+    const norm = Array.from({ length: uniN }, (_, i) => shape((i / (uniN - 1)) * 2 - 1)).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    for (let i = 0; i < uniN; i++) {
+      const k = (i / (uniN - 1)) * 2 - 1;
+      const osc = make(k * uniDet);
+      const vb = vibBus(1);
+      if (vb) vb.connect(osc.detune);
+      const g = ctx.createGain();
+      g.gain.value = shape(k) / norm;
+      let out: AudioNode = g;
+      if (uniSpread > 0.001) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = k * uniSpread;
+        g.connect(p);
+        out = p;
+      }
+      osc.connect(g);
+      out.connect(dest);
+      osc.start(time);
+      osc.stop(stopAt);
+      sources.push(osc);
+    }
+  };
+
+  // Аккорд: по осциллятору на ноту (с унисоном — по N на ноту),
+  // огибающая общая. К этому месту дошли только базовые волны —
+  // сужение типа через замыкание не живёт, потому каст.
+  const basicWave = track.waveform as OscillatorType;
+  freqs.forEach((f, fi) => {
+    unisonOsc((det) => {
+      const osc = ctx.createOscillator();
+      osc.type = basicWave;
+      osc.detune.value = det;
+      // Падение тона: нота стартует выше тоники и слетает вниз —
+      // так рождается бочка. При pitchDrop = 1 рампа вырождается.
+      if (track.pitchDrop > 1 && track.pitchTime > 0) {
+        osc.frequency.setValueAtTime(f * track.pitchDrop, time);
+        osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
+      } else {
+        osc.frequency.setValueAtTime(f, time);
+      }
+      return osc;
+    }, noteDest(fi));
+  });
   return finish();
 }
