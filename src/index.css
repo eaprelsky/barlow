@@ -1316,6 +1316,22 @@ header button.on {
   background: rgba(255, 168, 60, 0.08);
 }
 
+/* Чип инструмента в шапке трека: имя тембра всегда на виду — и в свёрнутой
+   карточке. Клик — браузер звуков. */
+.inst-chip {
+  align-self: center;
+  flex: 0 1 auto;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: transparent;
+}
+
 /* Правый хвост шапки трека: «?» — с отступом от угловых кнопок
    «копировать/удалить» (12..65px от края), по их оптической строке. */
 .head-tail {

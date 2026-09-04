@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
 interface Props {
@@ -10,6 +10,11 @@ interface Props {
   disabled?: boolean;
   /** «узкий» — короткие поля (длина цикла, проценты): 2–4 символа */
   narrow?: boolean;
+  /** Фиксированная ширина в px — когда narrow мало (например, «0.75»). */
+  w?: number;
+  /** Колесо мыши: ±step на щелчок, Shift — step/10. Не всем полям нужно:
+   *  страница может скроллиться мимо. */
+  wheel?: boolean;
   onChange: (v: number) => void;
 }
 
@@ -20,12 +25,34 @@ const PX_PER_STEP = 4; // пикселей на один шаг
 // стереть, поставить '.'), нормализация при blur/Enter — и крутилка:
 // потяни поле вертикально, Shift — мелкий шаг. Порог отделяет клик-в-поле
 // от начала драга, поэтому набор текста не ломается.
-export function NumField({ value, min, max, step = 1, title, disabled, narrow, onChange }: Props) {
+export function NumField({ value, min, max, step = 1, title, disabled, narrow, w, wheel, onChange }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const drag = useRef<{ y0: number; v0: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const shown = draft ?? String(value);
 
   const clamp = (n: number) => Math.min(max, Math.max(min, n));
+
+  // Колесо — нативным слушателем: React onWheel пассивен, preventDefault
+  // в нём не работает (та же грабля, что у стана). Актуальные значения —
+  // через реф, чтобы слушатель не перевешивался на каждый рендер.
+  const latest = useRef({ value, min, max, step, disabled, onChange });
+  latest.current = { value, min, max, step, disabled, onChange };
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || !wheel) return;
+    const onWheel = (e: WheelEvent) => {
+      const c = latest.current;
+      if (c.disabled) return;
+      e.preventDefault();
+      const s = e.shiftKey ? c.step / 10 : c.step;
+      const nv = Math.min(c.max, Math.max(c.min, Math.round((c.value + (e.deltaY < 0 ? s : -s)) / s) * s));
+      setDraft(null);
+      c.onChange(Number(nv.toFixed(4)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [wheel]);
 
   const commit = (raw: string) => {
     setDraft(raw);
@@ -70,7 +97,9 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, o
 
   return (
     <input
+      ref={inputRef}
       className={narrow ? 'narrow' : undefined}
+      style={w ? { width: `${w}px` } : undefined}
       type="number"
       inputMode="decimal"
       min={min}

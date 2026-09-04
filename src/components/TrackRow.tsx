@@ -1111,6 +1111,17 @@ export const TrackRow = memo(function TrackRow({
             инструмент
           </button>
         </div>
+        {/* Чип инструмента — лицо тембра дорожки, виден и в свёрнутой
+            карточке. Клик — браузер звуков (та же точка входа, что
+            «выбрать…» в настройке инструмента). */}
+        <button
+          className="inst-chip"
+          data-ob="inst-chip"
+          title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — сменить из библиотеки пресетов`}
+          onClick={() => setShowInstruments(true)}
+        >
+          {instrumentNameOf(st)}
+        </button>
       </div>
 
       {waveEditor && (
