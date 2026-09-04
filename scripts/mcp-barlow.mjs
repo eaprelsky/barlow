@@ -34,6 +34,23 @@ const log = (...a) => process.stderr.write(`[barlow-mcp] ${a.join(' ')}\n`);
 
 const resolvePath = (p) => (isAbsolute(p) ? p : resolve(ROOT, p));
 
+/** Значение set_param: аргумент без типа в схеме клиент может прислать
+ *  строкой — тогда "false" останется truthy, а объект-эскиз строкой и
+ *  уронит рендерер. Вернём таким строкам их тип; обычный текст не трогаем. */
+function coerceValue(v) {
+  if (typeof v !== 'string') return v;
+  const s = v.trim();
+  if (s === 'true' || s === 'false') return s === 'true';
+  if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      /* не JSON — остаётся строкой */
+    }
+  }
+  return v;
+}
+
 /** Человекочитаемая сводка патча: что включено и где ноты. */
 function summarizePatch(patch) {
   if (!patch) return 'патча нет — приложение ещё не присылало';
@@ -162,20 +179,24 @@ const liveTools = [
     name: 'live_set_param',
     description:
       'Точечная правка живого патча: JSON-указатель (RFC 6901) и значение. Например ' +
-      '"/tracks/0/volume" 0.5 или "/bpm" 140. Правка идёт через setPatch приложения — ' +
-      'попадает в undo-историю, играющий звук обновляется на лету. Серийные правки ' +
-      'ручки коалесцируются в один шаг undo.',
+      '"/tracks/0/volume" 0.5, "/bpm" 140 или "/tracks/0/patterns/0/muted" false. ' +
+      'Правка идёт через setPatch приложения — попадает в undo-историю, играющий ' +
+      'звук обновляется на лету. Серийные правки ручки коалесцируются в один шаг undo.',
     inputSchema: {
       type: 'object',
       properties: {
         pointer: { type: 'string', description: 'JSON-указатель, например /tracks/0/volume' },
-        value: { description: 'значение (число/строка/объект)' },
+        value: {
+          type: ['number', 'string', 'boolean', 'object'],
+          description: 'значение; строка "true"/"false" или JSON-текст распарсится в тип',
+        },
       },
       required: ['pointer', 'value'],
     },
     handler: needConnected(async ({ pointer, value }) => {
-      const r = await bridge.request({ type: 'set_param', pointer, value });
-      return r.ok ? `ок: ${pointer} = ${JSON.stringify(value)}` : `не вышло: ${r.error}`;
+      const v = coerceValue(value);
+      const r = await bridge.request({ type: 'set_param', pointer, value: v });
+      return r.ok ? `ок: ${pointer} = ${JSON.stringify(v)}` : `не вышло: ${r.error}`;
     }),
   },
   {
