@@ -189,11 +189,11 @@ export function InstrumentEditor({
   const [draft, setDraft] = useState<WaveDef | null>(null);
   const wave = draft ?? applied;
   const cycle = useMemo(() => renderWaveCycle(wave, CYCLE_N), [wave]);
-  const appliedCycle = useMemo(() => renderWaveCycle(applied, CYCLE_N), [applied]);
-  const dirty = useMemo(
-    () => !!draft && JSON.stringify(draft) !== JSON.stringify(applied),
-    [draft, applied],
+  const appliedCycle = useMemo(
+    () => renderWaveCycle(inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] }, CYCLE_N),
+    [inst.wave],
   );
+  const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(applied);
   const applyDraft = () => {
     if (draft) onChangeInst({ waveform: 'wave', wave: draft });
     setDraft(null);

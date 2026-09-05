@@ -1038,11 +1038,6 @@ header button.on {
   color: var(--text-dim);
 }
 
-/* Ряд вкладок панели инструмента — на всю ширину: «?» и дискета у правого края */
-.inst-tabs {
-  width: 100%;
-}
-
 .env-tab {
   display: flex;
   flex-direction: row;
@@ -1363,8 +1358,8 @@ header button.on {
   padding-right: 60px;
 }
 
-/* Раздел модуляций внутри эскиза: свёрнут — одна строка-оглавление */
-.mods-box {
+/* Панель автоматизации эскиза: свёрнута — одна строка-оглавление */
+.auto-panel {
   margin-top: 8px;
 }
 
@@ -1384,7 +1379,7 @@ header button.on {
   color: var(--text);
 }
 
-.mods-box .mods-group {
+.auto-panel .mods-group {
   margin-top: 4px;
   border-left: none;
   padding-left: 4px;
@@ -3203,10 +3198,6 @@ svg.auto-lane {
 }
 
 /* Панель автоматизации: кнопка слева на отдельной строке под станом */
-.auto-panel {
-  margin-top: 2px;
-}
-
 .auto-panel .sub-head {
   justify-content: flex-start;
 }
@@ -3236,16 +3227,6 @@ svg.auto-lane {
 .auto-box .seg button.on {
   color: var(--accent);
   background: rgba(255, 168, 60, 0.08);
-}
-
-/* Заголовок секции модуляций */
-.mods-box .sub-head {
-  width: 100%;
-}
-
-.mods-toggle {
-  background: transparent;
-  border: none;
 }
 
 /* «+ трек» — кнопка строго над списком дорожек: нажал — новый трек
