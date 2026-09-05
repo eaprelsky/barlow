@@ -61,4 +61,8 @@ export interface AudioBackend {
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
   renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number): Promise<Blob>;
+
+  /** Заморозить жест скрэтча: оффлайн-рендер ноты жеста в WAV-блоб —
+   *  тот же звук, что «▶ послушать» (обрезка, жест, огибающая). */
+  renderScratchWav(track: Track): Promise<Blob>;
 }

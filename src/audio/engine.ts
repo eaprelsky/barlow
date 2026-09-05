@@ -707,6 +707,51 @@ export class AudioEngine implements AudioBackend {
     this.scratchNode = null;
   }
 
+  /** Заморозить жест скрэтча сэмпла: оффлайн-рендер одной ноты жеста
+   *  в WAV — тот же звук, что «▶ послушать» (обрезка куска, ломаная,
+   *  огибающая с плато). Удачная настройка становится готовым сэмплом
+   *  библиотеки — не надо настраивать скрэтч заново. */
+  async renderScratchWav(track: Track): Promise<Blob> {
+    const patch = this.patch;
+    if (!patch) throw new Error('патч не загружен');
+    await this.ensureSamples(patch);
+    const st = stOf(patch, track);
+    const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
+    if (!sample) throw new Error('в слоте нет сэмпла');
+    const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
+    const len = st.noteSteps && st.noteSteps > 0 ? st.noteSteps * stepSec : st.attack + st.decay;
+    const ctx = new OfflineAudioContext(1, Math.ceil((len + 0.2) * 44100), 44100);
+    await ensureScratchModule(ctx);
+    const node = makeScratchNode(ctx, sample);
+    const pos = node.parameters.get('position')!;
+    const off = node.parameters.get('off')!;
+    // Жест иглы ходит по обрезанному куску сэмпла.
+    const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
+    const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
+    const mapPos = (p: number) =>
+      Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
+    const t0 = 0.02;
+    const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
+    if (points.length === 0) {
+      pos.setValueAtTime(mapPos(0), t0);
+      pos.linearRampToValueAtTime(mapPos(1), t0 + len);
+    } else {
+      pos.setValueAtTime(mapPos(points[0].pos), t0);
+      for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
+    }
+    off.setValueAtTime(0, t0);
+    off.setValueAtTime(1, t0 + len + 0.1);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
+    amp.gain.setValueAtTime(0.9, t0 + len * 0.88);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    node.connect(amp);
+    amp.connect(ctx.destination);
+    const rendered = await ctx.startRendering();
+    return audioBufferToWav(rendered);
+  }
+
   private peaksCache = new Map<string, { peaks: number[]; duration: number }>();
 
   /** Пики волны сэмпла (64 сегмента, нормированы в 0..1) и длительность —

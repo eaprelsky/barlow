@@ -85,6 +85,8 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
+  /** Заморозить жест сэмпла: оффлайн-рендер в библиотеку сэмплов. */
+  onScratchSave: (trackId: string) => void | Promise<void>;
   onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
 }
 
@@ -219,6 +221,7 @@ export function InstrumentEditor({
   onScratchMove,
   onScratchEnd,
   onScratchPreview,
+  onScratchSave,
   onScratchPeaks,
 }: Props) {
   // Слитый вид: дорожка + инструмент — для чтения звука и превью.
@@ -377,6 +380,8 @@ export function InstrumentEditor({
   const [scratchPlaying, setScratchPlaying] = useState(false);
   const [scratchMap, setScratchMap] = useState<{ peaks: number[]; duration: number } | null>(null);
   const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
+  // Рендер «в сэмпл» идёт — кнопка занята.
+  const [scratchSaving, setScratchSaving] = useState(false);
   const dragIdx = useRef<number | null>(null);
   const pendingAdd = useRef<{ t: number; pos: number } | null>(null);
   const downXY = useRef<{ x: number; y: number } | null>(null);
@@ -824,6 +829,17 @@ export function InstrumentEditor({
                   }}
                 >
                   {scratchPlaying ? '▶ играет…' : '▶ послушать'}
+                </button>
+                <button
+                  disabled={scratchSaving}
+                  data-ob="scratch-save"
+                  title="Заморозить удачную настройку: жест отрендерится в WAV и ляжет в библиотеку сэмплов — готовый скрэтч без пэда и точек"
+                  onClick={() => {
+                    setScratchSaving(true);
+                    void Promise.resolve(onScratchSave(track.id)).finally(() => setScratchSaving(false));
+                  }}
+                >
+                  {scratchSaving ? 'сохраняю…' : 'в сэмпл'}
                 </button>
                 <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
                 <span

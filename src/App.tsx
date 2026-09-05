@@ -1245,6 +1245,26 @@ export default function App() {
     [ai, patch.tracks, instOf],
   );
 
+  /** Заморозить жест скрэтча сэмпла: оффлайн-рендер ноты жеста → WAV
+   *  в библиотеку (десктоп положит файлом в папку сэмплов). */
+  const saveScratchSample = useCallback(
+    async (trackId: string) => {
+      const t = patch.tracks.find((x) => x.id === trackId);
+      if (!t) return;
+      try {
+        const blob = await engine.renderScratchWav(t);
+        const meta = await putSample(blob, `${t.name} скрэтч`);
+        void alertDialog(
+          `Скрэтч сохранён в библиотеку: «${meta.name}» — панель «инструменты», вкладка «сэмплы»`,
+          'скрэтч в сэмпл',
+        );
+      } catch (e) {
+        void alertDialog(`Не удалось сохранить скрэтч: ${errText(e)}`, 'скрэтч в сэмпл');
+      }
+    },
+    [patch.tracks, engine],
+  );
+
   /** Свернуть/развернуть дорожку. Пока открыт редактор инструмента, чужие
    *  дорожки форс-свёрнуты — клик по ним пробивает режим: закрывает
    *  редактор и разворачивает дорожку. Иначе любой «залипший» режим
@@ -1964,6 +1984,7 @@ export default function App() {
             onScratchMove={(pos) => engine.scratchMove(pos)}
             onScratchEnd={() => engine.scratchEnd()}
             onScratchPreview={() => engine.previewScratch(t)}
+            onScratchSave={saveScratchSample}
             onScratchPeaks={() => engine.getSamplePeaks(t.instrumentId && instOf(patch, t).sampleId)}
             patternSceneCounts={patternSceneCounts}
             allTracks={trackList}

@@ -147,6 +147,8 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
+  /** Заморозить жест сэмпла: рендер в библиотеку сэмплов. */
+  onScratchSave: (trackId: string) => void | Promise<void>;
   onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
   patternSceneCounts: Record<string, number>;
   // Для сайдчейна и связки инструментов: все дорожки патча.
@@ -200,6 +202,7 @@ export const TrackRow = memo(function TrackRow({
   onScratchMove,
   onScratchEnd,
   onScratchPreview,
+  onScratchSave,
   onScratchPeaks,
   patternSceneCounts,
   allTracks,
@@ -1172,6 +1175,7 @@ export const TrackRow = memo(function TrackRow({
           onScratchMove={onScratchMove}
           onScratchEnd={onScratchEnd}
           onScratchPreview={onScratchPreview}
+          onScratchSave={onScratchSave}
           onScratchPeaks={onScratchPeaks}
         />
       )}
