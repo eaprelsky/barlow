@@ -576,10 +576,11 @@ export default function App() {
       const scene = {
         id: freshId,
         name: uniqueName('сцена', p.scenes.map((s) => s.name)),
-        // Слоты копируются глубже ссылки: мьют — свойство сцены (v38),
-        // в новой сцене он сохраняется, но дальше живёт своей жизнью.
+        // Снимок ансамбля: какие эскизы играют. Мьют и соло — живые
+        // состояния прослушивания СЦЕНЫ, в новую не переносятся: новая
+        // сцена начинается со звуком (v38).
         slots: Object.fromEntries(
-          Object.entries(from?.slots ?? {}).map(([k, v]) => [k, { ...v }]),
+          Object.entries(from?.slots ?? {}).map(([k, v]) => [k, { patternId: v.patternId }]),
         ),
       };
       return { ...p, scenes: [...p.scenes, scene], chain: [...p.chain, { sceneId: scene.id, bars: 8 }] };
