@@ -332,6 +332,9 @@ export default function App() {
   // той, чей чип нажали; из шапки — последний работавший стан. Точка входа
   // может назвать и вкладку (пикер сэмплов открывает «сэмплы»).
   const [libTarget, setLibTarget] = useState<string | null>(null);
+  // Зеркало libTarget для стабильного openLibraryAt (цель вкладки).
+  const libTargetRef = useRef<string | null>(null);
+  libTargetRef.current = libTarget;
   const [libTab, setLibTab] = useState<'inst' | 'smp'>('inst');
   const openLibraryAt = useCallback(
     (trackId: string | null, tab?: 'inst' | 'smp') => {
@@ -344,7 +347,25 @@ export default function App() {
         // (и в свёрнутой карточке).
         setEditorTrack((cur) => (cur && cur !== trackId ? trackId : cur));
       }
-      if (tab) setLibTab(tab);
+      if (tab) {
+        setLibTab(tab);
+        return;
+      }
+      // Вкладка без явного указания — по источнику дорожки-цели:
+      // сэмпловой дорожке сразу сэмплы, остальным — пресеты тембров.
+      const p = liveRef.current.patch;
+      const want = trackId ?? libTargetRef.current;
+      const tid =
+        want && p.tracks.some((t) => t.id === want)
+          ? want
+          : clip.activeTrackId && p.tracks.some((t) => t.id === clip.activeTrackId)
+            ? clip.activeTrackId
+            : p.tracks[0]?.id;
+      if (!tid) return;
+      const inst = p.instruments.find(
+        (i) => i.id === p.tracks.find((t) => t.id === tid)?.instrumentId,
+      );
+      setLibTab(inst?.waveform === 'sample' ? 'smp' : 'inst');
     },
     [showAi],
   );
