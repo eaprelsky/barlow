@@ -19,6 +19,7 @@ import {
   CATEGORY_ORDER,
   INSTRUMENT_PRESETS,
   USER_CATEGORY,
+  USER_PRESETS_EVENT,
   deleteUserPreset,
   loadUserPresets,
 } from '../music/instrumentPresets';
@@ -90,6 +91,22 @@ export function SoundBrowser({
     if (isDesktop) void samplesDirLabel().then(setDirLabel);
     else setDirLabel(null);
   }, [refreshSamples]);
+
+  // Свои пресеты меняются мимо React (сохранение из редактора инструмента
+  // пишет в localStorage напрямую) — слушаем событие и заодно синк вкладок
+  // (storage приходит из других вкладок того же браузера).
+  useEffect(() => {
+    const bump = () => setListVersion((v) => v + 1);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'barlow.instruments.v1') bump();
+    };
+    window.addEventListener(USER_PRESETS_EVENT, bump);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(USER_PRESETS_EVENT, bump);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   // Закрытие панели останавливает прослушивание сэмпла.
   useEffect(

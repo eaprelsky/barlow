@@ -768,6 +768,11 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
 const USER_KEY = 'barlow.instruments.v1';
 export const USER_CATEGORY = 'мои';
 
+/** Событие на window: список своих пресетов изменился (сохранение из
+ *  редактора инструмента, удаление из панели). SoundBrowser по нему
+ *  перечитывает localStorage — иначе кешированный список протухает. */
+export const USER_PRESETS_EVENT = 'barlow:user-presets';
+
 const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
   'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
@@ -813,6 +818,7 @@ export function saveUserPreset(
   list.push({ name, category: USER_CATEGORY, track: sound });
   try {
     localStorage.setItem(USER_KEY, JSON.stringify(list));
+    window.dispatchEvent(new Event(USER_PRESETS_EVENT));
   } catch {
     /* переполнение квоты — молча */
   }
@@ -822,6 +828,7 @@ export function deleteUserPreset(name: string): void {
   const list = loadUserPresets().filter((p) => p.name !== name);
   try {
     localStorage.setItem(USER_KEY, JSON.stringify(list));
+    window.dispatchEvent(new Event(USER_PRESETS_EVENT));
   } catch {
     /* ignore */
   }
