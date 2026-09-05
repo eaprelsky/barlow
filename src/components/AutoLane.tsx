@@ -23,6 +23,9 @@ const Y_LABELS: Record<AutoTarget, [string, string]> = {
   volume: ['100%', '0'],
   filterFreq: ['12k Гц', '60 Гц'],
   pan: ['L', 'R'],
+  fxMix: ['мокро', 'сухо'],
+  fxTime: ['2 с', '10 мс'],
+  fxFeedback: ['90%', '0'],
 };
 
 const MOD_SOURCE_TITLE: Record<string, string> = {
@@ -40,7 +43,7 @@ export function AutoLane({
   fadeOut,
   stepSec,
   mods,
-  filterBase,
+  base,
   onCurves,
   onFade,
 }: {
@@ -58,8 +61,9 @@ export function AutoLane({
   /** Эффективные модуляции партии: их вклад на цель рисуется штрихом
    *  поверх кривой — видно, как параметр «гуляет» от LFO/шума. */
   mods: Mod[];
-  /** База фильтра инструмента (для цели «фильтр»). */
-  filterBase: number;
+  /** База цели: фильтр — частота «верха» инструмента, fx* — текущее
+   *  значение первого эффекта (вокруг базы штрих модуляции). */
+  base: number;
   onCurves: (curves: AutoCurve[]) => void;
   onFade: (which: 'in' | 'out', sec: number) => void;
 }) {
@@ -209,7 +213,7 @@ export function AutoLane({
         const t = k / N;
         const v = Math.min(
           1.22,
-          Math.max(0, modCurveValue(m, target, t * cycleSec, filterBase, seed)),
+          Math.max(0, modCurveValue(m, target, t * cycleSec, base, seed)),
         );
         return `${(t * W).toFixed(1)},${vToY(v).toFixed(1)}`;
       }).join(' ');

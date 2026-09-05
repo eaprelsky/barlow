@@ -1015,6 +1015,12 @@ export class AudioEngine implements AudioBackend {
               chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
             } else if (c.target === 'volume' && (chain.fadeHold === undefined || ctx.currentTime >= chain.fadeHold)) {
               chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
+            } else if (c.target === 'fxMix' && chain.fx[0]) {
+              chain.fx[0].wet.gain.setTargetAtTime(v, at, 0.03);
+            } else if (c.target === 'fxTime' && chain.fx[0]?.delay) {
+              chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), at, 0.03);
+            } else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) {
+              chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), at, 0.03);
             }
           }
         }
@@ -1108,6 +1114,12 @@ export class AudioEngine implements AudioBackend {
                 chain.panner.pan.setTargetAtTime(v * 2 - 1, tt, 0.03);
               } else if (c.target === 'volume') {
                 chain.gain.gain.setTargetAtTime(vol * v, tt, 0.03);
+              } else if (c.target === 'fxMix' && chain.fx[0]) {
+                chain.fx[0].wet.gain.setTargetAtTime(v, tt, 0.03);
+              } else if (c.target === 'fxTime' && chain.fx[0]?.delay) {
+                chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), tt, 0.03);
+              } else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) {
+                chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), tt, 0.03);
               }
             }
           }

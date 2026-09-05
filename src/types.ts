@@ -307,14 +307,24 @@ export interface Track {
   patterns: Pattern[];
 }
 
-/** Цель кривой партии: громкость — доля от громкости партии,
- *  фильтр — 60…12000 Гц по логарифму, панорама — L…R. */
-export type AutoTarget = 'volume' | 'filterFreq' | 'pan';
+/** Цель автоматизации партии (кривая и модуляции — один набор): громкость
+ *  — доля от громкости партии, фильтр — 60…12000 Гц по логарифму, панорама
+ *  — L…R; цели fx* действуют на первый эффект в списке трека. */
+export type AutoTarget =
+  | 'volume'
+  | 'filterFreq'
+  | 'pan'
+  | 'fxMix'
+  | 'fxTime'
+  | 'fxFeedback';
 
 export const AUTO_TARGET_LABELS: Record<AutoTarget, string> = {
   volume: 'громкость',
   filterFreq: 'фильтр',
   pan: 'панорама',
+  fxMix: 'микс эффекта',
+  fxTime: 'время эха',
+  fxFeedback: 'повторы эха',
 };
 
 /** Точка кривой: t — доля цикла эскиза (0..1), v — нормированное 0..1. */
@@ -346,7 +356,9 @@ export function autoValue(points: AutoPoint[] | undefined, t: number): number | 
 /** Нормированное 0..1 → значение параметра. */
 export function autoToParam(target: AutoTarget, v: number): number {
   if (target === 'filterFreq') return 60 * Math.pow(200, v); // 60…12000 Гц, лог
-  return v; // volume 0..1 (доля), pan 0..1 (позже ×2−1)
+  if (target === 'fxTime') return 0.01 * Math.pow(200, v); // 10 мс…2 с, лог
+  if (target === 'fxFeedback') return v * 0.9; // 0…90% повторы
+  return v; // volume 0..1 (доля), pan 0..1 (позже ×2−1), fxMix 0..1 (wet)
 }
 
 /** Инструмент — тембр одной ноты: источник (волна/сэмпл), огибающая,
@@ -954,7 +966,14 @@ export function normalizePatch(p: Patch): Patch {
             automation: (() => {
               const rawAuto = (pt as { automation?: unknown }).automation;
               if (!Array.isArray(rawAuto)) return undefined;
-              const targets: AutoTarget[] = ['volume', 'filterFreq', 'pan'];
+              const targets: AutoTarget[] = [
+                'volume',
+                'filterFreq',
+                'pan',
+                'fxMix',
+                'fxTime',
+                'fxFeedback',
+              ];
               const out: AutoCurve[] = [];
               for (const c of rawAuto as Partial<AutoCurve>[]) {
                 if (!c || !targets.includes(c.target as AutoTarget)) continue;

@@ -47,21 +47,31 @@ export function modSampleAt(m: Mod, t: number, seed = 0): number {
 
 /** Вклад модуляции в нормализованное значение цели кривой (0..1) в
  *  момент t. Обратная задача autoToParam/modScale: volume — множитель
- *  громкости (1 ± полглубины; вверх разрешаем до 1.25 — «не громче
- *  базы чуть-чуть»), pan — центр ± глубина, filterFreq — лог-шкала
- *  60…12000 Гц. base — текущее значение фильтра инструмента. */
+ *  громкости (вверх разрешаем до 1.25 — «не громче базы чуть-чуть»),
+ *  pan — центр ± глубина, filterFreq — лог-шкала 60…12000 Гц. fx-цели
+ *  качают параметр первого эффекта вокруг базы (base — его текущее
+ *  значение: микс / время, с / фидбек), нормализация обратна autoToParam. */
 export function modCurveValue(
   m: Mod,
   target: AutoTarget,
   t: number,
-  filterBase: number,
+  base: number,
   seed = 0,
 ): number {
   const s = modSampleAt(m, t, seed);
   if (target === 'pan') return 0.5 + (m.depth * s) / 2;
-  if (target === 'volume') return 1 + (m.depth * 0.5 * s);
-  const f = filterBase + m.depth * Math.max(1800, filterBase * 2.5) * s;
-  return Math.log(Math.max(20, f) / 60) / Math.log(200);
+  if (target === 'volume') return 1 + m.depth * 0.5 * s;
+  if (target === 'filterFreq') {
+    const f = base + m.depth * Math.max(1800, base * 2.5) * s;
+    return Math.log(Math.max(20, f) / 60) / Math.log(200);
+  }
+  if (target === 'fxMix') return Math.min(1, Math.max(0, base + m.depth * 0.35 * s));
+  if (target === 'fxTime') {
+    const p = Math.max(0.005, base + m.depth * 0.12 * s);
+    return Math.log(p / 0.01) / Math.log(200);
+  }
+  // fxFeedback: кривая 0..1 = 0..90% повторов.
+  return Math.min(0.9, Math.max(0, base + m.depth * 0.35 * s)) / 0.9;
 }
 
 /** Запечь модуляцию в точки кривой по границам шагов цикла.
@@ -72,16 +82,18 @@ export function bakeModToPoints(
   target: AutoTarget,
   length: number,
   cycleSec: number,
-  filterBase: number,
+  base: number,
   seed = 0,
 ): AutoPoint[] {
   const grid = Math.max(2, length);
+  // volume разрешает перелёт над базой (до 1.25), остальные цели 0..1.
+  const top = target === 'volume' ? 1.25 : 1;
   let pts: AutoPoint[] = [];
   for (let i = 0; i <= grid; i++) {
     const t = i / grid;
     pts.push({
       t,
-      v: Math.min(1.25, Math.max(0, modCurveValue(m, target, t * cycleSec, filterBase, seed))),
+      v: Math.min(top, Math.max(0, modCurveValue(m, target, t * cycleSec, base, seed))),
     });
   }
   // Прореживание с сохранением концов.
