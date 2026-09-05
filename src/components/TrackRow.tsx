@@ -131,6 +131,8 @@ interface Props {
   onReorder: (fromId: string, toId: string, place: 'before' | 'after') => void;
   soloActive: boolean;
   onSolo: (trackId: string) => void;
+  /** Дорожка — цель открытой панели инструментов: пресеты лягут сюда. */
+  libTarget?: boolean;
   onScratchBegin: (pos: number) => void;
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
@@ -149,8 +151,8 @@ interface Props {
   onGetSampleBuffer: (id?: string) => Promise<AudioBuffer | null>;
   onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
   onPreviewNote: (track: Track) => void;
-  /** Открыть библиотеку звуков с применением к этой дорожке. */
-  onOpenBrowser: (trackId: string) => void;
+  /** Открыть панель инструментов с применением к этой дорожке. */
+  onOpenBrowser: (trackId: string, tab?: 'inst' | 'smp') => void;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -178,6 +180,7 @@ export const TrackRow = memo(function TrackRow({
   onReorder,
   soloActive,
   onSolo,
+  libTarget,
   onScratchBegin,
   onScratchMove,
   onScratchEnd,
@@ -873,14 +876,15 @@ export const TrackRow = memo(function TrackRow({
   if (collapsed) {
     return (
       <div
-      data-track-id={track.id}
-      className={
-        'track collapsed' +
-        (track.enabled === false ? ' off' : '') +
-        (dropSide ? ` drop-${dropSide}` : '')
-      }
-      {...dragProps}
-    >
+        data-track-id={track.id}
+        className={
+          'track collapsed' +
+          (track.enabled === false ? ' off' : '') +
+          (libTarget ? ' lib-target' : '') +
+          (dropSide ? ` drop-${dropSide}` : '')
+        }
+        {...dragProps}
+      >
       {grip}
         <button className="track-dup" title="Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации" onClick={() => onDuplicate(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
@@ -1033,6 +1037,7 @@ export const TrackRow = memo(function TrackRow({
       className={
         'track' +
         (track.enabled === false ? ' off' : '') +
+        (libTarget ? ' lib-target' : '') +
         (dropSide ? ` drop-${dropSide}` : '')
       }
       {...dragProps}
@@ -2446,7 +2451,7 @@ export const TrackRow = memo(function TrackRow({
           }}
           onOpenLibrary={() => {
             setShowPicker(false);
-            onOpenBrowser(track.id);
+            onOpenBrowser(track.id, 'smp');
           }}
           onClose={() => setShowPicker(false)}
         />

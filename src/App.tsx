@@ -30,6 +30,7 @@ import { PROVIDERS } from './ai/providers';
 import { putSample, getSampleBlob } from './audio/library';
 import type { SampleMeta } from './audio/library';
 import type { InstrumentPreset } from './music/instrumentPresets';
+import { instrumentNameOf } from './music/instrumentPresets';
 import { clip } from './music/clip';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave } from './storage';
@@ -321,13 +322,16 @@ export default function App() {
   );
   const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
   // Панель инструментов (левая док-панель): открывается с целевой дорожкой —
-  // той, чей чип нажали; из шапки — последний работавший стан.
+  // той, чей чип нажали; из шапки — последний работавший стан. Точка входа
+  // может назвать и вкладку (пикер сэмплов открывает «сэмплы»).
   const [libTarget, setLibTarget] = useState<string | null>(null);
+  const [libTab, setLibTab] = useState<'inst' | 'smp'>('inst');
   const openLibraryAt = useCallback(
-    (trackId: string | null) => {
+    (trackId: string | null, tab?: 'inst' | 'smp') => {
       setShowLib(true);
       if (showAi) setShowAi(false);
       if (trackId) setLibTarget(trackId);
+      if (tab) setLibTab(tab);
     },
     [showAi],
   );
@@ -1261,19 +1265,33 @@ export default function App() {
     return stepIndexAt(t, pattern, engine.now, clock.resetTime, engine.currentBpm);
   };
 
+  // Куда применяются пресеты/сэмплы: явно назначенная дорожка, иначе
+  // работавший последним стан, иначе первая. Единый расчёт для панели
+  // и подсветки дорожки-цели.
+  const libTargetId =
+    libTarget && patch.tracks.some((t) => t.id === libTarget)
+      ? libTarget
+      : clip.activeTrackId && patch.tracks.some((t) => t.id === clip.activeTrackId)
+        ? clip.activeTrackId
+        : (patch.tracks[0]?.id ?? null);
+  // Имя пресета, совпадающего с инструментом дорожки-цели: панель
+  // подсвечивает его карточку и скроллит к ней.
+  const libPresetName = useMemo(() => {
+    const t = patch.tracks.find((x) => x.id === libTargetId);
+    return t ? instrumentNameOf({ ...t, ...instOf(patch, t) }) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patch, libTargetId, instOf]);
+
   return (
     <div className="app-shell">
       {showLib && (
         <SoundBrowser
           tracks={patch.tracks}
-          targetId={
-            libTarget && patch.tracks.some((t) => t.id === libTarget)
-              ? libTarget
-              : clip.activeTrackId && patch.tracks.some((t) => t.id === clip.activeTrackId)
-                ? clip.activeTrackId
-                : patch.tracks[0]?.id ?? null
-          }
+          targetId={libTargetId}
           onTarget={setLibTarget}
+          targetPresetName={libPresetName}
+          tab={libTab}
+          onTab={setLibTab}
           onApply={applyPreset}
           onAudition={auditionPreset}
           onAssignSample={assignSample}
@@ -1839,6 +1857,7 @@ export default function App() {
             onDuplicate={duplicateTrack}
             onReorder={reorderTrack}
             soloActive={currentScene?.soloTrackId === t.id}
+            libTarget={showLib && libTargetId === t.id}
             onSolo={toggleSceneSolo}
             onScratchBegin={(pos) => engine.scratchBegin(t, pos)}
             onScratchMove={(pos) => engine.scratchMove(pos)}

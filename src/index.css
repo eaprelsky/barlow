@@ -1137,6 +1137,12 @@ header button.on {
   position: relative;
 }
 
+/* Дорожка — цель панели инструментов: сюда лягут пресеты и сэмплы */
+.track.lib-target {
+  outline: 1px solid var(--accent-2);
+  outline-offset: -1px;
+}
+
 .track-del,
 .track-dup {
   position: absolute;
@@ -1933,6 +1939,21 @@ button.danger:hover {
 
 .inst-card:disabled {
   opacity: 0.45;
+}
+
+/* Пресет, совпадающий с инструментом целевой дорожки */
+.inst-card.current {
+  border-color: var(--accent-2);
+}
+
+.inst-card.current .inst-name {
+  color: var(--accent-2);
+}
+
+.sb-current {
+  color: var(--accent-2);
+  font-size: 13px;
+  line-height: 1;
 }
 
 .sb-wave {

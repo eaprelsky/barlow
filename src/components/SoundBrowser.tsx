@@ -33,6 +33,13 @@ interface Props {
   /** Дорожка, куда применяются пресеты/сэмплы по клику. */
   targetId: string | null;
   onTarget: (id: string) => void;
+  /** Имя пресета, совпадающего с инструментом целевой дорожки
+   *  (instrumentNameOf) — карточка подсвечивается, до неё скролл. */
+  targetPresetName?: string | null;
+  /** Вкладка управляется снаружи: точка входа знает, что показать
+   *  (пикер сэмплов открывает вкладку сэмплов). */
+  tab: 'inst' | 'smp';
+  onTab: (t: 'inst' | 'smp') => void;
   onApply: (trackId: string, preset: InstrumentPreset) => void;
   /** Слушать тембр пресета на тонике целевой дорожки (без применения). */
   onAudition: (trackId: string, preset: InstrumentPreset) => void;
@@ -52,6 +59,9 @@ export function SoundBrowser({
   tracks,
   targetId,
   onTarget,
+  targetPresetName,
+  tab,
+  onTab,
   onApply,
   onAudition,
   onAssignSample,
@@ -62,9 +72,7 @@ export function SoundBrowser({
   const [query, setQuery] = useState('');
   // Схлопнутые категории инструментов (по умолчанию все раскрыты).
   const [closed, setClosed] = useState<Set<string>>(new Set());
-  // Вкладки: пресеты | сэмплы. Пресеты без сэмпла перебрасывают на
-  // «сэмплы» сами — сэмпл-пресет без сэмпла молчит.
-  const [tab, setTab] = useState<'inst' | 'smp'>('inst');
+  const listRef = useRef<HTMLDivElement | null>(null);
   // Удаление своего пресета/сэмпла перечитывает списки из хранилищ.
   const [listVersion, setListVersion] = useState(0);
   const [samples, setSamples] = useState<SampleMeta[]>([]);
@@ -99,6 +107,26 @@ export function SoundBrowser({
   );
 
   const q = query.trim().toLowerCase();
+  // Фокус текущего пресета дорожки: его категория раскрывается, карточка
+  // подсвечивается классом .current и приезжает в поле зрения — видно,
+  // от чего отталкиваешься при переборе тембров.
+  useEffect(() => {
+    if (tab !== 'inst' || !targetPresetName) return;
+    const cat = all.find((p) => p.name === targetPresetName)?.category;
+    if (!cat) return;
+    setClosed((s) => {
+      if (!s.has(cat)) return s;
+      const next = new Set(s);
+      next.delete(cat);
+      return next;
+    });
+    // rAF: после раскрытия категории карточка уже в DOM.
+    requestAnimationFrame(() => {
+      listRef.current
+        ?.querySelector('.inst-card.current')
+        ?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [tab, targetPresetName, all]);
   const groups = useMemo(() => {
     // Поиск смотрит и в пояснение встроенных — «дабстеп» находит воббл.
     const filtered = q
@@ -161,9 +189,15 @@ export function SoundBrowser({
     // Сэмпл-пресет без сэмпла не звучит: ▶ неактуален, а применение
     // перебрасывает на вкладку «сэмплы» — сэмпл выбрать сразу.
     const needsSample = p.track.waveform === 'sample' && !p.track.sampleId;
+    const current = p.name === targetPresetName;
     const card = (
       <>
         <span className="inst-name">{p.name}</span>
+        {current && (
+          <span className="sb-current" title="Текущий инструмент целевой дорожки">
+            •
+          </span>
+        )}
         <span className="sb-wave">{waveOf(p)}</span>
         <span className="spacer" />
         <button
@@ -199,19 +233,19 @@ export function SoundBrowser({
       // div: внутри кнопки удаления, button в button нельзя
       <div
         key={p.name}
-        className="inst-card user"
+        className={'inst-card user' + (current ? ' current' : '')}
         role="button"
         tabIndex={0}
         title={p.hint ?? `волна: ${waveOf(p)}`}
         onClick={() => {
           if (!applyTo) return;
           onApply(applyTo, p);
-          if (needsSample) setTab('smp');
+          if (needsSample) onTab('smp');
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && applyTo) {
             onApply(applyTo, p);
-            if (needsSample) setTab('smp');
+            if (needsSample) onTab('smp');
           }
         }}
       >
@@ -220,13 +254,13 @@ export function SoundBrowser({
     ) : (
       <button
         key={p.name}
-        className="inst-card"
+        className={'inst-card' + (current ? ' current' : '')}
         title={p.hint ?? `волна: ${waveOf(p)}`}
         disabled={!applyTo}
         onClick={() => {
           if (!applyTo) return;
           onApply(applyTo, p);
-          if (needsSample) setTab('smp');
+          if (needsSample) onTab('smp');
         }}
       >
         {card}
@@ -243,12 +277,13 @@ export function SoundBrowser({
         <button onClick={onClose} title="Скрыть панель">скрыть</button>
       </div>
       {/* Вкладки: пресеты и сэмплы — явные, не теряются. Сэмпл-пресет
-          без сэмпла сам перебрасывает сюда на «сэмплы». */}
+          без сэмпла сам перебрасывает сюда на «сэмплы». Вкладка
+          управляется снаружи (App) — точка входа знает, что показать. */}
       <div className="seg sb-tabs">
         <button
           className={tab === 'inst' ? 'on' : ''}
           data-ob="sb-tab-instruments"
-          onClick={() => setTab('inst')}
+          onClick={() => onTab('inst')}
           title="Пресеты-инструменты по категориям: клик применяет к дорожке из селектора ниже"
         >
           пресеты
@@ -256,7 +291,7 @@ export function SoundBrowser({
         <button
           className={tab === 'smp' ? 'on' : ''}
           data-ob="sb-tab-samples"
-          onClick={() => setTab('smp')}
+          onClick={() => onTab('smp')}
           title="Все сэмплы: клик по имени сажает сэмпл в дорожку"
         >
           сэмплы ({samples.length})
@@ -301,7 +336,7 @@ export function SoundBrowser({
 
       {tab === 'inst' && (
         <>
-          <div className="sb-list" data-ob="inst-cards">
+          <div className="sb-list" data-ob="inst-cards" ref={listRef}>
             {groups.map((g) => (
               <div className="sb-cat" key={g.cat}>
                 <div
