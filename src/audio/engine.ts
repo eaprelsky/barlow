@@ -821,11 +821,18 @@ export class AudioEngine implements AudioBackend {
     })();
   }
 
-  /** Прослушать одну ноту инструмента дорожки (редактор волны: тембр на слух). */
+  /** Прослушать одну ноту инструмента дорожки (редактор: тембр на слух).
+   *  Понимает и «сырой» Track (сливает с инструментом из патча), и уже
+   *  слитый SoundingTrack с оверрайдами — редактор инструмента слушает
+   *  черновик волны и накрученные ручки до их записи в патч. */
   previewNote(track: Track, noteRow = 0): void {
     const patch = this.patch;
     if (!patch) return;
-    this.previewSounding(stOf(patch, track), noteRow);
+    const merged: SoundingTrack =
+      'attack' in track && 'decay' in track
+        ? (track as SoundingTrack)
+        : stOf(patch, track);
+    this.previewSounding(merged, noteRow);
   }
 
   /** Ручное переключение сцены: применяется на ближайшей границе такта. */

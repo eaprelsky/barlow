@@ -120,6 +120,61 @@ const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
             })),
           };
 
+/** Честная форма звучащего тембра — не только парциалов «своей волны»:
+ *  базовые волны рисуются формулой (супер-пила — копиями с детюном),
+ *  FM — своим уравнением, шум — сглаженным псевдошумом. Модели (струна,
+ *  форманты, модальный, орган) одной формой не рисуются — null, вкладка
+ *  покажет пояснение. Чистый визуал: живой синтез — в triggerVoice. */
+function renderInstrumentCycle(inst: Instrument): Float32Array | null {
+  const N = CYCLE_N;
+  const out = new Float32Array(N);
+  const wf = inst.waveform;
+  if (wf === 'wave')
+    return renderWaveCycle(
+      inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] },
+      N,
+    );
+  if (wf === 'sine' || wf === 'triangle' || wf === 'square' || wf === 'sawtooth' || wf === 'supersaw') {
+    const detune = wf === 'supersaw' ? (inst.unisonDetune ?? 12) : 0;
+    const voices = wf === 'supersaw' ? Math.max(2, inst.unisonVoices ?? 3) : 1;
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      let v = 0;
+      for (let k = 0; k < voices; k++) {
+        const off = voices === 1 ? 0 : ((k / (voices - 1)) * 2 - 1) * (detune / 1200);
+        const ph = ((t * (1 + off)) % 1 + 1) % 1;
+        let s: number;
+        if (wf === 'sine') s = Math.sin(ph * Math.PI * 2);
+        else if (wf === 'triangle') s = 1 - Math.abs(ph - 0.5) * 4;
+        else if (wf === 'square') s = ph < 0.5 ? 1 : -1;
+        else s = ph * 2 - 1; // пила / супер-пила
+        v += s;
+      }
+      out[i] = v / voices;
+    }
+    return out;
+  }
+  if (wf === 'fm') {
+    const ratio = inst.fmRatio ?? 2;
+    const index = inst.fmIndex ?? 3;
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      out[i] = Math.sin(2 * Math.PI * t + index * Math.sin(2 * Math.PI * ratio * t));
+    }
+    return out;
+  }
+  if (wf === 'noise') {
+    // Сглаженный псевдошум: «пыль» той же природы, что audible шум.
+    let v = 0;
+    for (let i = 0; i < N; i++) {
+      if (i % 24 === 0) v = Math.random() * 2 - 1;
+      out[i] = v;
+    }
+    return out;
+  }
+  return null; // karplus / formant / modal / organ / additive / sample
+}
+
 export function InstrumentEditor({
   track,
   inst,
@@ -189,10 +244,9 @@ export function InstrumentEditor({
   const [draft, setDraft] = useState<WaveDef | null>(null);
   const wave = draft ?? applied;
   const cycle = useMemo(() => renderWaveCycle(wave, CYCLE_N), [wave]);
-  const appliedCycle = useMemo(
-    () => renderWaveCycle(inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] }, CYCLE_N),
-    [inst.wave],
-  );
+  // Форма звучащего тембра: пила/FM/шум — формулой, «своя волна» —
+  // парциалами; модели без одной формы (струна, форманты…) — null.
+  const soundingForm = useMemo(() => renderInstrumentCycle(inst), [inst]);
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(applied);
   const applyDraft = () => {
     if (draft) onChangeInst({ waveform: 'wave', wave: draft });
@@ -204,6 +258,11 @@ export function InstrumentEditor({
   const [points, setPoints] = useState<Float32Array | null>(null);
   const pointsRef = useRef<Float32Array | null>(null);
   pointsRef.current = points;
+
+  // Главная линия канваса: рисунок → черновик → форма звучащего тембра.
+  // Формы нет (модели без одной кривой) — заглушка-пояснение.
+  const visibleData: Float32Array | null = points ?? (draft ? cycle : soundingForm);
+  const formless = !points && !draft && soundingForm === null;
 
   const setPartial = (i: number, upd: Partial<WavePartial>) =>
     setDraft({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
@@ -220,7 +279,7 @@ export function InstrumentEditor({
    *  Слушать — «▶ нота» (звучит черновик), применять — кнопкой. */
   const drawPoint = (x: number, y: number) => {
     const amp = Math.min(1, Math.max(-1, (y - 0.5) * 2));
-    const pts = Float32Array.from(pointsRef.current ?? cycle);
+    const pts = Float32Array.from(pointsRef.current ?? visibleData ?? new Float32Array(CYCLE_N));
     const idx = Math.min(CYCLE_N - 1, Math.max(0, Math.round(x * CYCLE_N)));
     pts[idx] = amp;
     pointsRef.current = pts;
@@ -675,20 +734,32 @@ export function InstrumentEditor({
 
       {tab === 'wave' && (
         <div className="we-body">
-          <div className="we-canvas-stack" data-ob="we-canvas">
-            {/* Призрак звучащей волны — пока черновик не применён */}
-            {dirty && (
-              <div className="we-ghost" aria-hidden="true" title="Тонкая линия — звучащая сейчас волна">
-                <WaveCanvas data={appliedCycle} sampleRate={CYCLE_N} cycles={4} />
+          <div className="we-canvas-stack" data-ob="we-wave-canvas">
+            {/* Призрак звучащего тембра — пока черновик не применён */}
+            {dirty && soundingForm && (
+              <div className="we-ghost" aria-hidden="true" title="Тонкая линия — звучащий сейчас тембр">
+                <WaveCanvas data={soundingForm} sampleRate={CYCLE_N} cycles={4} />
               </div>
             )}
-            {points ? (
-              <WaveCanvas data={points} sampleRate={CYCLE_N} editable onDraw={drawPoint} />
-            ) : (
-              <WaveCanvas data={cycle} sampleRate={CYCLE_N} cycles={4} />
-            )}
+            {formless ? (
+              <p className="empty">
+                {st.waveform === 'sample'
+                  ? 'Волна дорожки — «сэмпл»: её кусок, разложение в гармоники и скрэтч — на вкладке «сэмпл»'
+                  : `Тембр «${WAVEFORM_LABELS[st.waveform]}» не рисуется одной формой — это модель: слушай «▶ нота» и крути ручки на вкладках «огибающая» и «тембр». Заготовка или «рисовать форму» соберут свою волну из гармоник — она ляжет черновиком`}
+              </p>
+            ) : visibleData ? (
+              points ? (
+                <WaveCanvas data={points} sampleRate={CYCLE_N} editable onDraw={drawPoint} />
+              ) : (
+                <WaveCanvas data={visibleData} sampleRate={CYCLE_N} cycles={4} />
+              )
+            ) : null}
           </div>
           <div className="we-row" data-ob="we-wave-tools">
+            <span className="we-cap" title="Что звучит сейчас — меняется пресетами из панели инструментов">
+              звучит: {WAVEFORM_LABELS[st.waveform]}
+            </span>
+            <span className="we-sep" />
             <span className="we-cap">заготовка:</span>
             {(['sine', 'saw', 'square', 'noise'] as const).map((k) => (
               <button
@@ -718,7 +789,7 @@ export function InstrumentEditor({
               <button
                 title="Нарисовать форму мышью — черновик меняется прямо при рисовании, слушай «▶ нота»"
                 onClick={() => {
-                  const pts = new Float32Array(cycle);
+                  const pts = Float32Array.from(visibleData ?? new Float32Array(CYCLE_N));
                   pointsRef.current = pts;
                   setPoints(pts);
                 }}
@@ -736,7 +807,7 @@ export function InstrumentEditor({
             <button
               className={dirty ? 'we-apply' : ''}
               disabled={!dirty}
-              title="Черновик становится волной инструмента — до этого звучит прежний тембр"
+              title="Черновик становится волной инструмента (тип волны — «своя волна»); до этого звучит прежний тембр"
               onClick={applyDraft}
             >
               применить

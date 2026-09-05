@@ -335,7 +335,13 @@ export default function App() {
     (trackId: string | null, tab?: 'inst' | 'smp') => {
       setShowLib(true);
       if (showAi) setShowAi(false);
-      if (trackId) setLibTarget(trackId);
+      if (trackId) {
+        setLibTarget(trackId);
+        // Чип дорожки переводит и открытый редактор инструмента:
+        // работа с тембром следует за дорожкой, которую выбрали чипом
+        // (и в свёрнутой карточке).
+        setEditorTrack((cur) => (cur && cur !== trackId ? trackId : cur));
+      }
       if (tab) setLibTab(tab);
     },
     [showAi],

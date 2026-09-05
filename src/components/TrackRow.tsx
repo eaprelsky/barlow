@@ -853,6 +853,14 @@ export const TrackRow = memo(function TrackRow({
           <button className="fold" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
           <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+          <button
+            className="inst-chip"
+            data-ob="inst-chip"
+            title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — панель инструментов (и редактор инструмента, если он открыт): пресеты и сэмплы, подсветит текущий`}
+            onClick={() => onOpenBrowser(track.id)}
+          >
+            {instrumentNameOf(st)}
+          </button>
           <span className="ms-btns">
             <button
               className={soloActive ? 'ms on-s' : 'ms'}
@@ -860,7 +868,6 @@ export const TrackRow = memo(function TrackRow({
               onClick={() => onSolo(track.id)}
             >S</button>
           </span>
-          <span className="mini-wave">{WAVEFORM_LABELS[st.waveform]}</span>
           {patternChips}
           <SliderField
             variant="bare"
