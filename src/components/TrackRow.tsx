@@ -897,7 +897,6 @@ export const TrackRow = memo(function TrackRow({
       patternSceneCounts={patternSceneCounts}
       slotMuted={slotMuted}
       onToggleSlotMute={onToggleSlotMute}
-      onPatternChange={onPatternChange}
       onSelectPattern={onSelectPattern}
       onAddPattern={onAddPattern}
       onForkPattern={onForkPattern}

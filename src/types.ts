@@ -1088,7 +1088,8 @@ export function normalizePatch(p: Patch): Patch {
     for (const t of tracks) {
       const raw = (scene.slots ?? {})[t.id];
       const wantRaw = typeof raw === 'string' ? raw : (raw as SceneSlot | undefined)?.patternId;
-      const pid = t.patterns.some((pt) => pt.id === wantRaw) ? wantRaw : t.patterns[0].id;
+      const pid =
+        wantRaw && t.patterns.some((pt) => pt.id === wantRaw) ? wantRaw : t.patterns[0].id;
       const muted = (typeof raw === 'object' && raw ? raw.muted === true : false) || mutedPids.has(pid);
       slots[t.id] = muted ? { patternId: pid, muted: true } : { patternId: pid };
       if (!scene.soloTrackId && soloByTrack.get(t.id)?.has(pid)) {

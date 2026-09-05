@@ -1174,9 +1174,6 @@ export default function App() {
     });
   }, []);
 
-  /** Ключ активного провайдера (пустой — не настроен). */
-  const aiKey = ai.keys[ai.providerId] ?? '';
-
   /** Сгенерировать сэмпл по описанию и положить в слот трека. */
   const generateSample = useCallback(
     async (trackId: string, prompt: string, seconds: number) => {

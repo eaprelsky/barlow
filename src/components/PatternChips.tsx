@@ -11,7 +11,6 @@ interface Props {
   /** Мьют слота текущей сцены. */
   slotMuted: boolean;
   onToggleSlotMute: (trackId: string) => void;
-  onPatternChange: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   onSelectPattern: (trackId: string, patternId: string) => void;
   onAddPattern: (trackId: string) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
@@ -24,7 +23,6 @@ export function PatternChips({
   patternSceneCounts,
   slotMuted,
   onToggleSlotMute,
-  onPatternChange,
   onSelectPattern,
   onAddPattern,
   onForkPattern,
