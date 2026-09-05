@@ -2280,6 +2280,34 @@ button.danger:hover {
   border-radius: 8px;
 }
 
+/* Редактор инструмента — та же механика, свои вкладки (источник |
+   огибающая | тембр | волна | сэмпл) */
+.inst-editor .we-head .env-listen,
+.inst-editor .we-head .save-inst {
+  flex: none;
+}
+
+.we-canvas-stack {
+  position: relative;
+}
+
+/* Призрак звучащей волны под черновиком */
+.we-ghost {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.we-ghost .wave-canvas-wrap {
+  height: 100%;
+}
+
+.we-apply:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .we-head {
   display: flex;
   align-items: center;

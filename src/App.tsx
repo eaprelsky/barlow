@@ -21,6 +21,7 @@ import {
 } from './types';
 import type { Instrument, Patch, Pattern, Track } from './types';
 import { TrackRow } from './components/TrackRow';
+import type { InstEditorTab } from './components/InstrumentEditor';
 import { LevelBar } from './components/LevelBar';
 import { NumField } from './components/NumField';
 import { SliderField } from './components/SliderField';
@@ -296,15 +297,19 @@ export default function App() {
   const [fileOpen, setFileOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
-  // Редактор волны: id дорожки в раздвижном режиме (остальные съёживаются).
-  const [waveEditorTrack, setWaveEditorTrack] = useState<string | null>(null);
+  // Редактор инструмента: id дорожки в раздвижном режиме (остальные
+  // съёживаются) + вкладка, на которой его открыли.
+  const [editorTrack, setEditorTrack] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<InstEditorTab>('snd');
   // Прицел переноса сцены: подсветка вставки до/после кнопки.
   const [sceneDrop, setSceneDrop] = useState<{ id: string; side: 'before' | 'after' } | null>(null);
   // Прицел переноса пункта цепочки.
   const [chainDrop, setChainDrop] = useState<{ idx: number; side: 'before' | 'after' } | null>(null);
-  const toggleWaveEditor = useCallback((id: string) => {
-    setWaveEditorTrack((cur) => (cur === id ? null : id));
+  const openEditor = useCallback((id: string, tab?: InstEditorTab) => {
+    setEditorTrack(id);
+    if (tab) setEditorTab(tab);
   }, []);
+  const closeEditor = useCallback(() => setEditorTrack(null), []);
   const [, setFrame] = useState(0); // перерисовка playhead раз в кадр
   const engineRef = useRef<AudioBackend | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -339,9 +344,9 @@ export default function App() {
   // Режим редактора гаснет сам, когда его дорожка исчезла (очистить всё,
   // удаление, undo, импорт): стухший id иначе держал бы все новые треки
   // насильно свёрнутыми, а кнопка разворота на них не действовала бы.
-  const waveEditorActive =
-    waveEditorTrack && patch.tracks.some((t) => t.id === waveEditorTrack)
-      ? waveEditorTrack
+  const editorActive =
+    editorTrack && patch.tracks.some((t) => t.id === editorTrack)
+      ? editorTrack
       : null;
 
   // Движок всегда видит актуальный патч — редактирование без остановки.
@@ -1076,7 +1081,7 @@ export default function App() {
       ro.disconnect();
       window.removeEventListener('resize', compute);
     };
-  }, [patch.tracks, waveEditorActive]);
+  }, [patch.tracks, editorActive]);
 
   const saveAi = useCallback((next: Partial<AiSettings>) => {
     setAi((prev) => {
@@ -1162,13 +1167,14 @@ export default function App() {
     [ai, patch.tracks, instOf],
   );
 
-  /** Свернуть/развернуть дорожку. Пока открыт редактор волны, чужие дорожки
-   *  форс-свёрнуты — клик по ним пробивает режим: закрывает редактор и
-   *  разворачивает дорожку. Иначе любой «залипший» режим блокировал бы
-   *  разворот (клик крутил бы ui.collapsed, который игнорируется). */
+  /** Свернуть/развернуть дорожку. Пока открыт редактор инструмента, чужие
+   *  дорожки форс-свёрнуты — клик по ним пробивает режим: закрывает
+   *  редактор и разворачивает дорожку. Иначе любой «залипший» режим
+   *  блокировал бы разворот (клик крутил бы ui.collapsed, который
+   *  игнорируется). */
   const toggleCollapse = useCallback((id: string) => {
-    if (waveEditorActive && waveEditorActive !== id) {
-      setWaveEditorTrack(null);
+    if (editorActive && editorActive !== id) {
+      setEditorTrack(null);
       setUi((u) => {
         const next = { collapsed: { ...u.collapsed, [id]: false } };
         localStorage.setItem(UI_KEY, JSON.stringify(next));
@@ -1176,8 +1182,8 @@ export default function App() {
       });
       return;
     }
-    if (waveEditorActive && waveEditorActive === id) {
-      setWaveEditorTrack(null); // «свернуть» карточку с редактором = закрыть редактор
+    if (editorActive && editorActive === id) {
+      setEditorTrack(null); // «свернуть» карточку с редактором = закрыть редактор
       return;
     }
     setUi((u) => {
@@ -1185,7 +1191,7 @@ export default function App() {
       localStorage.setItem(UI_KEY, JSON.stringify(next));
       return next;
     });
-  }, [waveEditorActive]);
+  }, [editorActive]);
 
   // ---- Файлы ----
 
@@ -1840,7 +1846,7 @@ export default function App() {
             pattern={patternInScene(t, currentScene)}
             bpm={patch.bpm}
             activeStep={activeOf(t)}
-            collapsed={waveEditorActive ? waveEditorActive !== t.id : !!ui.collapsed[t.id]}
+            collapsed={editorActive ? editorActive !== t.id : !!ui.collapsed[t.id]}
             onToggleCollapse={toggleCollapse}
             onChange={changeTrack}
             onTrackCommand={changeTrackCommand}
@@ -1869,8 +1875,11 @@ export default function App() {
             onGenerateSample={generateSample}
             onTransformSample={transformSample}
             genBusy={!!genBusy[t.id]}
-            waveEditor={waveEditorActive === t.id}
-            onToggleWaveEditor={toggleWaveEditor}
+            editorOpen={editorActive === t.id}
+            editorTab={editorTab}
+            onEditorTab={setEditorTab}
+            onOpenEditor={openEditor}
+            onCloseEditor={closeEditor}
             onGetSampleBuffer={getSampleBuffer}
             onPreviewSampleRegion={previewSampleRegion}
             onPreviewNote={previewNote}

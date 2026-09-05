@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type {
-  ArpMode,
   AutoTarget,
   Effect,
   Instrument,
@@ -9,47 +8,35 @@ import type {
   Note,
   Pattern,
   SoundingTrack,
-  ScratchPoint,
   Step,
   Track,
-  Waveform,
 } from '../types';
 import {
-  ARP_MODE_LABELS,
   AUTO_TARGET_LABELS,
   EFFECT_LABELS,
   MOD_TARGET_LABELS,
-  MORPH_LABELS,
   WAVEFORM_LABELS,
   makeNote,
   makeStep,
   scaleOf,
 } from '../types';
 import type { MutateModes } from '../music/mutate';
-import {
-  instrumentNameOf,
-  loadUserPresets,
-  saveUserPreset,
-} from '../music/instrumentPresets';
+import { instrumentNameOf } from '../music/instrumentPresets';
 import { ScalePicker } from './ScalePicker';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
-import { Knob } from './Knob';
-import { WaveIcon } from './WaveIcon';
 import { SliderField } from './SliderField';
-import { WaveEditor } from './WaveEditor';
-import { NoteGraph } from './EnvGraph';
+import { InstrumentEditor, type InstEditorTab } from './InstrumentEditor';
 import { AutoLane } from './AutoLane';
-import { alertDialog, confirmDialog, promptDialog } from './dialogs';
+import { alertDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration, stepDuration } from '../audio/timing';
 import { clip } from '../music/clip';
 import { HelpHint } from '../onboarding/Onboarding';
 
-const WAVEFORMS = Object.keys(WAVEFORM_LABELS) as Waveform[];
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
 const MOD_SOURCE_LABELS: Record<string, string> = {
   lfo: 'LFO',
@@ -74,10 +61,6 @@ function panLabel(pan: number): string {
   if (pan < 0.49) return `L${Math.round((0.5 - pan) * 200)}`;
   if (pan > 0.51) return `R${Math.round((pan - 0.5) * 200)}`;
   return 'центр';
-}
-
-function clampSec(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
 }
 
 function fmtRatio(r: number): string {
@@ -144,10 +127,13 @@ interface Props {
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   onTransformSample: (trackId: string, prompt: string, strength: number) => void;
   genBusy: boolean;
-  // Редактор волны: раздвижной режим карточки — остальной интерфейс
-  // трека съёживается, редактор занимает его место.
-  waveEditor: boolean;
-  onToggleWaveEditor: (id: string) => void;
+  // Редактор инструмента: раздвижной режим карточки — остальной
+  // интерфейс трека съёживается, редактор занимает его место.
+  editorOpen: boolean;
+  editorTab: InstEditorTab;
+  onEditorTab: (t: InstEditorTab) => void;
+  onOpenEditor: (id: string, tab?: InstEditorTab) => void;
+  onCloseEditor: () => void;
   onGetSampleBuffer: (id?: string) => Promise<AudioBuffer | null>;
   onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
   onPreviewNote: (track: Track) => void;
@@ -191,8 +177,11 @@ export const TrackRow = memo(function TrackRow({
   onGenerateSample,
   onTransformSample,
   genBusy,
-  waveEditor,
-  onToggleWaveEditor,
+  editorOpen,
+  editorTab,
+  onEditorTab,
+  onOpenEditor,
+  onCloseEditor,
   onGetSampleBuffer,
   onPreviewSampleRegion,
   onPreviewNote,
@@ -200,65 +189,23 @@ export const TrackRow = memo(function TrackRow({
 }: Props) {
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
-  const [prompt, setPrompt] = useState('');
-  const [genSeconds, setGenSeconds] = useState(3);
-
-  /** Сохранить звук дорожки как свой пресет: категория «мои» в браузере
-   *  инструментов, применение — как у встроенных. Триггер перерисовки
-   *  обновляет имя инструмента на панели сразу после сохранения. */
-  const [, bumpInstruments] = useState(0);
-  const saveInstrumentAs = async () => {
-    const current = instrumentNameOf(st);
-    const suggested = current === 'своя настройка' ? track.name : current;
-    const name = await promptDialog({
-      title: 'сохранить инструмент',
-      text: 'Пресет появится в браузере инструментов, категория «мои»',
-      okLabel: 'сохранить',
-      input: { value: suggested },
-    });
-    if (!name || !name.trim()) return;
-    const n = name.trim();
-    if (loadUserPresets().some((p) => p.name === n)) {
-      const ok = await confirmDialog({
-        title: 'заменить пресет?',
-        text: `«${n}» уже есть среди твоих — перезаписать его звуком этой дорожки?`,
-        okLabel: 'заменить',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    saveUserPreset(n, st);
-    bumpInstruments((v) => v + 1);
-  };
 
   /** Парсер своей шкалы живёт в music/scales (parseRatios) — используется
    *  модалкой выбора шкалы вместе с N-ET и пресетами. */
 
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
-  // Нотка/звук/редактор — вкладки трека: открыта максимум одна.
-  // Редактор живёт в App (он съёживает остальные треки), остальные две — здесь.
-  // Три сущности карточки: «эскиз» — партия (ноты и её ручки, вид по
-  // умолчанию), «трек» — общее и комната, «инструмент» — тембр.
-  const [view, setView] = useState<'sketch' | 'track' | 'inst'>('sketch');
-  // Редактор волны живёт поверх содержимого вида: смена вида закрывает его.
-  const switchView = (v: 'sketch' | 'track' | 'inst') => {
-    if (waveEditor) onToggleWaveEditor(track.id);
+  // Нотка/звук — вкладки трека: открыта максимум одна. Редактор
+  // инструмента живёт в App (он съёживает остальные треки), отсюда
+  // только открывается. Две сущности карточки: «эскиз» — партия (ноты и
+  // её ручки, вид по умолчанию), «трек» — общее и комната.
+  const [view, setView] = useState<'sketch' | 'track'>('sketch');
+  // Смена вида закрывает редактор инструмента.
+  const switchView = (v: 'sketch' | 'track') => {
+    if (editorOpen) onCloseEditor();
     setView(v);
   };
   const [showPicker, setShowPicker] = useState(false);
   const [showScales, setShowScales] = useState(false);
-  const scratchRef = useRef<HTMLDivElement | null>(null);
-  const scratchRec = useRef<{ t0: number; pts: { dt: number; pos: number }[] } | null>(null);
-  const [scratchArmed, setScratchArmed] = useState(false);
-  const [scratchLive, setScratchLive] = useState(false);
-  const [scratchPlaying, setScratchPlaying] = useState(false);
-  const [scratchMap, setScratchMap] = useState<{ peaks: number[]; duration: number } | null>(null);
-  // Редактирование: во время драга точки/записи живём в локальном состоянии,
-  // в патч пишем на отпускании (один undo-шаг на правку).
-  const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
-  const dragIdx = useRef<number | null>(null);
-  const pendingAdd = useRef<{ t: number; pos: number } | null>(null);
-  const downXY = useRef<{ x: number; y: number } | null>(null);
   // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
   const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
   const dragProps = {
@@ -295,14 +242,12 @@ export const TrackRow = memo(function TrackRow({
     </span>
   );
   // Вкладки внутри «трека»; модуляции — раздел эскиза, свёрнут по умолчанию.
-  const [tab, setTab] = useState<'snd' | 'env' | 'timbre' | 'fx'>('snd');
   const [showMods, setShowMods] = useState(false);
   // Кривые партии: какая цель рисуется.
   const [autoTarget, setAutoTarget] = useState<AutoTarget>('volume');
   // Дорожка автоматизации под станом — открыта/закрыта (UI-состояние).
   const [autoLane, setAutoLane] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
-  const sampleFileRef = useRef<HTMLInputElement>(null);
 
   const rows = scaleOf(track).map((ratio, i) => ({ ratio, i })).reverse();
 
@@ -473,18 +418,6 @@ export const TrackRow = memo(function TrackRow({
   useEffect(() => {
     setSel(new Set());
   }, [pattern.id]);
-
-  // Мини-карта волны сэмпла для скрэтч-пэда.
-  useEffect(() => {
-    if (st.waveform !== 'sample' || (st.sampleMode ?? 'plain') !== 'scratch') return;
-    let alive = true;
-    void onScratchPeaks().then((m) => {
-      if (alive) setScratchMap(m);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [st.waveform, st.sampleMode, st.sampleId, onScratchPeaks]);
 
   const cellFromPoint = (x: number, y: number): { col: number; row: number } | null => {
     const el = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest?.('.cell') as HTMLElement | null;
@@ -953,12 +886,6 @@ export const TrackRow = memo(function TrackRow({
     typeof nt.len === 'number' && nt.len > 0
       ? Math.min(64, Math.max(0.05, nt.len))
       : noteCellsBase * Math.min(4, Math.max(0.1, nt.gate ?? 1));
-  // Длина ноты в секундах (без гейта) — как её посчитает triggerVoice:
-  // сетка («нота», шагов × шаг эскиза) или огибающая (атака + спад).
-  const noteSec =
-    st.noteSteps && st.noteSteps > 0
-      ? st.noteSteps * (pattern.rate ?? track.rate) * tickDuration(bpm)
-      : Math.max(st.attack, 0.0005) + st.decay;
   /** Начинается ли нота (col, row) поверх ещё звучащего хвоста предыдущей
    *  ноты той же высоты — только в этом случае рисуем тёмную головку. */
   const overlapsTail = (col: number, row: number): boolean => {
@@ -1064,12 +991,12 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => onSolo(track.id)}
           >S</button>
         </span>
-        {/* Переключатель сущности карточки: партия (эскиз) или общий звук
-            (трек). Слева, у имени — основная работа идёт здесь. Работает
-            и при открытом редакторе волны: тот закрывается сам. */}
+        {/* Переключатель сущности карточки: партия (эскиз), общий звук
+            (трек) или тембр (инструмент — большой редактор). Слева, у
+            имени — основная работа идёт здесь. */}
         <div className="seg mode-seg" data-ob="mode">
           <button
-            className={view === 'sketch' ? 'on' : ''}
+            className={view === 'sketch' && !editorOpen ? 'on' : ''}
             data-ob="mode-sketch"
             aria-label="эскиз"
             title="Эскиз — партия: ноты и её ручки (длина, шаг, громкость/пан, вход/выход, модуляции)"
@@ -1078,7 +1005,7 @@ export const TrackRow = memo(function TrackRow({
             эскиз
           </button>
           <button
-            className={view === 'track' ? 'on' : ''}
+            className={view === 'track' && !editorOpen ? 'on' : ''}
             data-ob="mode-track"
             aria-label="настройка трека"
             title="Трек — общее и комната: громкость/пан, фаза, тоника, эффекты, сайдчейн"
@@ -1087,17 +1014,17 @@ export const TrackRow = memo(function TrackRow({
             трек
           </button>
           <button
-            className={view === 'inst' ? 'on' : ''}
+            className={editorOpen ? 'on' : ''}
             data-ob="mode-inst"
             aria-label="инструмент"
-            title="Инструмент — тембр: волна/сэмпл, огибающая ноты, падение тона, фильтры, вибрато"
-            onClick={() => switchView('inst')}
+            title="Инструмент — большой редактор тембра: источник (волна/сэмпл), огибающая ноты, фильтры, вибрато, унисон; вкладки «волна» и «сэмпл» — своя волна и работа с сэмплом"
+            onClick={() => (editorOpen ? onCloseEditor() : onOpenEditor(track.id))}
           >
             инструмент
           </button>
         </div>
         {/* Чип инструмента — лицо тембра дорожки, виден и в свёрнутой
-            карточке. Клик — браузер звуков (та же точка входа, что
+            карточке. Клик — панель инструментов (та же точка входа, что
             «выбрать…» в настройке инструмента). */}
         <button
           className="inst-chip"
@@ -1109,21 +1036,34 @@ export const TrackRow = memo(function TrackRow({
         </button>
       </div>
 
-      {waveEditor && (
-        <WaveEditor
-          trackId={track.id}
+      {editorOpen && (
+        <InstrumentEditor
+          track={track}
           inst={inst}
+          pattern={pattern}
+          bpm={bpm}
+          tab={editorTab}
+          onTab={onEditorTab}
           onChangeInst={changeInst}
-          onClose={() => onToggleWaveEditor(track.id)}
+          onChangeTrack={(patch) => change(patch)}
+          onClose={onCloseEditor}
+          onPickSample={() => setShowPicker(true)}
+          onLoadSampleFile={loadSampleFile}
           getBuffer={onGetSampleBuffer}
           onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i }, a, b)}
           onPreviewNote={(i) => onPreviewNote({ ...st, ...i })}
           onTransformSample={onTransformSample}
+          onGenerateSample={onGenerateSample}
           busy={genBusy}
+          onScratchBegin={onScratchBegin}
+          onScratchMove={onScratchMove}
+          onScratchEnd={onScratchEnd}
+          onScratchPreview={onScratchPreview}
+          onScratchPeaks={onScratchPeaks}
         />
       )}
 
-      {!waveEditor && view === 'track' && (
+      {!editorOpen && view === 'track' && (
         <div className="track-head more-row panel" data-ob="sound-panel">
           <div className="panel-row">
             <span className="sub-cap">общее</span>
@@ -1303,705 +1243,7 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-      {!waveEditor && view === 'inst' && (
-        <div className="track-head more-row panel" data-ob="inst-panel">
-          <div className="tabs inst-tabs">
-            {(
-              [
-                ['snd', 'источник'],
-                ['env', 'огибающая'],
-                ['timbre', 'тембр'],
-              ] as const
-            ).map(([id, title]) => (
-              <button
-                key={id}
-                className={tab === id ? 'tab on' : 'tab'}
-                data-ob={`tab-${id}`}
-                onClick={() => setTab(id)}
-              >
-                {title}
-              </button>
-            ))}
-            <span className="spacer" />
-            <HelpHint guide="sound" scope={scope} label="Гид: настроить звук дорожки" />
-                    {tab === 'snd' && (
-              <button
-                className="save-inst"
-                data-ob="save-inst"
-                title="Сохранить звук дорожки как свой пресет — появится в браузере инструментов, категория «мои»"
-                aria-label="сохранить инструмент"
-                onClick={() => void saveInstrumentAs()}
-              >
-                {/* дискета: контур со срезом, жалюзи, окошко */}
-                <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-                  <path d="M1.7 1.7h8.2l2.4 2.4v8.2H1.7z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                  <path d="M4.2 1.7v3.6h4.6V1.7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                  <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                </svg>
-              </button>
-            )}
-          </div>
-          {tab === 'snd' && (
-          <div className="group" data-ob="inst-group">
-            {/* div, не label: label переносит hover/клики на первый
-                вложенный контрол — «выбрать…» подсвечивался при наведении
-                на соседей */}
-            {/* Имя инструмента — для контекста; смена — чипом в шапке
-                дорожки или кнопкой «инструменты»: обе точки открывают
-                панель с применением к этой дорожке. */}
-            <div className="lbl" title="Текущий инструмент: вычислен по параметрам — покрутил ручки, стал «свой». Сменить — чип инструмента в шапке дорожки или «инструменты» в шапке приложения">
-              инструмент
-              <span className="inline">
-                <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
-                  {instrumentNameOf(st)}
-                </span>
-              </span>
-            </div>
-            {/* Волна — иконками, «как на приборе»: одна форма — один глиф.
-                Подпись-подсказка на каждой. */}
-            <div className="lbl" title="Форма волны осциллятора — основа тембра">
-              волна
-              <span className="wave-pick" data-ob="wave-pick">
-                {WAVEFORMS.map((w) => (
-                  <button
-                    key={w}
-                    className={st.waveform === w ? 'on' : ''}
-                    title={WAVEFORM_LABELS[w]}
-                    aria-label={WAVEFORM_LABELS[w]}
-                    onClick={() => changeInst({ waveform: w })}
-                  >
-                    <WaveIcon wave={w} />
-                  </button>
-                ))}
-              </span>
-            </div>
-            {st.waveform === 'fm' && (
-              <>
-                <label title="Отношение частоты модулятора к ноте. Целые (1, 2, 3) — гармоничные тембры; иррациональные (1.41 ≈ √2) — колокольный негармоничный звон">
-                  FM-отношение, ×
-                  <NumField value={st.fmRatio ?? 2} min={0.25} max={16} step={0.01} onChange={(fmRatio) => changeInst({ fmRatio })} />
-                </label>
-                <label title="Глубина модуляции: 0 — чистый синус, 1–3 — мягкие электронные тембры, 5+ — ржа и металл. Индекс тает к хвосту ноты">
-                  FM-глубина
-                  <NumField value={st.fmIndex ?? 3} min={0} max={16} step={0.1} onChange={(fmIndex) => changeInst({ fmIndex })} />
-                </label>
-              </>
-            )}
-            {MORPH_LABELS[st.waveform] && (
-              <Knob
-                label="морф"
-                title={`Морф модели «${WAVEFORM_LABELS[st.waveform]}»: ${MORPH_LABELS[st.waveform]}. Двойной клик — точное число`}
-                value={Math.round((st.voiceMorph ?? 0.5) * 100)}
-                min={0} max={100} step={1}
-                onChange={(v) => changeInst({ voiceMorph: v / 100 })}
-              />
-            )}
-            {st.waveform === 'karplus' && (
-              <label title="Сколько секунд струна звенит до полной тишины — собственное затухание струны, поверх обычной огибающей ноты">
-                затухание струны, с
-                <NumField value={st.ksLife ?? 2.5} min={0.2} max={8} step={0.1} onChange={(ksLife) => changeInst({ ksLife })} />
-              </label>
-            )}
-            {st.waveform === 'sample' ? (
-              <>
-                <label title="Сэмпл из хранилища. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
-                  сэмпл
-                  <span className="inline">
-                    <span className="sample-name" title={st.sampleName ?? 'сэмпл не выбран'}>
-                      {st.sampleName ?? 'не выбран'}
-                    </span>
-                    <button
-                      onClick={() => setShowPicker(true)}
-                      title="Выбрать из хранилища: прослушать и положить в слот"
-                    >
-                      выбрать…
-                    </button>
-                    <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
-                    <input
-                      ref={sampleFileRef} type="file" accept="audio/*" hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) loadSampleFile(f);
-                        e.target.value = '';
-                      }}
-                    />
-                  </span>
-                </label>
-                <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью), гранулярно (нота = облако коротких осколков) или скрэтчем (нота = жест иглы)" data-ob="sample-mode">
-                  режим
-                  <select
-                    value={st.sampleMode ?? 'plain'}
-                    onChange={(e) => changeInst({ sampleMode: e.target.value as Instrument['sampleMode'] })}
-                  >
-                    <option value="plain">прямой</option>
-                    <option value="grain">гранулярный</option>
-                    <option value="scratch">скрэтч</option>
-                  </select>
-                </label>
-                {(st.sampleMode ?? 'plain') === 'grain' && (
-                  <>
-                    <span className="inline grain-presets">
-                      <button
-                        title="Мелкая крошка: короткие зёрна, много, широкий разброс — шершавая пыль"
-                        onClick={() => changeInst({ grainSizeMs: 20, grainCount: 24, grainScatter: 0.6 })}
-                      >
-                        пыль
-                      </button>
-                      <button
-                        title="Тёплое облако: средние зёрна, плотный поток"
-                        onClick={() => changeInst({ grainSizeMs: 180, grainCount: 12, grainScatter: 0.25 })}
-                      >
-                        облако
-                      </button>
-                      <button
-                        title="Почти цельные куски: длинные зёрна, мало, из одного места — лента"
-                        onClick={() => changeInst({ grainSizeMs: 400, grainCount: 4, grainScatter: 0.05 })}
-                      >
-                        лента
-                      </button>
-                    </span>
-                    <label title="Длина осколка (зерна) в миллисекундах: 20–60 — почти крап, 100–300 — тёплое облако, 400+ — почти слышимый сэмпл">
-                      зерно, мс
-                      <NumField value={st.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => changeInst({ grainSizeMs })} />
-                    </label>
-                    <label title="Сколько зёрен выпускает одна нота — плотность облака. 1–3 — редкие брызги, 15+ — сплошной поток">
-                      зёрен на ноту
-                      <NumField value={st.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => changeInst({ grainCount: Math.round(grainCount) })} />
-                    </label>
-                    <label title="Откуда в сэмпле брать осколки: 0 — начало, 0.5 — середина, 1 — конец">
-                      позиция
-                      <NumField value={Math.round((st.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => changeInst({ grainPos: v / 100 })} />
-                    </label>
-                    <label title="Разброс позиций зёрен вокруг заданной точки: 0 — все из одного места, 1 — по всему сэмплу">
-                      разброс
-                      <NumField value={Math.round((st.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => changeInst({ grainScatter: v / 100 })} />
-                    </label>
-                  </>
-                )}
-
-              </>
-            ) : null}
-            <button
-              className="we-open"
-              data-ob="we-open"
-              aria-label="редактор волны"
-              title="Редактор волны: обрезать сэмпл, разложить его в гармоники, нарисовать или дообогатить свою волну"
-              onClick={() => onToggleWaveEditor(track.id)}
-            >
-              править волну…
-            </button>
-          </div>
-          )}
-                    {tab === 'env' && (
-          <div className="env-tab" data-ob="env-tab">
-            <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
-            <NoteGraph
-              attack={st.attack}
-              decay={st.decay}
-              sustain={st.sustain ?? 0}
-              pitchDrop={st.pitchDrop}
-              pitchTime={st.pitchTime}
-              voiceLen={noteSec}
-              stepSec={tickDuration(bpm) * (pattern.rate ?? track.rate)}
-              steps={st.noteSteps && st.noteSteps > 0 ? st.noteSteps : null}
-              onEdit={(u) => changeInst(u)}
-              onPitch={(u) => changeInst(u)}
-              decayEditable={!st.noteSteps}
-            />
-            <div className="env-fields">
-              <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие">
-                атака, мс
-                <NumField
-                  value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
-                  onChange={(ms) => changeInst({ attack: Math.max(0.0005, ms / 1000) })}
-                />
-              </label>
-              <label
-                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит"
-              >
-                плато, %
-                <NumField
-                  value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
-                  onChange={(v) => changeInst({ sustain: v / 100 })}
-                />
-              </label>
-              <label
-                title={
-                  st.waveform === 'sample'
-                    ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
-                    : 'Сколько секунд звучит нота после удара'
-                }
-              >
-                спад, с
-                <NumField value={st.decay} min={0.01} max={4} step={0.01} onChange={(decay) => changeInst({ decay })} />
-              </label>
-              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
-                падение, ×
-                <NumField
-                  value={st.pitchDrop} min={1} max={16} step={0.5}
-                  onChange={(pitchDrop) => changeInst({ pitchDrop })}
-                />
-              </label>
-              <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-                время падения, с
-                <NumField
-                  value={st.pitchTime} min={0} max={2} step={0.01}
-                  onChange={(pitchTime) => changeInst({ pitchTime })}
-                />
-              </label>
-              <button
-                className="env-listen"
-                title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
-                onClick={() => onPreviewNote(st)}
-              >
-                ▶ послушать
-              </button>
-            </div>
-          </div>
-          )}
-                    {tab === 'timbre' && (
-          <>
-          <div className="group sub knob-row" data-ob="timbre-tab">
-            <span className="sub-cap">фильтры</span>
-            <Knob
-              label="низ"
-              title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай. Двойной клик — точное число"
-              value={st.filterLow} min={20} max={4000} step={10} log
-              onChange={(filterLow) => changeInst({ filterLow })}
-            />
-            <Knob
-              label="верх"
-              title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"
-              value={st.filterFreq} min={60} max={12000} step={10} log
-              onChange={(filterFreq) => changeInst({ filterFreq })}
-            />
-            <Knob
-              label="резонанс"
-              title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе. Двойной клик — точное число"
-              value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
-              onChange={(filterQ) => changeInst({ filterQ })}
-            />
-            <Knob
-              label="огиб. ↑↓"
-              bipolar
-              title="Огибающая фильтра: старт в полутонах от ручки «верх». Плюс — яркая атака-плак, минус — тёмный свелл; за «время» фильтр съезжает к базе. Двойной клик — точное число"
-              value={st.filterEnvAmount ?? 0} min={-24} max={24} step={0.5}
-              onChange={(filterEnvAmount) => changeInst({ filterEnvAmount })}
-            />
-            <Knob
-              label="время"
-              title="Огибающая фильтра: за сколько секунд фильтр съезжает к базе. 0.05–0.2 — щипок, 1+ — плавный свелл. Двойной клик — точное число"
-              value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}
-              onChange={(filterEnvTime) => changeInst({ filterEnvTime })}
-            />
-          </div>
-          <div className="group sub knob-row">
-            <span className="sub-cap">вибрато</span>
-            <Knob
-              label="скорость"
-              title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
-              value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
-              onChange={(vibratoRate) => changeInst({ vibratoRate })}
-            />
-            <Knob
-              label="глубина"
-              title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
-              value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
-              onChange={(vibratoDepth) => changeInst({ vibratoDepth })}
-            />
-            <Knob
-              label="задержка"
-              title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
-              value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
-              onChange={(vibratoDelay) => changeInst({ vibratoDelay })}
-            />
-          </div>
-          <div className="group sub knob-row" data-ob="unison-group">
-            <span className="sub-cap">унисон</span>
-            <span className="scope-cap" title="Унисон — для базовых волн (синус/пила/квадрат/треугольник)">базовые волны</span>
-            <Knob
-              label="голоса"
-              title="Унисон: сколько расстроенных копий осциллятора играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире. Двойной клик — точное число"
-              value={st.unisonVoices ?? 1} min={1} max={8} step={1}
-              onChange={(unisonVoices) => changeInst({ unisonVoices })}
-            />
-            <Knob
-              label="детюн"
-              title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
-              value={st.unisonDetune ?? 12} min={0} max={50} step={1}
-              onChange={(unisonDetune) => changeInst({ unisonDetune })}
-            />
-            <Knob
-              label="разброс"
-              title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
-              value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
-              onChange={(v) => changeInst({ unisonSpread: v / 100 })}
-            />
-          </div>
-          <div className="group sub" data-ob="arp-group">
-            <div className="sub-head">
-              <span className="sub-cap">арпеджиатор</span>
-              <span className="scope-cap" title="Арпеджиатор — свойство дорожки: общий для всех её инструментов и эскизов">дорожка</span>
-              <span className="spacer" />
-              <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
-            </div>
-            <label
-              title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
-              data-ob="arp"
-            >
-              <input
-                type="checkbox"
-                checked={!!track.arp}
-                onChange={(e) =>
-                  change({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
-                }
-              />
-              включить
-            </label>
-            {track.arp && (
-              <>
-                <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
-                  тип
-                  <select
-                    value={track.arp.mode}
-                    onChange={(e) => change({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
-                  >
-                    {(Object.keys(ARP_MODE_LABELS) as ArpMode[]).map((m) => (
-                      <option key={m} value={m}>{ARP_MODE_LABELS[m]}</option>
-                    ))}
-                  </select>
-                </label>
-                <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
-                  дробление
-                  <NumField
-                    value={track.arp.div} min={0.25} max={8} step={0.25} narrow
-                    onChange={(div) => change({ arp: { ...track.arp!, div } })}
-                  />
-                </label>
-                <label title="Повтор фигуры по октавам — классика арпеджио">
-                  октавы
-                  <NumField
-                    value={track.arp.octaves} min={1} max={4} narrow
-                    onChange={(octaves) => change({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
-                  />
-                </label>
-              </>
-            )}
-          </div>
-          </>
-          )}
-        </div>
-      )}
-
-      {!waveEditor && st.waveform === 'sample' && (st.sampleMode ?? 'plain') === 'scratch' && (
-        <div className={'scratch-bar' + (scratchArmed || scratchLive ? ' recording' : '')} data-ob="scratch-bar">
-          <div className="scratch-actions">
-            <button
-              className={scratchArmed || scratchLive ? 'on' : ''}
-              data-ob="scratch-rec"
-              title="Нажми — и проведи мышью по пэду: путь запишется жестом (до 48 сглаженных точек). Отпустишь — запись закончится сама"
-              onClick={() => setScratchArmed((v) => !v)}
-            >
-              {scratchArmed || scratchLive ? '● веди по пэду…' : '● записать жест'}
-            </button>
-            {(st.scratchPoints ?? []).length > 0 && (
-              <button
-                title="Стереть жест: пэд станет пустым (границы куска не трогаются)"
-                onClick={() => changeInst({ scratchPoints: [] })}
-              >
-                очистить жест
-              </button>
-            )}
-            <button
-              className={scratchPlaying ? 'on' : ''}
-              data-ob="scratch-play"
-              title="Проиграть жест одной нотой — проверить, как он звучит в нотах"
-              onClick={() => {
-                onScratchPreview();
-                const len =
-                  track.noteSteps && track.noteSteps > 0
-                    ? track.noteSteps * track.rate * tickDuration(bpm)
-                    : Math.max(st.attack, 0.0005) + st.decay;
-                setScratchPlaying(true);
-                window.setTimeout(() => setScratchPlaying(false), (len + 0.15) * 1000);
-              }}
-            >
-              {scratchPlaying ? '▶ играет…' : '▶ послушать'}
-            </button>
-            <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
-            <span
-              className="mini-info"
-              title="Длительность жеста = длина ноты: «нота» в тулбаре стана (шаги) или атака+спад во вкладке «огибающая»"
-            >
-              жест ≈{' '}
-              {(
-                (track.noteSteps && track.noteSteps > 0
-                  ? track.noteSteps * track.rate * tickDuration(bpm)
-                  : Math.max(st.attack, 0.0005) + st.decay)
-              ).toFixed(2)}
-              с
-            </span>
-          </div>
-          <div className="scratch-row">
-<div
-              className="scratch-side"
-              title="Кусок сэмпла: тяни верхнюю или нижнюю границу — подвинешь конец/начало куска. Полоски — громкость"
-            >
-              <svg
-                className="scratch-map"
-                viewBox="0 0 10 100"
-                preserveAspectRatio="none"
-                onPointerDown={(e) => {
-                  if (!scratchMap || e.button !== 0) return;
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-                  const dur = scratchMap.duration;
-                  const rs = st.sampleStart ?? 0;
-                  const re = st.sampleEnd ?? dur;
-                  const edge =
-                    Math.abs(pos - re / dur) < 0.06
-                      ? 'end'
-                      : Math.abs(pos - rs / dur) < 0.06
-                        ? 'start'
-                        : null;
-                  if (!edge) return;
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  (e.currentTarget as unknown as HTMLElement).dataset.edge = edge;
-                }}
-                onPointerMove={(e) => {
-                  const edge = (e.currentTarget as unknown as HTMLElement).dataset.edge;
-                  if (!edge || !scratchMap) return;
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-                  const dur = scratchMap.duration;
-                  const rs = st.sampleStart ?? 0;
-                  const re = st.sampleEnd ?? dur;
-                  if (edge === 'end')
-                    changeInst({ sampleEnd: clampSec(Math.max(rs + 0.01, pos * dur), 0.001, dur) });
-                  else
-                    changeInst({ sampleStart: clampSec(Math.min(re - 0.01, pos * dur), 0, dur) });
-                }}
-                onPointerUp={(e) => {
-                  delete (e.currentTarget as unknown as HTMLElement).dataset.edge;
-                }}
-              >
-                {(scratchMap?.peaks ?? []).map((pk, i) => {
-                  const y = 100 - ((i + 0.5) * 100) / 64;
-                  const h = pk * 100;
-                  return (
-                    <rect
-                      key={i}
-                      x={1}
-                      y={y - h / 2}
-                      width={8}
-                      height={Math.max(0.4, h)}
-                      fill="var(--text-dim)"
-                      opacity={0.55}
-                    />
-                  );
-                })}
-                {scratchMap &&
-                  (() => {
-                    const dur = scratchMap.duration;
-                    const rsY = (1 - (st.sampleStart ?? 0) / dur) * 100;
-                    const reY = (1 - Math.min(st.sampleEnd ?? dur, dur) / dur) * 100;
-                    return (
-                      <>
-                        <rect x={0} y={0} width={10} height={Math.max(0, reY)} className="region-dim" />
-                        <rect x={0} y={rsY} width={10} height={Math.max(0, 100 - rsY)} className="region-dim" />
-                        <line x1={0} y1={reY} x2={10} y2={reY} className="region-line" />
-                        <line x1={0} y1={rsY} x2={10} y2={rsY} className="region-line" />
-                      </>
-                    );
-                  })()}
-              </svg>
-            </div>
-            <div className="scratch-main">
-            <div
-              className="scratch-track"
-              ref={scratchRef}
-              data-ob="scratch-pad"
-              title="Жест иглы. Клик — добавить точку, тянуть точку — править, правый клик — удалить. Наклон = скорость иглы: круче — быстрее"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return;
-                  const el = scratchRef.current;
-                  if (!el) return;
-                  const r = el.getBoundingClientRect();
-                  const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-                  const pts = st.scratchPoints ?? [];
-                  const hit = pts.findIndex(
-                    (pt) => Math.abs(pt.t - t) < 0.03 && Math.abs(pt.pos - pos) < 0.07,
-                  );
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  downXY.current = { x: e.clientX, y: e.clientY };
-                  if (hit >= 0) {
-                    dragIdx.current = hit;
-                    setDragPts([...pts]);
-                  } else if (scratchArmed) {
-                    setScratchLive(true);
-                    scratchRec.current = { t0: performance.now(), pts: [{ dt: 0, pos }] };
-                    onScratchBegin(pos);
-                  } else {
-                    pendingAdd.current = { t, pos };
-                  }
-                }}
-                onPointerMove={(e) => {
-                  const el = scratchRef.current;
-                  if (!el) return;
-                  const r = el.getBoundingClientRect();
-                  const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-                  const pos = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-                  if (dragIdx.current !== null && dragPts) {
-                    setDragPts(dragPts.map((pt, i) => (i === dragIdx.current ? { t, pos } : pt)));
-                    return;
-                  }
-                  const rec = scratchRec.current;
-                  if (rec) {
-                    onScratchMove(pos);
-                    rec.pts.push({ dt: performance.now() - rec.t0, pos });
-                    return;
-                  }
-                  const down = downXY.current;
-                  if (down && pendingAdd.current) {
-                    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
-                      pendingAdd.current = null;
-                    }
-                  }
-                }}
-                onPointerUp={() => {
-                  downXY.current = null;
-                  if (dragIdx.current !== null && dragPts) {
-                    const sorted = [...dragPts].sort((a, b) => a.t - b.t);
-                    dragIdx.current = null;
-                    setDragPts(null);
-                    changeInst({ scratchPoints: sorted });
-                    return;
-                  }
-                  const rec = scratchRec.current;
-                  scratchRec.current = null;
-                  if (rec) {
-                    onScratchEnd();
-                    setScratchLive(false);
-                    setScratchArmed(false);
-                    if (rec.pts.length >= 2) {
-                      const dur = Math.max(1, rec.pts[rec.pts.length - 1].dt);
-                      const N = 48;
-                      const raw = rec.pts;
-                      const res: { t: number; pos: number }[] = [];
-                      let j = 0;
-                      for (let i = 0; i <= N; i++) {
-                        const tt = (i / N) * dur;
-                        while (j < raw.length - 2 && raw[j + 1].dt < tt) j++;
-                        const a1 = raw[j];
-                        const a2 = raw[j + 1] ?? a1;
-                        const f = a2.dt > a1.dt ? (tt - a1.dt) / (a2.dt - a1.dt) : 0;
-                        res.push({
-                          t: i / N,
-                          pos: a1.pos + (a2.pos - a1.pos) * Math.max(0, Math.min(1, f)),
-                        });
-                      }
-                      const smooth = res.map((x, i) => {
-                        let sum = 0;
-                        let c = 0;
-                        for (let k = i - 1; k <= i + 1; k++) {
-                          const y = res[Math.min(res.length - 1, Math.max(0, k))];
-                          sum += y.pos;
-                          c++;
-                        }
-                        return { t: x.t, pos: sum / c };
-                      });
-                      changeInst({ scratchPoints: smooth });
-                    }
-                    return;
-                  }
-                  const pending = pendingAdd.current;
-                  pendingAdd.current = null;
-                  if (pending) {
-                    changeInst({
-                      scratchPoints: [...(st.scratchPoints ?? []), pending].sort(
-                        (a, b) => a.t - b.t,
-                      ),
-                    });
-                  }
-                }}
-              >
-                <svg className="scratch-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <polyline
-                    fill="none"
-                    stroke="var(--accent-2)"
-                    strokeWidth="1.5"
-                    vectorEffect="non-scaling-stroke"
-                    points={(dragPts ?? st.scratchPoints ?? [])
-                      .map((pt) => `${(pt.t * 100).toFixed(2)},${((1 - pt.pos) * 100).toFixed(2)}`)
-                      .join(' ')}
-                  />
-                </svg>
-                {(dragPts ?? st.scratchPoints ?? []).map((pt, i) => (
-                  <span
-                    key={i}
-                    className="scratch-dot"
-                    style={{ left: `${pt.t * 100}%`, top: `${(1 - pt.pos) * 100}%` }}
-                    title={`место ${Math.round(pt.pos * 100)}% · момент ${Math.round(pt.t * 100)}% ноты · тянуть — править, правый клик — удалить`}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      changeInst({ scratchPoints: (st.scratchPoints ?? []).filter((_, j) => j !== i) });
-                    }}
-                  />
-                ))}
-                {(scratchArmed || scratchLive) && (
-                  <span className="scratch-hint">идёт запись — веди мышью по пэду</span>
-                )}
-                {(st.scratchPoints ?? []).length === 0 && !dragPts && !scratchArmed && (
-                  <span className="scratch-hint">кликни — появится точка; несколько точек — жест</span>
-                )}
-              </div>
-              <span className="scratch-axis">время ноты →</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!waveEditor && st.waveform === 'sample' && (
-        <div className="gen-bar" data-ob="gen-bar">
-          <label
-            className="gen-label"
-            title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»"
-          >
-            описание
-            <input
-              className="gen-prompt"
-              placeholder="например: глубокий басовый удар с глиной, хрустящее стеклянное тиканье, шорох виниловой пыли…"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && prompt.trim()) onGenerateSample(track.id, prompt.trim(), genSeconds);
-              }}
-            />
-          </label>
-          <label title="Длительность сэмпла в секундах">
-            сек
-            <NumField
-              value={genSeconds} min={0.5} max={20} step={0.5}
-              onChange={(v) => setGenSeconds(v)}
-            />
-          </label>
-          <button
-            disabled={genBusy || !prompt.trim()}
-            title="Сгенерировать и положить в слот (Enter в поле тоже работает)"
-            onClick={() => onGenerateSample(track.id, prompt.trim(), genSeconds)}
-          >
-            {genBusy ? 'генерирую…' : 'сгенерировать'}
-          </button>
-          {st.sampleName && genBusy === false && (
-            <span className="mini-info" title="Сейчас в слоте">в слоте: {st.sampleName}</span>
-          )}
-          <HelpHint guide="samples" step={3} scope={scope} label="Гид: сгенерировать сэмпл" />
-        </div>
-      )}
-
-      {!waveEditor && view === 'sketch' && (
+      {!editorOpen && view === 'sketch' && (
         <div className="sketch-box" data-ob="sketch-box">
           {/* Чипы эскизов — шапка плашки: выбор эскиза и настройка эскиза
               в одном блоке, активный чип называет то, что правишь */}
