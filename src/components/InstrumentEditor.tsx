@@ -567,46 +567,40 @@ export function InstrumentEditor({
               decayEditable={!st.noteSteps}
             />
             <div className="env-fields">
-              <label title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие">
-                атака, мс
-                <NumField
-                  value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
-                  onChange={(ms) => onChangeInst({ attack: Math.max(0.0005, ms / 1000) })}
-                />
-              </label>
-              <label
-                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит"
-              >
-                плато, %
-                <NumField
-                  value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
-                  onChange={(v) => onChangeInst({ sustain: v / 100 })}
-                />
-              </label>
-              <label
+              <Knob
+                label="атака, мс"
+                title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие. Двойной клик — точное число"
+                value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
+                onChange={(ms) => onChangeInst({ attack: Math.max(0.0005, ms / 1000) })}
+              />
+              <Knob
+                label="плато, %"
+                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит. Двойной клик — точное число"
+                value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
+                onChange={(v) => onChangeInst({ sustain: v / 100 })}
+              />
+              <Knob
+                label="спад, с"
                 title={
                   st.waveform === 'sample'
                     ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
                     : 'Сколько секунд звучит нота после удара'
                 }
-              >
-                спад, с
-                <NumField value={st.decay} min={0.01} max={4} step={0.01} onChange={(decay) => onChangeInst({ decay })} />
-              </label>
-              <label title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения">
-                падение, ×
-                <NumField
-                  value={st.pitchDrop} min={1} max={16} step={0.5}
-                  onChange={(pitchDrop) => onChangeInst({ pitchDrop })}
-                />
-              </label>
-              <label title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12">
-                время падения, с
-                <NumField
-                  value={st.pitchTime} min={0} max={2} step={0.01}
-                  onChange={(pitchTime) => onChangeInst({ pitchTime })}
-                />
-              </label>
+                value={st.decay} min={0.01} max={4} step={0.01}
+                onChange={(decay) => onChangeInst({ decay })}
+              />
+              <Knob
+                label="падение, ×"
+                title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения. Двойной клик — точное число"
+                value={st.pitchDrop} min={1} max={16} step={0.5}
+                onChange={(pitchDrop) => onChangeInst({ pitchDrop })}
+              />
+              <Knob
+                label="время падения, с"
+                title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12. Двойной клик — точное число"
+                value={st.pitchTime} min={0} max={2} step={0.01}
+                onChange={(pitchTime) => onChangeInst({ pitchTime })}
+              />
               <button
                 className="env-listen"
                 title="Прослушать ноту с этой огибающей, фильтрами и падением тона"

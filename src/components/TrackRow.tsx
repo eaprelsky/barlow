@@ -1175,62 +1175,52 @@ export const TrackRow = memo(function TrackRow({
                 </select>
                 {fx.type === 'delay' ? (
                   <>
-                    <span className="mr" title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс)">
-                      <NumField
-                        value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10}
-                        onChange={(ms) => updateDelay(i, { timeSec: ms / 1000 })}
-                      />
-                      <i>мс</i>
-                    </span>
-                    <SliderField
-                      variant="mr"
-                      title="Затухание повторов: 0% — один повтор, 80% — длинное эхо"
-                      value={Math.round(fx.feedback * 100)}
-                      min={0} max={90} step={5}
-                      display={`${Math.round(fx.feedback * 100)}%`}
-                      unit="%"
+                    <Knob
+                      label="время, мс"
+                      title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс). Двойной клик — точное число"
+                      value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10} log
+                      onChange={(ms) => updateDelay(i, { timeSec: ms / 1000 })}
+                    />
+                    <Knob
+                      label="фидбек"
+                      title="Затухание повторов: 0% — один повтор, 80% — длинное эхо. Двойной клик — точное число"
+                      value={Math.round(fx.feedback * 100)} min={0} max={90} step={5}
                       onChange={(v) => updateDelay(i, { feedback: v / 100 })}
                     />
                   </>
                 ) : fx.type === 'reverb' ? (
-                  <span className="mr" title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор">
-                    <NumField
-                      value={fx.sizeSec} min={0.2} max={8} step={0.1}
-                      onChange={(sizeSec) => updateReverb(i, { sizeSec })}
-                    />
-                    <i>с</i>
-                  </span>
+                  <Knob
+                    label="размер, с"
+                    title="Размер пространства: 0.5 — комната, 2 — зал, 5 — собор. Двойной клик — точное число"
+                    value={fx.sizeSec} min={0.2} max={8} step={0.1}
+                    onChange={(sizeSec) => updateReverb(i, { sizeSec })}
+                  />
                 ) : fx.type === 'dist' ? (
-                  <span className="mr" title="Сила перегруза: 2 — тёплое насыщение, 10 — рваная шерсть, 30 — стена">
-                    <NumField
-                      value={fx.drive} min={1} max={40} step={0.5}
-                      onChange={(drive) => updateEffect(i, 'dist', { drive })}
-                    />
-                  </span>
+                  <Knob
+                    label="драйв"
+                    title="Сила перегруза: 2 — тёплое насыщение, 10 — рваная шерсть, 30 — стена. Двойной клик — точное число"
+                    value={fx.drive} min={1} max={40} step={0.5}
+                    onChange={(drive) => updateEffect(i, 'dist', { drive })}
+                  />
                 ) : fx.type === 'chorus' ? (
-                  <span className="mr" title="Скорость разжижения: 0.2–0.8 Гц — мягкое течение, выше 3 — рыскающий">
-                    <NumField
-                      value={fx.rate} min={0.05} max={8} step={0.05}
-                      onChange={(rate) => updateEffect(i, 'chorus', { rate })}
-                    />
-                    <i>Гц</i>
-                  </span>
+                  <Knob
+                    label="скорость, Гц"
+                    title="Скорость разжижения: 0.2–0.8 Гц — мягкое течение, выше 3 — рыскающий. Двойной клик — точное число"
+                    value={fx.rate} min={0.05} max={8} step={0.05} log
+                    onChange={(rate) => updateEffect(i, 'chorus', { rate })}
+                  />
                 ) : (
-                  <span className="mr" title="Битовая глубина: 2–4 — развалившийся цифровой хлам, 6–8 — ретро-семплер, 12 — едва заметно">
-                    <NumField
-                      value={fx.bits} min={2} max={12} step={1}
-                      onChange={(bits) => updateEffect(i, 'lofi', { bits: Math.round(bits) })}
-                    />
-                    <i>бит</i>
-                  </span>
+                  <Knob
+                    label="биты"
+                    title="Битовая глубина: 2–4 — развалившийся цифровой хлам, 6–8 — ретро-семплер, 12 — едва заметно. Двойной клик — точное число"
+                    value={fx.bits} min={2} max={12} step={1}
+                    onChange={(bits) => updateEffect(i, 'lofi', { bits: Math.round(bits) })}
+                  />
                 )}
-                <SliderField
-                  variant="mr"
-                  title="Сколько эффекта подмешать к чистому звуку"
-                  value={Math.round(fx.mix * 100)}
-                  min={0} max={100} step={5}
-                  display={`${Math.round(fx.mix * 100)}%`}
-                  unit="%"
+                <Knob
+                  label="микс"
+                  title="Сколько эффекта подмешать к чистому звуку. Двойной клик — точное число"
+                  value={Math.round(fx.mix * 100)} min={0} max={100} step={5}
                   onChange={(mix) => {
                     if (fx.type === 'delay') updateDelay(i, { mix: mix / 100 });
                     else if (fx.type === 'reverb') updateReverb(i, { mix: mix / 100 });
@@ -1272,24 +1262,22 @@ export const TrackRow = memo(function TrackRow({
               </label>
               {track.sidechain && (
                 <>
-                  <label title="Глубина приглушения при ударе источника">
-                    глубина, %
-                    <NumField
-                      value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
-                      onChange={(v) =>
-                        change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
-                      }
-                    />
-                  </label>
-                  <label title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание">
-                    восстановление, с
-                    <NumField
-                      value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
-                      onChange={(v) =>
-                        change({ sidechain: { ...track.sidechain!, releaseSec: v } })
-                      }
-                    />
-                  </label>
+                  <Knob
+                    label="глубина"
+                    title="Глубина приглушения при ударе источника. Двойной клик — точное число"
+                    value={Math.round((track.sidechain.amount ?? 0.5) * 100)} min={0} max={100} step={5}
+                    onChange={(v) =>
+                      change({ sidechain: { ...track.sidechain!, amount: v / 100 } })
+                    }
+                  />
+                  <Knob
+                    label="восстановление, с"
+                    title="Время восстановления после удара: 0.1 — резкий памп, 0.5 — мягкое выпускание. Двойной клик — точное число"
+                    value={track.sidechain.releaseSec ?? 0.25} min={0.05} max={2} step={0.05}
+                    onChange={(v) =>
+                      change({ sidechain: { ...track.sidechain!, releaseSec: v } })
+                    }
+                  />
                 </>
               )}
             </div>

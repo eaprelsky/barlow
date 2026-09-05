@@ -2954,6 +2954,12 @@ header button svg {
   align-items: flex-end;
 }
 
+/* Списки-колонки (эффекты, модуляции) — от левого края: flex-end выше
+   нужен горизонтальным label-группам, а колонку он прижимает вправо */
+.more-row.panel .panel-row .group.mods-group {
+  align-items: flex-start;
+}
+
 .panel-row {
   display: flex;
   flex-direction: column;
