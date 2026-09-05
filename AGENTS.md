@@ -46,14 +46,14 @@
 
 ## Роадмап
 Готово: секвенсор, арранжмент, модуляции, эффекты, сэмплер, ИИ-генерация
-(ElevenLabs, `src/ai/providers.ts` — провайдер-агностик), огибающая
+(ElevenLabs + fal.ai: генерация текст→звук и морфинг сэмпла audio-to-audio,
+`src/ai/providers.ts` — провайдер-агностик), огибающая
 перехода сцен (fadeIn/fadeOut на эскизе, рампы в armSceneExit движка),
 редактор волны (обрезка сэмпла sampleStart/End, своя волна из парциалов
 `Track.wave`, FFT-разложение сэмпла: `components/WaveEditor.tsx`,
 `music/fft.ts`), арпеджиатор (`audio/arp.ts`, типы как в Ableton),
 интерактивный онбординг (`src/onboarding/`).
-Дальше: fal.ai вторым провайдером (принесёт и audio-to-audio — интерфейс
-`transform` уже в providers.ts) → агент MCP → Launchpad MK3 / VST.
+Дальше: агент MCP → Launchpad MK3 / VST.
 Архитектурные решения — docs/DESIGN.md.
 
 ## Онбординг (`src/onboarding/`)
@@ -97,7 +97,11 @@ Rust-порт аудио пробовали, звук не сходился с �
 остались, не подключены и НЕ требуют синхронизации при правках звука.
 
 ## ИИ и ключи
-- Ключ ElevenLabs в localStorage `barlow.ai.v1` (личный локальный инструмент).
+- Настройки ИИ в localStorage `barlow.ai.v1`: `{providerId, keys}` — ключ
+  на каждого провайдера (ElevenLabs, fal.ai), переключение не теряет ключи
+  (личный локальный инструмент). fal.ai — очередь `queue.fal.run` +
+  поллинг, CORS открыт; модель Stable Audio 3 small SFX (a2a и t2s),
+  аудио уходит data URI.
 - При публикации/Tauri ключи — за нативным слоем, не в браузере.
 
 ## Дебаг-мост (ИИ-агент ↔ приложение)

@@ -27,7 +27,7 @@ import { NumField } from './components/NumField';
 import { SliderField } from './components/SliderField';
 import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
-import { PROVIDERS } from './ai/providers';
+import { DEFAULT_PROVIDER, PROVIDERS } from './ai/providers';
 import { putSample, getSampleBlob } from './audio/library';
 import type { SampleMeta } from './audio/library';
 import type { InstrumentPreset } from './music/instrumentPresets';
@@ -69,22 +69,27 @@ const panText = (pan: number) =>
 
 interface AiSettings {
   providerId: string;
-  apiKey: string;
+  // Ключ на каждого провайдера: переключение сервиса не теряет ключи.
+  keys: Record<string, string>;
 }
 
 function loadAiSettings(): AiSettings {
+  const fallback: AiSettings = { providerId: DEFAULT_PROVIDER, keys: {} };
   try {
     const raw = localStorage.getItem(AI_KEY_STORE);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AiSettings>;
-      if (parsed && typeof parsed.apiKey === 'string') {
-        return { providerId: PROVIDERS[0].id, apiKey: parsed.apiKey };
-      }
-    }
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<AiSettings> & { apiKey?: string };
+    const keys = { ...(parsed.keys ?? {}) };
+    // До провайдеров ключ был один (ElevenLabs) — переносим.
+    if (typeof parsed.apiKey === 'string' && !keys.elevenlabs) keys.elevenlabs = parsed.apiKey;
+    const providerId = PROVIDERS.some((p) => p.id === parsed.providerId)
+      ? parsed.providerId!
+      : DEFAULT_PROVIDER;
+    return { providerId, keys };
   } catch {
     /* настройки необязательны */
   }
-  return { providerId: PROVIDERS[0].id, apiKey: '' };
+  return fallback;
 }
 
 function loadUiState(): { collapsed: Record<string, boolean> } {
@@ -1169,17 +1174,20 @@ export default function App() {
     });
   }, []);
 
+  /** Ключ активного провайдера (пустой — не настроен). */
+  const aiKey = ai.keys[ai.providerId] ?? '';
+
   /** Сгенерировать сэмпл по описанию и положить в слот трека. */
   const generateSample = useCallback(
     async (trackId: string, prompt: string, seconds: number) => {
       const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
-      if (!ai.apiKey) {
+      if (!ai.keys[provider.id]) {
         void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-генерация');
         return;
       }
       setGenBusy((b) => ({ ...b, [trackId]: true }));
       try {
-        const blob = await provider.generate({ apiKey: ai.apiKey, prompt, seconds });
+        const blob = await provider.generate({ apiKey: ai.keys[provider.id], prompt, seconds });
         const meta = await putSample(blob, prompt.slice(0, 40));
         setPatch((p) => ({
           ...p,
@@ -1201,18 +1209,19 @@ export default function App() {
     [ai],
   );
 
-  /** ИИ-преобразование сэмпла в слоте по описанию (audio-to-audio).
-   *  Провайдер без a2a честно отказывается — нужен fal.ai (роадмап). */
+  /** ИИ-морфинг сэмпла в слоте по описанию (audio-to-audio, fal.ai):
+   *  результат ложится в слот новым сэмпла — исходник остаётся
+   *  в библиотеке. */
   const transformSample = useCallback(
-    async (trackId: string, prompt: string, strength: number) => {
+    async (trackId: string, prompt: string, strength: number, duration?: number) => {
       const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
-      if (!ai.apiKey) {
+      if (!ai.keys[provider.id]) {
         void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-преобразование');
         return;
       }
       if (!provider.transform || !provider.supportsTransform) {
         void alertDialog(
-          `«${provider.title}» не умеет audio-to-audio — только текст→звук. Преобразование сэмпла появится с провайдером fal.ai (в роадмапе)`,
+          `«${provider.title}» не умеет audio-to-audio — только текст→звук. Переключись на fal.ai в настройках (шестерёнка в шапке)`,
           'ИИ-преобразование',
         );
         return;
@@ -1223,7 +1232,13 @@ export default function App() {
       if (!blob) return;
       setGenBusy((b) => ({ ...b, [trackId]: true }));
       try {
-        const out = await provider.transform({ apiKey: ai.apiKey, prompt, audio: blob, strength });
+        const out = await provider.transform({
+          apiKey: ai.keys[provider.id],
+          prompt,
+          audio: blob,
+          strength,
+          duration,
+        });
         const meta = await putSample(out, prompt.slice(0, 40));
         setPatch((p) => ({
           ...p,
@@ -1742,30 +1757,45 @@ export default function App() {
 
       {showAi && (
         <div className="ai-panel" data-ob="ai-panel">
-          <label data-ob="ai-key" title="Ключ хранится только в этом браузере (localStorage). Взять: elevenlabs.io → Profile → API Keys. Сэмпл-трек → «сгенерировать по описанию»">
-            ключ API к ElevenLabs
-            <span className="ai-key-wrap">
-              <input
-                type={showAiKey ? 'text' : 'password'} className="ai-key-input"
-                placeholder="sk_…"
-                value={ai.apiKey}
-                onChange={(e) => saveAi({ apiKey: e.target.value })}
-              />
-              <button
-                className="ai-key-eye"
-                aria-label={showAiKey ? 'скрыть ключ' : 'показать ключ'}
-                title={showAiKey ? 'Скрыть ключ' : 'Показать ключ'}
-                onClick={() => setShowAiKey((v) => !v)}
-              >
-                {/* глаз: контур со зрачком; перечёркнут — скрыт */}
-                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-                  <path d="M1.4 7C2.6 4.6 4.7 3.2 7 3.2S11.4 4.6 12.6 7C11.4 9.4 9.3 10.8 7 10.8S2.6 9.4 1.4 7Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                  <circle cx="7" cy="7" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                  {!showAiKey && <path d="M2.2 11.8 11.8 2.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />}
-                </svg>
-              </button>
-            </span>
-          </label>
+          {(() => {
+            const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
+            return (
+              <>
+                <label data-ob="ai-provider" title="Сервис ИИ. ElevenLabs — генерация звуков по описанию; fal.ai — тоже генерация плюс морфинг: преобразование сэмпла в слоте по описанию (audio-to-audio)">
+                  сервис
+                  <select value={ai.providerId} onChange={(e) => saveAi({ providerId: e.target.value })}>
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                  </select>
+                </label>
+                <label data-ob="ai-key" title={`Ключ хранится только в этом браузере (localStorage). ${provider.keyHint ?? ''}. Ключи других сервисов не теряются при переключении`}>
+                  ключ API
+                  <span className="ai-key-wrap">
+                    <input
+                      type={showAiKey ? 'text' : 'password'} className="ai-key-input"
+                      placeholder={provider.id === 'fal' ? 'id:secret' : 'sk_…'}
+                      value={ai.keys[provider.id] ?? ''}
+                      onChange={(e) => saveAi({ keys: { ...ai.keys, [provider.id]: e.target.value } })}
+                    />
+                    <button
+                      className="ai-key-eye"
+                      aria-label={showAiKey ? 'скрыть ключ' : 'показать ключ'}
+                      title={showAiKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      onClick={() => setShowAiKey((v) => !v)}
+                    >
+                      {/* глаз: контур со зрачком; перечёркнут — скрыт */}
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                        <path d="M1.4 7C2.6 4.6 4.7 3.2 7 3.2S11.4 4.6 12.6 7C11.4 9.4 9.3 10.8 7 10.8S2.6 9.4 1.4 7Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                        <circle cx="7" cy="7" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                        {!showAiKey && <path d="M2.2 11.8 11.8 2.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />}
+                      </svg>
+                    </button>
+                  </span>
+                </label>
+              </>
+            );
+          })()}
           <HelpHint guide="ai" label="Гид: включить ИИ-генерацию" />
         </div>
       )}

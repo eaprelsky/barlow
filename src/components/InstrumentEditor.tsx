@@ -78,7 +78,7 @@ interface Props {
   onPreviewRegion: (inst: Instrument, fromSec: number, toSec: number) => void;
   /** Превью ноты тембром (карточка сольёт с дорожкой). */
   onPreviewNote: (i: Instrument) => void;
-  onTransformSample: (trackId: string, prompt: string, strength: number) => void;
+  onTransformSample: (trackId: string, prompt: string, strength: number, duration?: number) => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   busy: boolean;
   onScratchBegin: (pos: number) => void;
@@ -266,6 +266,14 @@ export function InstrumentEditor({
     sel && sel[1] - sel[0] > 0.0005 && dur > 0
       ? [sel[0] * dur, sel[1] * dur]
       : null;
+  // Длительность того, что реально играет (морфинг держится в её
+  // рамках): кусок обрезки или весь сэмпл.
+  const aiDuration =
+    inst.sampleStart !== undefined || inst.sampleEnd !== undefined
+      ? Math.max(0.2, regEnd - regStart)
+      : dur > 0
+        ? dur
+        : undefined;
 
   // ---- Черновик волны ----
   // Правки вкладки «волна» (и FFT-разложение) пишутся сюда; звучащий
@@ -683,14 +691,14 @@ export function InstrumentEditor({
                 <input
                   className="gen-prompt"
                   placeholder="преобразовать по описанию: темнее, с реверберацией, замедленно…"
-                  title="ИИ-преобразование сэмпла (audio-to-audio): опиши, что сделать с этим звуком — результат ляжет в слот новым сэмпла"
+                  title="ИИ-морфинг сэмпла (audio-to-audio, fal.ai): опиши, что сделать с этим звуком — результат ляжет в слот новым сэмпла, исходник останется в библиотеке"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && aiPrompt.trim()) onTransformSample(track.id, aiPrompt.trim(), aiStrength);
+                    if (e.key === 'Enter' && aiPrompt.trim()) onTransformSample(track.id, aiPrompt.trim(), aiStrength, aiDuration);
                   }}
                 />
-                <label title="Сила преобразования: 20% — лёгкая приправа, 80% — почти новый звук">
+                <label title="Сила морфинга: 20% — лёгкая приправа, 80% — почти новый звук">
                   сила
                   <NumField
                     value={Math.round(aiStrength * 100)} min={5} max={100} step={5} narrow
@@ -699,7 +707,7 @@ export function InstrumentEditor({
                 </label>
                 <button
                   disabled={!aiPrompt.trim() || busy}
-                  onClick={() => onTransformSample(track.id, aiPrompt.trim(), aiStrength)}
+                  onClick={() => onTransformSample(track.id, aiPrompt.trim(), aiStrength, aiDuration)}
                 >
                   {busy ? 'преобразую…' : 'преобразовать'}
                 </button>

@@ -685,7 +685,7 @@ export const GUIDES: Guide[] = [
       {
         target: '[data-ob="ai-key"]',
         open: 'ai',
-        say: 'Вставь ключ с elevenlabs.io → API Keys.',
+        say: 'Выбери сервис и вставь его ключ (fal.ai — Keys, ElevenLabs — Profile → API Keys).',
         side: 'bottom',
       },
       {

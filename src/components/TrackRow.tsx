@@ -154,7 +154,7 @@ interface Props {
   // Для сайдчейна и связки инструментов: все дорожки патча.
   allTracks: { id: string; name: string; instrumentId: string }[];
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
-  onTransformSample: (trackId: string, prompt: string, strength: number) => void;
+  onTransformSample: (trackId: string, prompt: string, strength: number, duration?: number) => void;
   genBusy: boolean;
   // Редактор инструмента: раздвижной режим карточки — остальной
   // интерфейс трека съёживается, редактор занимает его место.
