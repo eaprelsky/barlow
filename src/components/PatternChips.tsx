@@ -1,5 +1,6 @@
 // Чипы эскизов дорожки + мьют-чип «M» первым: «не играть» как альтернатива
-// выбору партии. Выделено из TrackRow (механически, без изменений логики).
+// выбору партии. Мьют — свойство слота сцены (v38): дорожка молчит в ЭТОЙ
+// сцене, в других тот же эскиз играет как обычно. Выделено из TrackRow.
 
 import type { Pattern, Track } from '../types';
 
@@ -7,6 +8,9 @@ interface Props {
   track: Track;
   pattern: Pattern;
   patternSceneCounts: Record<string, number>;
+  /** Мьют слота текущей сцены. */
+  slotMuted: boolean;
+  onToggleSlotMute: (trackId: string) => void;
   onPatternChange: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   onSelectPattern: (trackId: string, patternId: string) => void;
   onAddPattern: (trackId: string) => void;
@@ -18,6 +22,8 @@ export function PatternChips({
   track,
   pattern,
   patternSceneCounts,
+  slotMuted,
+  onToggleSlotMute,
   onPatternChange,
   onSelectPattern,
   onAddPattern,
@@ -26,13 +32,14 @@ export function PatternChips({
 }: Props) {
   return (
     <div className="pattern-chips" data-ob="chips">
-      {/* Мьют — «отрицательный эскиз»: вместо выбора партии трек молчит,
-          пока выбран этот эскиз (во всех сценах, где он играет). */}
+      {/* Мьют — «отрицательный эскиз»: в этой сцене дорожка молчит, часы
+          партии идут — сняв мьют, войдёшь в фазе. Другие сцены, где играет
+          тот же эскиз, не затрагиваются. */}
       <button
-        className={pattern.muted ? 'chip mute on-m' : 'chip mute'}
+        className={slotMuted ? 'chip mute on-m' : 'chip mute'}
         data-ob="chip-mute"
-        title="Мьют вместо эскиза: трек молчит, пока играет этот эскиз (во всех сценах, где он выбран). Часы идут — сняв мьют, войдёшь в фазе"
-        onClick={() => onPatternChange(track.id, pattern.id, { muted: !pattern.muted })}
+        title="Мьют в этой сцене: дорожка молчит, пока сцена держит этот эскиз. Часы идут — сняв мьют, войдёшь в фазе. В других сценах этот эскиз играет как обычно"
+        onClick={() => onToggleSlotMute(track.id)}
       >
         M
       </button>
@@ -44,7 +51,7 @@ export function PatternChips({
             className={
               'chip' +
               (pt.id === pattern.id ? ' on' : '') +
-              (pattern.muted ? ' dim' : '')
+              (slotMuted ? ' dim' : '')
             }
             title={
               (pt.forkedFrom

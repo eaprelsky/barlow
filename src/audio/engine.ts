@@ -13,7 +13,7 @@
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
-import { autoToParam, autoValue, makeNote, patternInScene } from '../types';
+import { autoToParam, autoValue, makeNote, patternInScene, slotMuted } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
@@ -60,15 +60,17 @@ export { tickDuration, stepIndexAt, effectiveRate, stepDuration } from './timing
 export type { TrackClock } from './timing';
 
 /** Слышимые эскизы сцены: мастер-выключатель дорожки глушит везде,
- *  мьют партии — на эскизе, соло сцены (эксклюзивное, привязано к дорожке —
- *  работает с любым эскизом трека) оставляет только свою дорожку. */
+ *  мьют слота — тишина в ЭТОЙ сцене (эскиз общий, в других сценах
+ *  играет), соло сцены (эксклюзивное, привязано к дорожке — работает
+ *  с любым эскизом трека) оставляет только свою дорожку. */
 function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
   const soloTrackId = scene?.soloTrackId;
   const out = new Set<string>();
   for (const t of patch.tracks) {
     if (t.enabled === false) continue;
+    if (slotMuted(scene, t.id)) continue;
     const p = patternInScene(t, scene);
-    if (!p || p.muted) continue;
+    if (!p) continue;
     if (!soloTrackId || t.id === soloTrackId) out.add(p.id);
   }
   return out;

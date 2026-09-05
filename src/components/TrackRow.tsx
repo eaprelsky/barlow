@@ -121,6 +121,9 @@ interface Props {
   // steps-правки (клики, перенос, вставка, удаление) — отдельный шаг undo
   onPatternCommand: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
   onSelectPattern: (trackId: string, patternId: string) => void;
+  /** Мьют слота текущей сцены (v38): тишина в этой сцене при живых часах. */
+  slotMuted: boolean;
+  onToggleSlotMute: (trackId: string) => void;
   onAddPattern: (trackId: string) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
   onRemovePattern: (trackId: string, patternId: string) => void;
@@ -179,6 +182,8 @@ export const TrackRow = memo(function TrackRow({
   onPatternChange,
   onPatternCommand,
   onSelectPattern,
+  slotMuted,
+  onToggleSlotMute,
   onAddPattern,
   onForkPattern,
   onRemovePattern,
@@ -887,6 +892,8 @@ export const TrackRow = memo(function TrackRow({
       track={track}
       pattern={pattern}
       patternSceneCounts={patternSceneCounts}
+      slotMuted={slotMuted}
+      onToggleSlotMute={onToggleSlotMute}
       onPatternChange={onPatternChange}
       onSelectPattern={onSelectPattern}
       onAddPattern={onAddPattern}

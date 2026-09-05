@@ -192,8 +192,6 @@ export interface Pattern {
   volume?: number;
   pan?: number;
   mods?: Mod[];
-  // Партия молчит во всех сценах, где играет.
-  muted?: boolean;
   // Огибающая перехода сцен, сек. fadeIn — как партия входит в сцену
   // (0 — обрыв), fadeOut — как уходит из неё (0 — резкий обрыв).
   // Живут на эскизе: у каждой партии свой характер вступления/ухода.
@@ -454,11 +452,20 @@ export const INSTRUMENT_FIELDS = [
 /** Дорожка со слитым инструментом — то, что получает синтез. */
 export type SoundingTrack = Track & Instrument;
 
+/** Слот сцены: что играет дорожка в этой сцене. muted — тишина вместо
+ *  эскиза (v38, переехал с эскиза): в ДРУГИХ сценах тот же эскиз играет
+ *  как ни в чём не было — мьют стал свойством пары (сцена, дорожка).
+ *  Часы партии идут и под мьютом — сняв, войдёшь в фазе. */
+export interface SceneSlot {
+  patternId: string;
+  muted?: boolean;
+}
+
 export interface Scene {
   id: string;
   name: string;
-  // trackId → patternId: какой эскиз играет дорожка в этой сцене.
-  slots: Record<string, string>;
+  // trackId → слот: какой эскиз играет дорожка в этой сцене.
+  slots: Record<string, SceneSlot>;
   // Эксклюзивное соло этой сцены: слышна только эта дорожка (любой её
   // эскиз). Соло — свойство сцены, с эскизами не переносится.
   soloTrackId?: string;
@@ -500,7 +507,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 37;
+export const PATCH_VERSION = 38;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -617,15 +624,21 @@ export function makeTrackWithInstrument(
 }
 
 export function makeScene(name: string, tracks: Track[], patternOf: (t: Track) => string): Scene {
-  const slots: Record<string, string> = {};
-  for (const t of tracks) slots[t.id] = patternOf(t);
+  const slots: Record<string, SceneSlot> = {};
+  for (const t of tracks) slots[t.id] = { patternId: patternOf(t) };
   return { id: uid('s'), name, slots };
 }
 
 /** Паттерн трека в конкретной сцене (fallback — первый). */
 export function patternInScene(track: Track, scene: Scene | undefined): Pattern {
-  const wanted = scene?.slots[track.id];
+  const wanted = scene?.slots[track.id]?.patternId;
   return track.patterns.find((p) => p.id === wanted) ?? track.patterns[0];
+}
+
+/** Мьют слота сцены (v38): дорожка молчит в ЭТОЙ сцене — как пустой
+ *  эскиз, но часы партии идут. Другие сцены с тем же эскизом играют. */
+export function slotMuted(scene: Scene | undefined, trackId: string): boolean {
+  return scene?.slots[trackId]?.muted === true;
 }
 
 /** Строки нотного стана: базовая шкала + добавленные октавы. Шкала
@@ -890,6 +903,10 @@ export function normalizePatch(p: Patch): Patch {
 
   // Миграция v16: trackId → id эскизов со старым флагом solo.
   const soloByTrack = new Map<string, Set<string>>();
+  // Миграция v38: мьют партии (жил на эскизе — молчал во всех сценах)
+  // переезжает в слоты сцен, где этот эскиз выбран: тишина стала
+  // свойством сцены, в прочих сценах эскиз играет.
+  const mutedPids = new Set<string>();
   const tracks: Track[] = p.tracks
     .filter((t) => t && typeof t.id === 'string' && typeof t.name === 'string')
     .map((t): Track => {
@@ -909,6 +926,7 @@ export function normalizePatch(p: Patch): Patch {
         pan?: number;
         rate?: unknown;
         mods?: unknown;
+        muted?: unknown;
         fadeIn?: number;
         fadeOut?: number;
       }[];
@@ -946,6 +964,7 @@ export function normalizePatch(p: Patch): Patch {
         .map((pt) => {
           const length = Math.round(clamp(pt.length ?? 16, 1, 64, 16));
           const mods = normalizeMods((pt as { mods?: unknown }).mods);
+          if (pt.muted) mutedPids.add(pt.id!);
           return {
             id: pt.id!,
             name: typeof pt.name === 'string' && pt.name ? pt.name : '?',
@@ -957,7 +976,6 @@ export function normalizePatch(p: Patch): Patch {
             volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
             mods: mods.length > 0 ? mods : undefined,
-            muted: !!(pt as { muted?: unknown }).muted,
             // Огибающая перехода сцен (v30): старые патчи получают
             // дефолты-деклики 5/50 мс.
             fadeIn: clamp(pt.fadeIn ?? 0.005, 0, 8, 0.005),
@@ -1061,14 +1079,19 @@ export function normalizePatch(p: Patch): Patch {
   }
 
   // Слоты чистим от несуществующих треков/паттернов, добавляем недостающие.
+  // v38: слот — объект {patternId, muted?}; строковые слоты старых патчей
+  // и мьют эскиза переносятся сюда (см. mutedPids выше).
   // Соло сцены: существующее валидируем, иначе мигрируем со старого
   // solo эскиза (эскиз в соло играл в этой сцене → солирует трек).
   for (const scene of scenes) {
-    const slots: Record<string, string> = {};
+    const slots: Record<string, SceneSlot> = {};
     for (const t of tracks) {
-      const want = scene.slots?.[t.id];
-      slots[t.id] = t.patterns.some((pt) => pt.id === want) ? want : t.patterns[0].id;
-      if (!scene.soloTrackId && soloByTrack.get(t.id)?.has(slots[t.id])) {
+      const raw = (scene.slots ?? {})[t.id];
+      const wantRaw = typeof raw === 'string' ? raw : (raw as SceneSlot | undefined)?.patternId;
+      const pid = t.patterns.some((pt) => pt.id === wantRaw) ? wantRaw : t.patterns[0].id;
+      const muted = (typeof raw === 'object' && raw ? raw.muted === true : false) || mutedPids.has(pid);
+      slots[t.id] = muted ? { patternId: pid, muted: true } : { patternId: pid };
+      if (!scene.soloTrackId && soloByTrack.get(t.id)?.has(pid)) {
         scene.soloTrackId = t.id;
       }
     }

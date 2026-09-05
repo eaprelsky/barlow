@@ -19,7 +19,7 @@ import {
   scaleOf,
   uid,
 } from './types';
-import type { Instrument, Patch, Pattern, Track } from './types';
+import type { Instrument, Patch, Pattern, SceneSlot, Track } from './types';
 import { TrackRow } from './components/TrackRow';
 import type { InstEditorTab } from './components/InstrumentEditor';
 import { LevelBar } from './components/LevelBar';
@@ -413,7 +413,7 @@ export default function App() {
   const patternSceneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const sc of patch.scenes) {
-      for (const pid of Object.values(sc.slots)) counts[pid] = (counts[pid] ?? 0) + 1;
+      for (const slot of Object.values(sc.slots)) counts[slot.patternId] = (counts[slot.patternId] ?? 0) + 1;
     }
     return counts;
   }, [patch.scenes]);
@@ -550,7 +550,11 @@ export default function App() {
       const scene = {
         id: freshId,
         name: uniqueName('сцена', p.scenes.map((s) => s.name)),
-        slots: { ...(from?.slots ?? {}) },
+        // Слоты копируются глубже ссылки: мьют — свойство сцены (v38),
+        // в новой сцене он сохраняется, но дальше живёт своей жизнью.
+        slots: Object.fromEntries(
+          Object.entries(from?.slots ?? {}).map(([k, v]) => [k, { ...v }]),
+        ),
       };
       return { ...p, scenes: [...p.scenes, scene], chain: [...p.chain, { sceneId: scene.id, bars: 8 }] };
     });
@@ -740,7 +744,7 @@ export default function App() {
       engine.stop();
       setPlaying(false);
     }
-    const scene = { id: uid('s'), name: 'сцена 1', slots: {} as Record<string, string> };
+    const scene = { id: uid('s'), name: 'сцена 1', slots: {} as Record<string, SceneSlot> };
     setPatchStep((p) => ({ ...p, tracks: [], scenes: [scene], chain: [{ sceneId: scene.id, bars: 8 }] }));
     setSceneId(scene.id);
   }, [engine]);
@@ -800,7 +804,16 @@ export default function App() {
       };
       const scenes = p.scenes.map((s) => {
         const old = s.slots[src.id];
-        return { ...s, slots: { ...s.slots, [copy.id]: (old && idMap.get(old)) ?? patterns[0].id } };
+        return {
+          ...s,
+          slots: {
+            ...s.slots,
+            [copy.id]: {
+              patternId: (old && idMap.get(old.patternId)) ?? patterns[0].id,
+              ...(old?.muted ? { muted: true } : {}),
+            },
+          },
+        };
       });
       return {
         ...p,
@@ -862,7 +875,10 @@ export default function App() {
         scaleOctDown: prev?.scaleOctDown,
       });
       // Новый трек добавляется во все сцены своим первым паттерном.
-      const scenes = p.scenes.map((s) => ({ ...s, slots: { ...s.slots, [track.id]: track.patterns[0].id } }));
+      const scenes = p.scenes.map((s) => ({
+        ...s,
+        slots: { ...s.slots, [track.id]: { patternId: track.patterns[0].id } },
+      }));
       return {
         ...p,
         tracks: [track, ...p.tracks],
@@ -911,16 +927,34 @@ export default function App() {
   );
 
   // Слот текущей сцены: смена эскиза «на лету» (мягкая подмена без рестарта).
+  // Выбор партии снимает мьют слота: клик по чипу — намерение играть.
   const selectPattern = useCallback(
     (trackId: string, patternId: string) => {
       setPatch((p) => ({
         ...p,
         scenes: p.scenes.map((s) =>
-          s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: patternId } } : s,
+          s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: { patternId } } } : s,
         ),
       }));
     },
     [sceneId],
+  );
+
+  /** Мьют слота текущей сцены (v38): дорожка молчит в этой сцене, часы
+   *  партии идут — сняв мьют, войдёшь в фазе. Дискретная команда. */
+  const toggleSlotMute = useCallback(
+    (trackId: string) => {
+      setPatchStep((p) => ({
+        ...p,
+        scenes: p.scenes.map((s) => {
+          if (s.id !== sceneId) return s;
+          const slot = s.slots[trackId];
+          if (!slot) return s;
+          return { ...s, slots: { ...s.slots, [trackId]: { ...slot, muted: !slot.muted } } };
+        }),
+      }));
+    },
+    [sceneId, setPatchStep],
   );
 
   const addPattern = useCallback((trackId: string) => {
@@ -934,7 +968,7 @@ export default function App() {
           t.id === trackId ? { ...t, patterns: [...t.patterns, pattern] } : t,
         ),
         scenes: p.scenes.map((s) =>
-          s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: pattern.id } } : s,
+          s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: { patternId: pattern.id } } } : s,
         ),
       };
     });
@@ -968,7 +1002,7 @@ export default function App() {
           ...p,
           tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns: [...t.patterns, copy] } : t)),
           scenes: p.scenes.map((s) =>
-            s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: copy.id } } : s,
+            s.id === sceneId ? { ...s, slots: { ...s.slots, [trackId]: { patternId: copy.id } } } : s,
           ),
         };
       });
@@ -987,7 +1021,9 @@ export default function App() {
         tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns } : t)),
         // Сцены, игравшие удалённый эскиз, переходят на первый оставшийся.
         scenes: p.scenes.map((s) =>
-          s.slots[trackId] === patternId ? { ...s, slots: { ...s.slots, [trackId]: fallback } } : s,
+          s.slots[trackId]?.patternId === patternId
+            ? { ...s, slots: { ...s.slots, [trackId]: { patternId: fallback } } }
+            : s,
         ),
       };
     });
@@ -1889,6 +1925,8 @@ export default function App() {
             onPatternChange={changePattern}
             onPatternCommand={changePatternCommand}
             onSelectPattern={selectPattern}
+            onToggleSlotMute={toggleSlotMute}
+            slotMuted={currentScene?.slots[t.id]?.muted === true}
             onAddPattern={addPattern}
             onForkPattern={forkPattern}
             onRemovePattern={removePattern}
