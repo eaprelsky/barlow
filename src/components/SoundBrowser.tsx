@@ -1,5 +1,5 @@
-// Левая док-панель «библиотека»: дерево инструментов (категории
-// схлопиваются, свои пресеты, поиск) + сэмплы. Клик по пресету применяет
+// Левая док-панель «инструменты»: дерево пресетов (категории
+// схлопываются, свои пресеты, поиск) + сэмплы. Клик по пресету применяет
 // его к целевой дорожке (селектор в шапке), ▶ — слушает тембр до
 // применения; панель не закрывается — можно перебирать тембры подряд.
 // Клик по сэмплу сажает его в инструмент целевой дорожки.
@@ -62,7 +62,7 @@ export function SoundBrowser({
   const [query, setQuery] = useState('');
   // Схлопнутые категории инструментов (по умолчанию все раскрыты).
   const [closed, setClosed] = useState<Set<string>>(new Set());
-  // Вкладки: инструменты | сэмплы. Пресеты без сэмпла перебрасывают на
+  // Вкладки: пресеты | сэмплы. Пресеты без сэмпла перебрасывают на
   // «сэмплы» сами — сэмпл-пресет без сэмпла молчит.
   const [tab, setTab] = useState<'inst' | 'smp'>('inst');
   // Удаление своего пресета/сэмпла перечитывает списки из хранилищ.
@@ -237,12 +237,12 @@ export function SoundBrowser({
   return (
     <aside className="dock" data-ob="library-panel">
       <div className="sb-head">
-        <span className="scenes-label">библиотека</span>
+        <span className="scenes-label">инструменты</span>
         <HelpHint guide="tracks" step={1} label="Гид: добавить инструмент" />
         <span className="spacer" />
         <button onClick={onClose} title="Скрыть панель">скрыть</button>
       </div>
-      {/* Вкладки: инструменты и сэмплы — явные, не теряются. Сэмпл-пресет
+      {/* Вкладки: пресеты и сэмплы — явные, не теряются. Сэмпл-пресет
           без сэмпла сам перебрасывает сюда на «сэмплы». */}
       <div className="seg sb-tabs">
         <button
@@ -251,24 +251,36 @@ export function SoundBrowser({
           onClick={() => setTab('inst')}
           title="Пресеты-инструменты по категориям: клик применяет к дорожке из селектора ниже"
         >
-          инструменты
+          пресеты
         </button>
         <button
           className={tab === 'smp' ? 'on' : ''}
           data-ob="sb-tab-samples"
           onClick={() => setTab('smp')}
-          title="Библиотека сэмплов: клик по имени сажает сэмпл в дорожку"
+          title="Все сэмплы: клик по имени сажает сэмпл в дорожку"
         >
           сэмплы ({samples.length})
         </button>
       </div>
-      <input
-        className="browser-search"
-        data-ob="inst-search"
-        placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
+      <div className="browser-search-wrap">
+        <input
+          className="browser-search"
+          data-ob="inst-search"
+          placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {query !== '' && (
+          <button
+            className="search-clear"
+            title="Очистить поиск"
+            aria-label="очистить поиск"
+            onClick={() => setQuery('')}
+          >
+            ✕
+          </button>
+        )}
+      </div>
       {/* Куда применяется клик: пресет меняет тембр этой дорожки. */}
       <div className="sb-target">
         <span className="rt-label">в дорожку</span>
@@ -412,7 +424,7 @@ export function SoundBrowser({
                   <button
                     className="remove"
                     disabled={used}
-                    title={used ? 'Используется треком — сначала отвяжи его' : 'Удалить из библиотеки'}
+                    title={used ? 'Используется треком — сначала отвяжи его' : 'Удалить сэмпл из хранилища'}
                     onClick={() => {
                       void deleteSample(meta.id).then(() => {
                         setListVersion((v) => v + 1);

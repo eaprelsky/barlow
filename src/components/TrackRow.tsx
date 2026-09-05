@@ -322,7 +322,7 @@ export const TrackRow = memo(function TrackRow({
   const loadSampleFile = (f: File) => {
     void putSample(f, f.name)
       .then((meta) => changeInst({ sampleId: meta.id, sampleName: meta.name }))
-      .catch(() => void alertDialog('Не удалось сохранить сэмпл в библиотеку', 'сэмпл'));
+      .catch(() => void alertDialog('Не удалось сохранить сэмпл в хранилище', 'сэмпл'));
   };
 
   const setLength = (length: number) => {
@@ -1097,7 +1097,7 @@ export const TrackRow = memo(function TrackRow({
         <button
           className="inst-chip"
           data-ob="inst-chip"
-          title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — библиотека звуков: пресеты и сэмплы`}
+          title={`Инструмент дорожки: ${instrumentNameOf(st)}. Клик — панель инструментов: пресеты и сэмплы, подсветит текущий`}
           onClick={() => onOpenBrowser(track.id)}
         >
           {instrumentNameOf(st)}
@@ -1342,9 +1342,9 @@ export const TrackRow = memo(function TrackRow({
                 вложенный контрол — «выбрать…» подсвечивался при наведении
                 на соседей */}
             {/* Имя инструмента — для контекста; смена — чипом в шапке
-                дорожки или кнопкой «библиотека»: обе точки открывают
+                дорожки или кнопкой «инструменты»: обе точки открывают
                 панель с применением к этой дорожке. */}
-            <div className="lbl" title="Текущий инструмент: вычислен по параметрам — покрутил ручки, стал «свой». Сменить — чип инструмента в шапке дорожки или «библиотека» в шапке приложения">
+            <div className="lbl" title="Текущий инструмент: вычислен по параметрам — покрутил ручки, стал «свой». Сменить — чип инструмента в шапке дорожки или «инструменты» в шапке приложения">
               инструмент
               <span className="inline">
                 <span className="sample-name" title="Текущий инструмент: вычислен по параметрам трека — покрутил ручки, стал «свой»">
@@ -1399,7 +1399,7 @@ export const TrackRow = memo(function TrackRow({
             )}
             {st.waveform === 'sample' ? (
               <>
-                <label title="Сэмпл из библиотеки. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
+                <label title="Сэмпл из хранилища. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
                   сэмпл
                   <span className="inline">
                     <span className="sample-name" title={st.sampleName ?? 'сэмпл не выбран'}>
@@ -1407,7 +1407,7 @@ export const TrackRow = memo(function TrackRow({
                     </span>
                     <button
                       onClick={() => setShowPicker(true)}
-                      title="Выбрать из библиотеки: прослушать и положить в слот"
+                      title="Выбрать из хранилища: прослушать и положить в слот"
                     >
                       выбрать…
                     </button>

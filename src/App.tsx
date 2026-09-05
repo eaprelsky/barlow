@@ -320,7 +320,7 @@ export default function App() {
     [engine],
   );
   const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
-  // Библиотека звуков (левая док-панель): открывается с целевой дорожкой —
+  // Панель инструментов (левая док-панель): открывается с целевой дорожкой —
   // той, чей чип нажали; из шапки — последний работавший стан.
   const [libTarget, setLibTarget] = useState<string | null>(null);
   const openLibraryAt = useCallback(
@@ -1426,14 +1426,14 @@ export default function App() {
             if (showLib) setShowLib(false);
             else openLibraryAt(null);
           }}
-          title="Библиотека звуков: инструменты и сэмплы — дерево, поиск, прослушивание. Клик по пресету меняет тембр выбранной дорожки"
+          title="Инструменты: пресеты тембров и сэмплы — дерево, поиск, прослушивание. Клик по пресету меняет тембр выбранной дорожки"
         >
           <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
             {/* волна в рамке */}
             <rect x="1.2" y="2.2" width="11.6" height="9.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
             <path d="M3 8.4c1-.2 1.4-3 2.2-3s.9 4 1.8 4 1.1-5 2-5 1 2.6 2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
-          библиотека
+          инструменты
         </button>
         <div className="menu">
           <button
@@ -1809,7 +1809,7 @@ export default function App() {
           className="add-track"
           data-ob="add-track"
           onClick={addTrack}
-          title="Новый трек: синус и 12 равных полутонов — библиотека звуков сразу предложит тембр на слух"
+          title="Новый трек: синус и 12 равных полутонов — панель инструментов сразу предложит тембр на слух"
         >
           + трек
         </button>

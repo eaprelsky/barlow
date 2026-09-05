@@ -1,4 +1,4 @@
-// Модалка выбора сэмпла в слот трека: список библиотеки с прослушиванием,
+// Модалка выбора сэмпла в слот трека: список хранилища с прослушиванием,
 // плюс загрузка файла с диска прямо отсюда (загрузил — сразу лёг в слот).
 
 import { useEffect, useRef, useState } from 'react';
@@ -61,7 +61,7 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
     setErr('');
     putSample(f, f.name)
       .then((meta) => onPick(meta))
-      .catch(() => setErr('Не удалось сохранить сэмпл в библиотеку'));
+      .catch(() => setErr('Не удалось сохранить сэмпл в хранилище'));
   };
 
   return (
@@ -74,9 +74,9 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
       <div className="modal picker" role="dialog" aria-modal="true">
         <h3>сэмпл в слот</h3>
         {samples === null ? (
-          <p className="empty">загружаю библиотеку…</p>
+          <p className="empty">загружаю сэмплы…</p>
         ) : samples.length === 0 ? (
-          <p className="empty">Библиотека пуста — загрузи файл с диска.</p>
+          <p className="empty">Сэмплов нет — загрузи файл с диска.</p>
         ) : (
           <div className="picker-list">
             {samples.map((meta) => (
@@ -110,15 +110,15 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
         )}
         {err && <p className="empty">{err}</p>}
         <div className="modal-btns">
-          <button onClick={() => fileRef.current?.click()} title="Файл сохранится в библиотеку и ляжет в слот">
+          <button onClick={() => fileRef.current?.click()} title="Файл сохранится в хранилище сэмплов и ляжет в слот">
             загрузить файл…
           </button>
           {onOpenLibrary && (
             <button
-              title="Вся библиотека: прослушать, скачать, удалить"
+              title="Панель инструментов, вкладка сэмплов: прослушать, скачать, удалить"
               onClick={onOpenLibrary}
             >
-              библиотека…
+              все сэмплы…
             </button>
           )}
           <span className="spacer" />

@@ -1827,8 +1827,33 @@ button.danger:hover {
   word-break: break-all;
 }
 
+.browser-search-wrap {
+  position: relative;
+  display: flex;
+}
+
 .browser-search {
   width: 100%;
+  padding-right: 24px;
+}
+
+/* Крестик очистки поиска — в поле, справа */
+.search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  color: var(--text);
 }
 
 .sb-head button,
