@@ -22,6 +22,7 @@ import {
 } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
+import { bakeModToPoints } from '../music/modCurve';
 import { ScalePicker } from './ScalePicker';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
@@ -241,8 +242,7 @@ export const TrackRow = memo(function TrackRow({
       ⠿
     </span>
   );
-  // Вкладки внутри «трека»; модуляции — раздел эскиза, свёрнут по умолчанию.
-  const [showMods, setShowMods] = useState(false);
+  // Вкладки внутри «трека»; модуляции — раздел автоматизации эскиза.
   // Кривые партии: какая цель рисуется.
   const [autoTarget, setAutoTarget] = useState<AutoTarget>('volume');
   // Дорожка автоматизации под станом — открыта/закрыта (UI-состояние).
@@ -751,6 +751,25 @@ export const TrackRow = memo(function TrackRow({
     const [item] = base.splice(from, 1);
     base.splice(to, 0, item);
     changePatternMods(base);
+  };
+
+  /** Запечь модуляцию в кривую партии: ход станет точками по границам
+   *  шагов (перестанет плыть — правится вручную, как нарисованная),
+   *  модуляция снимается. Один шаг undo. */
+  const bakeMod = (i: number) => {
+    const base = pattern.mods ?? track.mods;
+    const m = base[i];
+    if (!m) return;
+    if (m.target !== 'pan' && m.target !== 'volume' && m.target !== 'filterFreq') return;
+    const cycleSec = stepDuration(st, bpm, pattern) * pattern.length;
+    const points = bakeModToPoints(m, m.target, pattern.length, cycleSec, st.filterFreq, i);
+    onPatternCommand(track.id, pattern.id, {
+      automation: [
+        ...(pattern.automation ?? []).filter((c) => c.target !== m.target),
+        { target: m.target, points },
+      ],
+      mods: base.filter((_, j) => j !== i),
+    });
   };
   const rowGrip = (kind: 'fx' | 'mod', i: number) => (
     <span
@@ -1324,8 +1343,6 @@ export const TrackRow = memo(function TrackRow({
             onMutate={onMutate}
             onPatternCommand={onPatternCommand}
             onPickScale={() => setShowScales(true)}
-            autoOn={autoLane}
-            onAutoToggle={() => setAutoLane((v) => !v)}
           />
           <div className="roll" ref={rollRef} data-ob="roll">        <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
@@ -1475,6 +1492,8 @@ export const TrackRow = memo(function TrackRow({
             fadeIn={pattern.fadeIn ?? 0.005}
             fadeOut={pattern.fadeOut ?? 0.05}
             stepSec={stepDuration(st, bpm, pattern)}
+            mods={pattern.mods ?? track.mods}
+            filterBase={st.filterFreq}
             onCurves={(cs) =>
               onPatternChange(track.id, pattern.id, { automation: cs.length > 0 ? cs : undefined })
             }
@@ -1540,135 +1559,154 @@ export const TrackRow = memo(function TrackRow({
         </div>
       )}
 
-          {/* Кривые партии: цель рисуется на дорожке под станом (кнопка
-              «кривые» в тулбаре стана); здесь — только выбор цели. */}
-          {autoLane && (
-          <div className="panel-row auto-box">
-            <div className="sub-head">
-              <span className="sub-cap">кривые партии</span>
-              <div className="seg">
-                {(Object.keys(AUTO_TARGET_LABELS) as AutoTarget[]).map((t) => (
-                  <button
-                    key={t}
-                    className={autoTarget === t ? 'on' : ''}
-                    onClick={() => setAutoTarget(t)}
-                  >
-                    {AUTO_TARGET_LABELS[t]}
-                  </button>
-                ))}
-              </div>
-              <span className="spacer" />
-              {(pattern.automation?.some((c) => c.target === autoTarget)) && (
-                <button
-                  title="Убрать кривую: параметр вернётся к своей ручке"
-                  onClick={() =>
-                    onPatternChange(track.id, pattern.id, {
-                      automation: (pattern.automation ?? []).filter((c) => c.target !== autoTarget),
-                    })
-                  }
-                >
-                  убрать кривую
-                </button>
-              )}
-            </div>
-          </div>
-          )}
-
-          {/* Модуляции — свойство партии: от эскиза к эскизу свои */}
-          <div className="mods-box">
+          {/* Автоматизация партии — один интерфейс для двух способов
+              задать ход параметра: точками (кривая на дорожке под
+              станом) или «формулой» (модуляции: LFO, ступени S&H,
+              перлин). Кнопка — на отдельной строке под станом, слева. */}
+          <div className="auto-panel">
             <div className="sub-head">
               <button
-                className={'mods-toggle' + (showMods ? ' on' : '')}
-                data-ob="mods-toggle"
-                title="Модуляции — авторучки-LFO. Живут на эскизе: у каждой партии свои. Первая правка скопирует набор трека в этот эскиз"
-                onClick={() => setShowMods((v) => !v)}
+                className={'mods-toggle' + (autoLane ? ' on' : '')}
+                data-ob="auto-toggle"
+                title="Автоматизация партии: кривая по шагам цикла (точками на дорожке под станом) и модуляции — LFO, ступени S&H, перлин. Живут на эскизе: у каждой партии свои"
+                onClick={() => setAutoLane((v) => !v)}
               >
-                {showMods ? '▾' : '▸'} модуляции
+                {autoLane ? '▾' : '▸'} автоматизация
               </button>
-              {showMods && (
-                <button data-ob="mods-add" onClick={addMod} title="Добавить LFO">
+              {autoLane && (
+                <button data-ob="mods-add" onClick={addMod} title="Новая модуляция: источник (LFO, ступени, перлин) и цель — параметр поедет сам">
                   + модуляция
                 </button>
               )}
               <span className="spacer" />
-              <HelpHint guide="effects" step={6} scope={scope} label="Гид: модуляции" />
+              {autoLane && (
+                <HelpHint guide="auto" scope={scope} label="Гид: автоматизация партии" />
+              )}
             </div>
-            {showMods && (
-            <div className="group mods-group" data-ob="mods-list">
-              {(pattern.mods ?? track.mods).map((m, i) => (
-                <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
-                  {rowGrip('mod', i)}
-                  <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
-                  <select
-                    value={m.source ?? 'lfo'}
-                    title="Источник: LFO — периодическая волна; ступени (S&H) — случайные значения с заданным темпом; перлин — плавные случайные холмы"
-                    onChange={(e) => updateMod(i, { source: e.target.value as Mod['source'] })}
-                  >
-                    {Object.entries(MOD_SOURCE_LABELS).map(([id, title]) => (
-                      <option key={id} value={id}>{title}</option>
+            {autoLane && (
+              <>
+                <div className="panel-row auto-box">
+                  <span className="rt-label" title="Что рисуется на дорожке под станом">кривая</span>
+                  <div className="seg">
+                    {(Object.keys(AUTO_TARGET_LABELS) as AutoTarget[]).map((t) => (
+                      <button
+                        key={t}
+                        className={autoTarget === t ? 'on' : ''}
+                        onClick={() => setAutoTarget(t)}
+                        title="Какой параметр ведёт кривая на дорожке под станом"
+                      >
+                        {AUTO_TARGET_LABELS[t]}
+                      </button>
                     ))}
-                  </select>
-                  <select
-                    value={m.target}
-                    title="Какой параметр качает LFO. Цели эффектов — на первый эффект в списке"
-                    onChange={(e) => updateMod(i, { target: e.target.value as string })}
-                  >
-                    {modTargets.map((t) => (
-                      <option key={t} value={t}>
-                        {MOD_TARGET_LABELS[t as keyof typeof MOD_TARGET_LABELS] ?? t}
-                      </option>
-                    ))}
-                  </select>
-                  {(m.source ?? 'lfo') === 'lfo' && (
-                  <select
-                    value={m.shape}
-                    title="Форма колебания"
-                    onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
-                  >
-                    {LFO_SHAPES.map((sh) => (
-                      <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
-                    ))}
-                  </select>
-                  )}
-                  <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
-                    <NumField
-                      value={m.rate} min={0.01} max={40} step={0.05}
-                      onChange={(rate) => updateMod(i, { rate })}
-                    />
-                    <i>Гц</i>
-                    <select
-                      className="sync-select"
-                      value=""
-                      title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
-                      onChange={(e) => {
-                        const k = Number(e.target.value);
-                        if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
-                        e.currentTarget.value = '';
-                      }}
+                  </div>
+                  {(pattern.automation?.some((c) => c.target === autoTarget)) && (
+                    <button
+                      title="Убрать кривую: параметр вернётся к своей ручке"
+                      onClick={() =>
+                        onPatternChange(track.id, pattern.id, {
+                          automation: (pattern.automation ?? []).filter((c) => c.target !== autoTarget),
+                        })
+                      }
                     >
-                      <option value="">синхр</option>
-                      <option value="0.25">1/16</option>
-                      <option value="0.375">1/16 точ</option>
-                      <option value="0.5">1/8</option>
-                      <option value="0.75">1/8 точ</option>
-                      <option value="1">1/4</option>
-                      <option value="1.5">1/4 точ</option>
-                      <option value="2">1/2</option>
-                      <option value="4">1/1</option>
-                    </select>
+                      убрать кривую
+                    </button>
+                  )}
+                  <span className="auto-hint">
+                    клик по дорожке — точка на границе шага (Shift — свободно)
                   </span>
-                  <SliderField
-                    variant="mr"
-                    title="Глубина: насколько сильно LFO отклоняет параметр"
-                    value={Math.round(m.depth * 100)}
-                    min={0} max={100} step={5}
-                    display={`${Math.round(m.depth * 100)}%`}
-                    unit="%"
-                    onChange={(v) => updateMod(i, { depth: v / 100 })}
-                  />
                 </div>
-              ))}
-            </div>
+                <div className="group mods-group" data-ob="mods-list">
+                  {(pattern.mods ?? track.mods).length === 0 && (
+                    <span className="auto-hint">
+                      модуляций нет — «+ модуляция» заведёт авторучку (LFO или шум),
+                      её ход виден штрихом на дорожке кривой
+                    </span>
+                  )}
+                  {(pattern.mods ?? track.mods).map((m, i) => (
+                    <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
+                      {rowGrip('mod', i)}
+                      <button className="remove" title="Убрать модуляцию" onClick={() => removeMod(i)}>×</button>
+                      <select
+                        value={m.source ?? 'lfo'}
+                        data-ob="mod-source"
+                        title="Источник: LFO — периодическая волна (синус, пила, квадрат, треугольник); ступени S&H (sample & hold) — случайное значение держится несколько мгновений и прыгает скачком, «лестница»; перлин — плавно блуждающий шум, случайные холмы без скачков"
+                        onChange={(e) => updateMod(i, { source: e.target.value as Mod['source'] })}
+                      >
+                        {Object.entries(MOD_SOURCE_LABELS).map(([id, title]) => (
+                          <option key={id} value={id}>{title}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={m.target}
+                        title="Какой параметр качает модуляция. Цели эффектов — на первый эффект в списке"
+                        onChange={(e) => updateMod(i, { target: e.target.value as string })}
+                      >
+                        {modTargets.map((t) => (
+                          <option key={t} value={t}>
+                            {MOD_TARGET_LABELS[t as keyof typeof MOD_TARGET_LABELS] ?? t}
+                          </option>
+                        ))}
+                      </select>
+                      {(m.source ?? 'lfo') === 'lfo' && (
+                        <select
+                          value={m.shape}
+                          title="Форма колебания"
+                          onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
+                        >
+                          {LFO_SHAPES.map((sh) => (
+                            <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="mr" title="Скорость колебаний: 0.2 Гц — период 5 секунд; 4–8 Гц — вибрато">
+                        <NumField
+                          value={m.rate} min={0.01} max={40} step={0.05}
+                          onChange={(rate) => updateMod(i, { rate })}
+                        />
+                        <i>Гц</i>
+                        <select
+                          className="sync-select"
+                          value=""
+                          title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
+                          onChange={(e) => {
+                            const k = Number(e.target.value);
+                            if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
+                            e.currentTarget.value = '';
+                          }}
+                        >
+                          <option value="">синхр</option>
+                          <option value="0.25">1/16</option>
+                          <option value="0.375">1/16 точ</option>
+                          <option value="0.5">1/8</option>
+                          <option value="0.75">1/8 точ</option>
+                          <option value="1">1/4</option>
+                          <option value="1.5">1/4 точ</option>
+                          <option value="2">1/2</option>
+                          <option value="4">1/1</option>
+                        </select>
+                      </span>
+                      <SliderField
+                        variant="mr"
+                        title="Глубина: насколько сильно модуляция отклоняет параметр"
+                        value={Math.round(m.depth * 100)}
+                        min={0} max={100} step={5}
+                        display={`${Math.round(m.depth * 100)}%`}
+                        unit="%"
+                        onChange={(v) => updateMod(i, { depth: v / 100 })}
+                      />
+                      {(m.target === 'pan' || m.target === 'volume' || m.target === 'filterFreq') && (
+                        <button
+                          className="mod-bake"
+                          title="Запечь в кривую: ход модуляции станет точками на дорожке под станом — перестанет плыть, можно править вручную. Модуляция снимется"
+                          onClick={() => bakeMod(i)}
+                        >
+                          → в кривую
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

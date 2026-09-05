@@ -9,8 +9,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { AutoCurve, AutoPoint, AutoTarget } from '../types';
+import type { AutoCurve, AutoPoint, AutoTarget, Mod } from '../types';
 import { AUTO_TARGET_LABELS } from '../types';
+import { modCurveValue } from '../music/modCurve';
 
 const PITCH = 27; // px на шаг — клетка 24 + гэп 3, как у стана
 const H = 64; // высота дорожки
@@ -24,6 +25,12 @@ const Y_LABELS: Record<AutoTarget, [string, string]> = {
   pan: ['L', 'R'],
 };
 
+const MOD_SOURCE_TITLE: Record<string, string> = {
+  lfo: 'LFO',
+  sah: 'ступени S&H',
+  perlin: 'перлин',
+};
+
 export function AutoLane({
   curves,
   target,
@@ -32,6 +39,8 @@ export function AutoLane({
   fadeIn,
   fadeOut,
   stepSec,
+  mods,
+  filterBase,
   onCurves,
   onFade,
 }: {
@@ -46,6 +55,11 @@ export function AutoLane({
   fadeOut: number;
   /** Длительность шага, сек — px рампы честны по времени. */
   stepSec: number;
+  /** Эффективные модуляции партии: их вклад на цель рисуется штрихом
+   *  поверх кривой — видно, как параметр «гуляет» от LFO/шума. */
+  mods: Mod[];
+  /** База фильтра инструмента (для цели «фильтр»). */
+  filterBase: number;
   onCurves: (curves: AutoCurve[]) => void;
   onFade: (which: 'in' | 'out', sec: number) => void;
 }) {
@@ -182,6 +196,37 @@ export function AutoLane({
   const yBot = Y_LABELS[target][1];
   const line = points.map((p) => `${(p.t * W).toFixed(1)},${vToY(p.v).toFixed(1)}`).join(' ');
 
+  // Вклад модуляций на эту цель: штриховые полилинии (по одной на
+  // модуляцию). Фаза условна — живой LFO идёт своим ходом от старта
+  // пьесы, здесь видна форма и размах качания по длине цикла.
+  const modLines = mods
+    .map((m, i) => ({ m, seed: i }))
+    .filter(({ m }) => m.target === target && m.depth > 0.001)
+    .map(({ m, seed }) => {
+      const N = 96;
+      const cycleSec = stepSec * length;
+      const pts = Array.from({ length: N + 1 }, (_, k) => {
+        const t = k / N;
+        const v = Math.min(
+          1.22,
+          Math.max(0, modCurveValue(m, target, t * cycleSec, filterBase, seed)),
+        );
+        return `${(t * W).toFixed(1)},${vToY(v).toFixed(1)}`;
+      }).join(' ');
+      return (
+        <polyline
+          key={`mod-${seed}-${m.target}`}
+          points={pts}
+          className="lane-mod"
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>
+            {`Вклад модуляции (${MOD_SOURCE_TITLE[m.source ?? 'lfo']}, ${m.rate.toFixed(2)} Гц, глубина ${Math.round(m.depth * 100)}%) — живой генератор идёт своим ходом, показана форма качания. «→ в кривую» в списке модуляций запечёт её точками`}
+          </title>
+        </polyline>
+      );
+    });
+
   return (
     <svg
       className="auto-lane"
@@ -235,6 +280,13 @@ export function AutoLane({
         </text>
       )}
       {points.length >= 2 && <polyline points={line} className="env-amp" />}
+      {/* вклад модуляций — штрихом, поверх своей кривой */}
+      {modLines}
+      {modLines.length > 0 && (
+        <text x={W - 4} y={V_PAD + 8} textAnchor="end" className="env-text dim">
+          – – модуляции
+        </text>
+      )}
       {/* рампы входа/выхода сцены — только на громкости: во время рампы
           кривая молчит (движок отдаёт gain плану перехода) */}
       {target === 'volume' && (

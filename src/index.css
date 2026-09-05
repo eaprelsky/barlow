@@ -3192,6 +3192,42 @@ svg.auto-lane {
   cursor: ew-resize;
 }
 
+/* Вклад модуляций (LFO и шумов) — штрих поверх кривой */
+.auto-lane .lane-mod {
+  fill: none;
+  stroke: var(--accent-2);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+  pointer-events: stroke;
+}
+
+/* Панель автоматизации: кнопка слева на отдельной строке под станом */
+.auto-panel {
+  margin-top: 2px;
+}
+
+.auto-panel .sub-head {
+  justify-content: flex-start;
+}
+
+.auto-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* Запечка модуляции в кривую */
+.mod-bake {
+  font-size: 10px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.mod-bake:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
 .auto-box .seg button {
   font-size: 11px;
   padding: 2px 8px;
