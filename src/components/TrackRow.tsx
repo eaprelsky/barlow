@@ -80,6 +80,29 @@ function octaveBusy(track: Track, dir: 'up' | 'down', delta: number): boolean {
   );
 }
 
+/** Срезать октаву из самой шкалы: счётчики добавленных октав на нуле,
+ *  а диапазон шире одной октавы (пелог, гармоники 8–16). Сверху уходят
+ *  отношения от 2^⌊log2(max)⌋, снизу — ниже 2×min. Частоты нот
+ *  сохраняются: тоника не трогается, срезается только край шкалы.
+ *  null — срезать нечего. delta — сколько строк стана уйдёт (по факту:
+ *  схлопнувшиеся с добавленными октавами строки учтены scaleOf). */
+function trimScaleOctave(
+  track: Track,
+  dir: 'up' | 'down',
+): { scale: number[]; delta: number } | null {
+  const scale = [...track.scale].sort((a, b) => a - b);
+  const min = scale[0];
+  const max = scale[scale.length - 1];
+  if (!(min > 0) || !(max > min)) return null;
+  const next =
+    dir === 'up'
+      ? scale.filter((r) => r < 2 ** Math.floor(Math.log2(max)))
+      : scale.filter((r) => r >= min * 2);
+  if (next.length === 0 || next.length === scale.length) return null;
+  const delta = scaleOf(track).length - scaleOf({ ...track, scale: next }).length;
+  return delta > 0 ? { scale: next, delta } : null;
+}
+
 interface Props {
   track: Track;
   /** Инструмент дорожки: тембр, огибающая ноты, фильтры (v34). */
@@ -330,22 +353,44 @@ export const TrackRow = memo(function TrackRow({
   const removeOctave = (dir: 'up' | 'down') => {
     const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
     const now = (track[key] ?? 0) - 1;
-    if (now < 0) return;
-    const delta = scaleOf(track).length - scaleOf({ ...track, [key]: now }).length;
-    if (octaveBusy(track, dir, delta)) return;
+    if (now >= 0) {
+      const delta = scaleOf(track).length - scaleOf({ ...track, [key]: now }).length;
+      if (octaveBusy(track, dir, delta)) return;
+      const patterns =
+        dir === 'down' && delta > 0
+          ? track.patterns.map((pt) => ({
+              ...pt,
+              steps: pt.steps.map((s) => ({
+                ...s,
+                notes: s.notes
+                  .map((nt) => ({ ...nt, n: nt.n - delta }))
+                  .filter((nt) => nt.n >= 0),
+              })),
+            }))
+          : track.patterns;
+      onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
+      return;
+    }
+    // Счётчики на нуле — срезаем октаву из самой шкалы (широкие пресеты:
+    // пелог, гармоники 8–16 несут несколько октав в отношениях). Частоты
+    // нот сохраняются: сверху пропадают верхние строки, снизу тоника
+    // остаётся — шкала теряет нижний блок отношений.
+    const cut = trimScaleOctave(track, dir);
+    if (!cut) return;
+    if (octaveBusy(track, dir, cut.delta)) return;
     const patterns =
-      dir === 'down' && delta > 0
+      dir === 'down'
         ? track.patterns.map((pt) => ({
             ...pt,
             steps: pt.steps.map((s) => ({
               ...s,
               notes: s.notes
-                .map((nt) => ({ ...nt, n: nt.n - delta }))
+                .map((nt) => ({ ...nt, n: nt.n - cut.delta }))
                 .filter((nt) => nt.n >= 0),
             })),
           }))
         : track.patterns;
-    onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
+    onTrackCommand(track.id, { ...track, scale: cut.scale, patterns });
   };
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
@@ -927,11 +972,18 @@ export const TrackRow = memo(function TrackRow({
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
   const scaleRows = scaleOf(track);
-  /** Сколько строк стана уйдёт при удалении октавы (шкала с отношением 2
-   *  схлопывается с новой октавой — дельта меньше длины шкалы). */
-  const octRows = (dir: 'up' | 'down') =>
-    scaleRows.length -
-    scaleOf({ ...track, [dir === 'up' ? 'scaleOctUp' : 'scaleOctDown']: (dir === 'up' ? up : down) - 1 }).length;
+  /** Сколько строк стана уйдёт при удалении октавы: откат добавленной
+   *  (счётчик) либо срез из самой шкалы (0 — срезать нечего). */
+  const octRows = (dir: 'up' | 'down') => {
+    const cnt = dir === 'up' ? up : down;
+    const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
+    if (cnt > 0) {
+      return scaleRows.length - scaleOf({ ...track, [key]: cnt - 1 }).length;
+    }
+    return trimScaleOctave(track, dir)?.delta ?? 0;
+  };
+  const cutUpRows = octRows('up');
+  const cutDownRows = octRows('down');
   // Истинная длительность НОВОЙ ноты в клетках стана: по сетке (noteSteps)
   // или по огибающей (атака + спад), в шагах эффективного темпа. Ноты со
   // своей длиной (len, v37) от этой базы не зависят.
@@ -1045,9 +1097,9 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => onSolo(track.id)}
           >S</button>
         </span>
-        {/* Переключатель сущности карточки: партия (эскиз), общий звук
-            (трек) или тембр (инструмент — большой редактор). Слева, у
-            имени — основная работа идёт здесь. */}
+        {/* Переключатель сущности карточки: партия (эскиз), тембр
+            (инструмент — большой редактор) или общий звук (трек).
+            Порядок — как в работе: партия → звук партии → общее. */}
         <div className="seg mode-seg" data-ob="mode">
           <button
             className={view === 'sketch' && !editorOpen ? 'on' : ''}
@@ -1059,6 +1111,15 @@ export const TrackRow = memo(function TrackRow({
             эскиз
           </button>
           <button
+            className={editorOpen ? 'on' : ''}
+            data-ob="mode-inst"
+            aria-label="инструмент"
+            title="Инструмент — большой редактор тембра: источник (волна/сэмпл), огибающая ноты, фильтры, вибрато, унисон; вкладка «волна» — своя волна"
+            onClick={() => (editorOpen ? onCloseEditor() : onOpenEditor(track.id))}
+          >
+            инструмент
+          </button>
+          <button
             className={view === 'track' && !editorOpen ? 'on' : ''}
             data-ob="mode-track"
             aria-label="настройка трека"
@@ -1066,15 +1127,6 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => switchView('track')}
           >
             трек
-          </button>
-          <button
-            className={editorOpen ? 'on' : ''}
-            data-ob="mode-inst"
-            aria-label="инструмент"
-            title="Инструмент — большой редактор тембра: источник (волна/сэмпл), огибающая ноты, фильтры, вибрато, унисон; вкладки «волна» и «сэмпл» — своя волна и работа с сэмплом"
-            onClick={() => (editorOpen ? onCloseEditor() : onOpenEditor(track.id))}
-          >
-            инструмент
           </button>
         </div>
         {/* Чип инструмента — лицо тембра дорожки, виден и в свёрнутой
@@ -1372,8 +1424,16 @@ export const TrackRow = memo(function TrackRow({
             <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
             <button
               className="oct-btn"
-              title={octaveBusy(track, 'up', octRows('up')) ? 'В верхней октаве есть ноты — сначала убери их' : 'Убрать верхнюю октаву'}
-              disabled={up === 0 || octaveBusy(track, 'up', octRows('up'))}
+              title={
+                cutUpRows <= 0
+                  ? 'Верх срезать нечего: шкала уже в одну октаву'
+                  : octaveBusy(track, 'up', cutUpRows)
+                    ? 'В верхней октаве есть ноты — сначала убери их'
+                    : up > 0
+                      ? 'Убрать верхнюю октаву (вернуть добавленную)'
+                      : 'Срезать верхнюю октаву самой шкалы — диапазон стана ужмётся к низу'
+              }
+              disabled={cutUpRows <= 0 || octaveBusy(track, 'up', cutUpRows)}
               onClick={() => removeOctave('up')}
             >−</button>
           </div>
@@ -1386,8 +1446,16 @@ export const TrackRow = memo(function TrackRow({
             <button className="oct-btn" title="Добавить октаву вниз" onClick={() => addOctave('down')}>+окт</button>
             <button
               className="oct-btn"
-              title={octaveBusy(track, 'down', octRows('down')) ? 'В нижней октаве есть ноты — сначала убери их' : 'Убрать нижнюю октаву'}
-              disabled={down === 0 || octaveBusy(track, 'down', octRows('down'))}
+              title={
+                cutDownRows <= 0
+                  ? 'Низ срезать нечего: шкала уже в одну октаву'
+                  : octaveBusy(track, 'down', cutDownRows)
+                    ? 'В нижней октаве есть ноты — сначала убери их'
+                    : down > 0
+                      ? 'Убрать нижнюю октаву (вернуть добавленную)'
+                      : 'Срезать нижнюю октаву самой шкалы — диапазон стана ужмётся к верху'
+              }
+              disabled={cutDownRows <= 0 || octaveBusy(track, 'down', cutDownRows)}
               onClick={() => removeOctave('down')}
             >−</button>
           </div>

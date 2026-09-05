@@ -898,6 +898,33 @@ footer {
   width: 240px;
 }
 
+/* Глазик у поля ключа: показать/скрыть символы, не убирая фокус. */
+.ai-key-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ai-key-wrap .ai-key-input {
+  padding-right: 26px;
+}
+
+.ai-key-eye {
+  position: absolute;
+  right: 3px;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  line-height: 0;
+}
+
+.ai-key-eye:hover {
+  border: none;
+  color: var(--accent-2);
+  background: none;
+}
+
 .ai-ok {
   color: var(--accent);
   font-size: 12px;
@@ -1663,12 +1690,25 @@ button.danger:hover {
   text-overflow: ellipsis;
 }
 
-.mix-block.off {
+/* Выключенный блок затемняется по частям — кнопка «вкл» остаётся
+   полноценной: полупрозрачная кнопка выглядела задизейбленной, а это
+   главный путь вернуть дорожку в микс. */
+.mix-block.off .mix-name,
+.mix-block.off .mix-ctl,
+.mix-block.off .level-bar {
   opacity: 0.45;
 }
 
 .mix-block.off .mix-name {
   color: var(--text-dim);
+}
+
+/* Кнопка вкл/выкл: единое поведение наведения для обоих состояний —
+   голубая рамка и лёгкая подсветка (действие «вернуть звук»). */
+.mix-block .mix-power:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  background: rgba(126, 200, 255, 0.08);
 }
 
 /* Тумбометры живого уровня дорожки */

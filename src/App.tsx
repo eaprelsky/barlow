@@ -219,6 +219,8 @@ export default function App() {
   const [showChain, setShowChain] = useState(false);
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
   const [showAi, setShowAi] = useState(false);
+  // Глазик у поля ключа: показать/скрыть символы.
+  const [showAiKey, setShowAiKey] = useState(false);
   const [showLib, setShowLib] = useState(false);
   const [showMix, setShowMix] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -840,17 +842,24 @@ export default function App() {
     });
   }, [patch.tracks, setPatch]);
 
-  /** Новый трек — сразу, без браузера: чистый синус, западные 12 полутонов,
-   *  стан 16 шагов. Встаёт ПЕРВЫМ: добавил — и работаешь с ним, не скролля. */
+  /** Новый трек — сразу, без браузера: чистый синус, стан 16 шагов.
+   *  Лад (шкала, тоника, октавы стана) наследуется от верхнего трека:
+   *  работа обычно идёт в одном строе — новая партия встаёт в тот же
+   *  звукоряд. Нет треков — западные 12 полутонов. Встаёт ПЕРВЫМ:
+   *  добавил — и работаешь с ним, не скролля. */
   const addTrack = useCallback(() => {
     // id — снаружи апдейтера: StrictMode прогоняет апдейтер дважды, id
     // должен остаться тем же (и он нужен, чтобы открыть библиотеку).
     const id = uid('t');
     setPatchStep((p) => {
+      const prev = p.tracks[0];
       const { track, instrument } = makeTrackWithInstrument({
         id,
         name: uniqueName('трек', p.tracks.map((t) => t.name)),
-        scale: CHROMATIC,
+        scale: prev ? [...prev.scale] : CHROMATIC,
+        freq: prev?.freq,
+        scaleOctUp: prev?.scaleOctUp,
+        scaleOctDown: prev?.scaleOctDown,
       });
       // Новый трек добавляется во все сцены своим первым паттерном.
       const scenes = p.scenes.map((s) => ({ ...s, slots: { ...s.slots, [track.id]: track.patterns[0].id } }));
@@ -940,7 +949,7 @@ export default function App() {
         const copy = makePattern(
           `${src.name}′`,
           src.length,
-          src.steps.map((s) => ({ ...s, notes: [...s.notes] })),
+          src.steps.map((s) => ({ ...s, notes: s.notes.map((n) => ({ ...n })) })),
         );
         copy.forkedFrom = src.id;
         copy.rate = src.rate;
@@ -949,6 +958,12 @@ export default function App() {
         copy.mods = src.mods?.map((m) => ({ ...m }));
         copy.fadeIn = src.fadeIn;
         copy.fadeOut = src.fadeOut;
+        // Кривые автоматизации (громкость/фильтр/пан по циклу) — часть
+        // партии: форк обязан нести их с собой, точки — глубокой копией.
+        copy.automation = src.automation?.map((a) => ({
+          ...a,
+          points: a.points.map((pt) => ({ ...pt })),
+        }));
         return {
           ...p,
           tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, patterns: [...t.patterns, copy] } : t)),
@@ -1625,7 +1640,7 @@ export default function App() {
                     }
                   />
                   <button
-                    className={t.enabled === false ? '' : 'on'}
+                    className={'mix-power ' + (t.enabled === false ? '' : 'on')}
                     title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
                     onClick={() =>
                       setPatch((p) => ({
@@ -1652,12 +1667,27 @@ export default function App() {
         <div className="ai-panel" data-ob="ai-panel">
           <label data-ob="ai-key" title="Ключ хранится только в этом браузере (localStorage). Взять: elevenlabs.io → Profile → API Keys. Сэмпл-трек → «сгенерировать по описанию»">
             ключ API к ElevenLabs
-            <input
-              type="password" className="ai-key-input"
-              placeholder="sk_…"
-              value={ai.apiKey}
-              onChange={(e) => saveAi({ apiKey: e.target.value })}
-            />
+            <span className="ai-key-wrap">
+              <input
+                type={showAiKey ? 'text' : 'password'} className="ai-key-input"
+                placeholder="sk_…"
+                value={ai.apiKey}
+                onChange={(e) => saveAi({ apiKey: e.target.value })}
+              />
+              <button
+                className="ai-key-eye"
+                aria-label={showAiKey ? 'скрыть ключ' : 'показать ключ'}
+                title={showAiKey ? 'Скрыть ключ' : 'Показать ключ'}
+                onClick={() => setShowAiKey((v) => !v)}
+              >
+                {/* глаз: контур со зрачком; перечёркнут — скрыт */}
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                  <path d="M1.4 7C2.6 4.6 4.7 3.2 7 3.2S11.4 4.6 12.6 7C11.4 9.4 9.3 10.8 7 10.8S2.6 9.4 1.4 7Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                  <circle cx="7" cy="7" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  {!showAiKey && <path d="M2.2 11.8 11.8 2.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />}
+                </svg>
+              </button>
+            </span>
           </label>
           <HelpHint guide="ai" label="Гид: включить ИИ-генерацию" />
         </div>
@@ -1839,7 +1869,7 @@ export default function App() {
           className="add-track"
           data-ob="add-track"
           onClick={addTrack}
-          title="Новый трек: синус и 12 равных полутонов — панель инструментов сразу предложит тембр на слух"
+          title="Новый трек: синус; лад и тоника — как у верхнего трека (если треков ещё нет — 12 равных полутонов). Панель инструментов сразу предложит тембр на слух"
         >
           + трек
         </button>

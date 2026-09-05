@@ -427,10 +427,13 @@ export function InstrumentEditor({
             </button>
           ))}
         </span>
-        <span className="we-title" title="Текущий инструмент: вычислен по параметрам — покрутил ручки, стал «свой»">
-          {instrumentNameOf(st)}
-          {dirty && tab === 'wave' ? ' · черновик волны не применён' : ''}
-        </span>
+        {/* Имя инструмента не дублируем: оно уже в чипе заголовка трека.
+            Осталась только пометка неприменённого черновика волны. */}
+        {dirty && tab === 'wave' && (
+          <span className="we-title" title="Черновик волны отличается от звучащей — «применить» перенесёт его в инструмент">
+            черновик волны не применён
+          </span>
+        )}
         <span className="spacer" />
         <button
           className="env-listen"
