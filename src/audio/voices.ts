@@ -202,6 +202,12 @@ function scheduleGrainCloud(
   // √числа зёрен, компенсируем корнем и держим запас под лимитер.
   const grainAmp = (peak * 1.4) / Math.sqrt(total);
   const max = rows.length - 1;
+  // Унисон в облаке — разброс по зёрнам: каждому зерну случайный голос
+  // унисона (детюн центами → множитель скорости, панорама — k·разброс).
+  // Копировать ноту N раз целиком бессмысленно — облако и так хаотично.
+  const uniN = Math.round(clampNum(track.unisonVoices ?? 1, 1, 8));
+  const uniDet = clampNum(track.unisonDetune ?? 12, 0, 50);
+  const uniSpread = clampNum(track.unisonSpread ?? 0, 0, 1);
   let lastEnd = time;
   // Вибрато на скорости зёрен: один LFO на всё облако.
   let vibLfo: OscillatorNode | null = null;
@@ -222,17 +228,20 @@ function scheduleGrainCloud(
     const at = Math.max(time, t0 + (Math.random() - 0.5) * stepT * 0.4);
     for (const nt of notes) {
       const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
+      // Голос унисона этого зерна: скорость с расстройкой k·детюн центов.
+      const k = uniN > 1 ? (Math.floor(Math.random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
+      const rate = ratio * Math.pow(2, (k * uniDet) / 1200);
       const center = clampNum(pos + (Math.random() * 2 - 1) * scatter * 0.5, 0, 1);
       // Окно должно поместиться в обрезанный кусок с учётом скорости.
-      const room = Math.max(0, regEnd - regStart - sizeSec * ratio - 0.001);
+      const room = Math.max(0, regEnd - regStart - sizeSec * rate - 0.001);
       const offset = regStart + center * room;
       const src = ctx.createBufferSource();
       src.buffer = sample;
       if (track.pitchDrop > 1 && track.pitchTime > 0) {
-        src.playbackRate.setValueAtTime(ratio * track.pitchDrop, at);
-        src.playbackRate.exponentialRampToValueAtTime(ratio, at + track.pitchTime);
+        src.playbackRate.setValueAtTime(rate * track.pitchDrop, at);
+        src.playbackRate.exponentialRampToValueAtTime(rate, at + track.pitchTime);
       } else {
-        src.playbackRate.value = ratio;
+        src.playbackRate.value = rate;
       }
       // Ханн-окно: линейные рампы вверх-вниз по половине зерна.
       const gAmp = ctx.createGain();
@@ -241,8 +250,15 @@ function scheduleGrainCloud(
       gAmp.gain.linearRampToValueAtTime(0, at + sizeSec);
       if (vibG) vibG.connect(src.playbackRate);
       src.connect(gAmp);
-      gAmp.connect(amp);
-      src.start(at, offset, sizeSec * ratio + 0.02);
+      if (uniN > 1 && uniSpread > 0.001) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = k * uniSpread;
+        gAmp.connect(p);
+        p.connect(amp);
+      } else {
+        gAmp.connect(amp);
+      }
+      src.start(at, offset, sizeSec * rate + 0.02);
       src.stop(at + sizeSec + 0.02);
       sources.push(src);
       lastEnd = Math.max(lastEnd, at + sizeSec);
@@ -342,6 +358,13 @@ export function triggerVoice(
     vibOut.connect(g);
     return g;
   };
+
+  // Унисон (v36): параметры читаются до ветвления по источнику — базовые
+  // волны крутят их в detune осцилляторов (unisonOsc ниже), сэмпл — в
+  // скорость воспроизведения (плейн — копии ноты, грейн — разброс зёрен).
+  const uniN = Math.round(clampNum(track.unisonVoices ?? 1, 1, 8));
+  const uniDet = clampNum(track.unisonDetune ?? 12, 0, 50);
+  const uniSpread = clampNum(track.unisonSpread ?? 0, 0, 1);
 
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
@@ -472,28 +495,57 @@ export function triggerVoice(
 
   if (track.waveform === 'sample') {
     // Сэмпл-плеер: шкала задаёт скорость воспроизведения (питч),
-    // длина ноты — как всегда, атакой и спадом.
+    // длина ноты — как всегда, атакой и спадом. Унисон — те же ручки,
+    // что у осцилляторов: N копий сэмпла со скоростью ±детюн.
     if (!sample) return finish();
     const max = rows.length - 1;
+    // Треугольное окно и нормировка — как у унисона осцилляторов: сумма
+    // гейнов 1, когерентный транзиент N синфазных копий не клипит.
+    const uShape = (k: number) => 1 - Math.abs(k) * 0.68;
+    const uNorm =
+      uniN > 1
+        ? Array.from({ length: uniN }, (_, i) => uShape((i / (uniN - 1)) * 2 - 1)).reduce(
+            (a, b) => a + b,
+            0,
+          )
+        : 1;
     notes.forEach((nt, ni) => {
       const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
-      const src = ctx.createBufferSource();
-      src.buffer = sample;
-      // Падение тона на сэмпле — рампой скорости воспроизведения:
-      // «бочка из сэмпла» собирается прямо в слоте.
-      if (track.pitchDrop > 1 && track.pitchTime > 0) {
-        src.playbackRate.setValueAtTime(ratio * track.pitchDrop, time);
-        src.playbackRate.exponentialRampToValueAtTime(ratio, time + track.pitchTime);
-      } else {
-        src.playbackRate.value = ratio;
+      for (let i = 0; i < uniN; i++) {
+        const k = uniN > 1 ? (i / (uniN - 1)) * 2 - 1 : 0;
+        // Детюн центами → множитель скорости (полутон = 2^(1/12)).
+        const mul = Math.pow(2, (k * uniDet) / 1200);
+        const src = ctx.createBufferSource();
+        src.buffer = sample;
+        // Падение тона на сэмпле — рампой скорости воспроизведения:
+        // «бочка из сэмпла» собирается прямо в слоте.
+        if (track.pitchDrop > 1 && track.pitchTime > 0) {
+          src.playbackRate.setValueAtTime(ratio * mul * track.pitchDrop, time);
+          src.playbackRate.exponentialRampToValueAtTime(ratio * mul, time + track.pitchTime);
+        } else {
+          src.playbackRate.value = ratio * mul;
+        }
+        const vbS = vibBus(1 / 1200);
+        if (vbS) vbS.connect(src.playbackRate);
+        let out: AudioNode = src;
+        if (uniN > 1) {
+          const g = ctx.createGain();
+          g.gain.value = uShape(k) / uNorm;
+          src.connect(g);
+          out = g;
+          if (uniSpread > 0.001) {
+            const p = ctx.createStereoPanner();
+            p.pan.value = k * uniSpread;
+            g.connect(p);
+            out = p;
+          }
+        }
+        out.connect(noteDest(ni));
+        // Играем обрезанный кусок: offset и длительность — в секундах буфера.
+        src.start(time, regStart, Math.max(0.001, regEnd - regStart));
+        src.stop(stopAt);
+        sources.push(src);
       }
-      const vbS = vibBus(1 / 1200);
-      if (vbS) vbS.connect(src.playbackRate);
-      src.connect(noteDest(ni));
-      // Играем обрезанный кусок: offset и длительность — в секундах буфера.
-      src.start(time, regStart, Math.max(0.001, regEnd - regStart));
-      src.stop(stopAt);
-      sources.push(src);
     });
     return finish();
   }
@@ -787,12 +839,10 @@ export function triggerVoice(
   }
 
   // Унисон (v36): N расстроенных копий осциллятора на ноту (базовые
-  // волны). Громкость — треугольное окно (центр громче), сумма
-  // нормирована; разброс разводит голоса по каналам. Голосов 1 —
-  // обычный осциллятор, звук в точности как раньше.
-  const uniN = Math.round(clampNum(track.unisonVoices ?? 1, 1, 8));
-  const uniDet = clampNum(track.unisonDetune ?? 12, 0, 50);
-  const uniSpread = clampNum(track.unisonSpread ?? 0, 0, 1);
+  // волны; параметры читаются у vibBus — выше ветвления). Громкость —
+  // треугольное окно (центр громче), сумма нормирована; разброс
+  // разводит голоса по каналам. Голосов 1 — обычный осциллятор,
+  // звук в точности как раньше.
   const unisonOsc = (make: (detCents: number) => OscillatorNode, dest: AudioNode): void => {
     if (uniN <= 1) {
       const osc = make(0);

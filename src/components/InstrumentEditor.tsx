@@ -120,6 +120,12 @@ const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
             })),
           };
 
+/** Источники, которым положен унисон (ручки в группе «унисон» тембра):
+ *  базовые волны — копии осциллятора, сэмпл — копии скорости (кроме
+ *  скрэтча: там питч задаёт жест). Остальным моделям ручки не звучат —
+ *  группа приглушается с пояснением. */
+const UNISON_SOURCES = new Set(['sine', 'square', 'triangle', 'sawtooth']);
+
 /** Честная форма звучащего тембра — не только парциалов «своей волны»:
  *  базовые волны рисуются формулой (супер-пила — копиями с детюном),
  *  FM — своим уравнением, шум — сглаженным псевдошумом. Модели (струна,
@@ -134,23 +140,35 @@ function renderInstrumentCycle(inst: Instrument): Float32Array | null {
       inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] },
       N,
     );
-  if (wf === 'sine' || wf === 'triangle' || wf === 'square' || wf === 'sawtooth' || wf === 'supersaw') {
-    const detune = wf === 'supersaw' ? (inst.unisonDetune ?? 12) : 0;
-    const voices = wf === 'supersaw' ? Math.max(2, inst.unisonVoices ?? 3) : 1;
+  if (wf === 'sine' || wf === 'triangle' || wf === 'square' || wf === 'sawtooth') {
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      const ph = ((t % 1) + 1) % 1;
+      let s: number;
+      if (wf === 'sine') s = Math.sin(ph * Math.PI * 2);
+      else if (wf === 'triangle') s = 1 - Math.abs(ph - 0.5) * 4;
+      else if (wf === 'square') s = ph < 0.5 ? 1 : -1;
+      else s = ph * 2 - 1; // пила
+      out[i] = s;
+    }
+    return out;
+  }
+  if (wf === 'supersaw') {
+    // По формуле звука (triggerVoice): 7 пил, расстройка и гейны — из
+    // «морф»; унисон-ручки на супер-пилу не действуют, и рисовалка
+    // больше не врёт, будто действуют.
+    const detune = 4 + (inst.voiceMorph ?? 0.5) * 36;
+    const gains = [1, 0.7, 0.7, 0.5, 0.5, 0.32, 0.32];
+    const offs = [0, -0.33, 0.33, -0.66, 0.66, -1, 1];
+    const norm = gains.reduce((a, b) => a + b, 0);
     for (let i = 0; i < N; i++) {
       const t = i / N;
       let v = 0;
-      for (let k = 0; k < voices; k++) {
-        const off = voices === 1 ? 0 : ((k / (voices - 1)) * 2 - 1) * (detune / 1200);
-        const ph = ((t * (1 + off)) % 1 + 1) % 1;
-        let s: number;
-        if (wf === 'sine') s = Math.sin(ph * Math.PI * 2);
-        else if (wf === 'triangle') s = 1 - Math.abs(ph - 0.5) * 4;
-        else if (wf === 'square') s = ph < 0.5 ? 1 : -1;
-        else s = ph * 2 - 1; // пила / супер-пила
-        v += s;
+      for (let k = 0; k < gains.length; k++) {
+        const ph = ((t * (1 + (offs[k] * detune) / 1200)) % 1 + 1) % 1;
+        v += (ph * 2 - 1) * gains[k];
       }
-      out[i] = v / voices;
+      out[i] = v / norm;
     }
     return out;
   }
@@ -377,6 +395,7 @@ export function InstrumentEditor({
   const sampleFileRef = useRef<HTMLInputElement>(null);
   const isSample = st.waveform === 'sample';
   const scratchMode = isSample && (st.sampleMode ?? 'plain') === 'scratch';
+  const unisonOk = UNISON_SOURCES.has(st.waveform) || (isSample && !scratchMode);
 
   /** Закрытие с неприменённым черновиком волны — сперва спросить. */
   const tryClose = async () => {
@@ -657,27 +676,49 @@ export function InstrumentEditor({
               onChange={(vibratoDelay) => onChangeInst({ vibratoDelay })}
             />
           </div>
-          <div className="group sub knob-row" data-ob="unison-group">
+          <div className="group sub" data-ob="unison-group">
             <span className="sub-cap">унисон</span>
-            <span className="scope-cap" title="Унисон — для базовых волн (синус/пила/квадрат/треугольник)">базовые волны</span>
-            <Knob
-              label="голоса"
-              title="Унисон: сколько расстроенных копий осциллятора играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире. Двойной клик — точное число"
-              value={st.unisonVoices ?? 1} min={1} max={8} step={1}
-              onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
-            />
-            <Knob
-              label="детюн"
-              title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
-              value={st.unisonDetune ?? 12} min={0} max={50} step={1}
-              onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
-            />
-            <Knob
-              label="разброс"
-              title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
-              value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
-              onChange={(v) => onChangeInst({ unisonSpread: v / 100 })}
-            />
+            {unisonOk ? (
+              isSample && (
+                <span
+                  className="scope-cap"
+                  title="Унисон на сэмпле — N копий со скоростью ±детюн (хорус/стена из одного сэмпла); в гранулярном режиме — разброс зёрен"
+                >
+                  сэмпл
+                </span>
+              )
+            ) : (
+              <span
+                className="scope-cap"
+                title={
+                  st.waveform === 'supersaw'
+                    ? 'Супер-пила — уже унисон из семи пил: ширина задаётся ручкой «морф» на вкладке «источник»'
+                    : 'Этот источник не играет унисоном — ручки молчат. Переключись на базовую волну или сэмпл'
+                }
+              >
+                {st.waveform === 'supersaw' ? 'уже унисон — морф' : 'не для этого источника'}
+              </span>
+            )}
+            <span className={'knob-row' + (unisonOk ? '' : ' dim')}>
+              <Knob
+                label="голоса"
+                title="Унисон: сколько расстроенных копий играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире. Двойной клик — точное число"
+                value={st.unisonVoices ?? 1} min={1} max={8} step={1}
+                onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
+              />
+              <Knob
+                label="детюн"
+                title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
+                value={st.unisonDetune ?? 12} min={0} max={50} step={1}
+                onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
+              />
+              <Knob
+                label="разброс"
+                title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
+                value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
+                onChange={(v) => onChangeInst({ unisonSpread: v / 100 })}
+              />
+            </span>
           </div>
           <div className="group sub" data-ob="arp-group">
             <div className="sub-head">
