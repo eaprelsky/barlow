@@ -862,6 +862,18 @@ footer {
   cursor: default;
 }
 
+/* Листалка окна стана: узкая стрелка между «+окт» и «−». Подсветка —
+   за краем окна есть скрытые строки (уехать к ним — этой же стрелкой). */
+.oct-btn.oct-flip {
+  width: 14px;
+  font-size: 7px;
+}
+
+.oct-btn.oct-flip.more {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
 /* Панель шага: по строке на ноту */
 
 .note-panel {
