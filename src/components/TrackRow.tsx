@@ -380,13 +380,16 @@ export const TrackRow = memo(function TrackRow({
           }))
         : track.patterns;
     onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
-    // Окно: октава снизу сдвигает контент — окно едет за ним; если виден
-    // край диапазона (+окт сверху при окне до края, +окт снизу при lo=0),
-    // новая октава прихватывается в окно — как при виде всего диапазона.
+    // Окно: «+окт» обязан показать новую октаву. Окно у края диапазона
+    // (или весь диапазон) — прирастает новой октавой; листанное окно —
+    // прижимается к новому краю, высота окна не меняется.
     setRollView((v) => {
       if (!v) return null;
-      if (dir === 'up') return v.lo + v.rows === scaleRows.length ? { ...v, rows: v.rows + delta } : v;
-      return v.lo === 0 ? { ...v, rows: v.rows + delta } : { ...v, lo: v.lo + delta };
+      if (dir === 'up')
+        return v.lo + v.rows === scaleRows.length
+          ? { ...v, rows: v.rows + delta }
+          : { lo: scaleRows.length + delta - v.rows, rows: v.rows };
+      return v.lo === 0 ? { ...v, rows: v.rows + delta } : { lo: 0, rows: v.rows };
     });
   };
 

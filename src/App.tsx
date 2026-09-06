@@ -154,6 +154,10 @@ export default function App() {
   const undoStack = useRef<Patch[]>([]);
   const redoStack = useRef<Patch[]>([]);
   const lastPush = useRef(0);
+  // Последний трек, у которого правили строй (шкала/тоника/октавы): новый
+  // трек наследует шкалу от него — «от прошлого трека», а не от верхнего
+  // в списке. Запись идемпотентна, двойной прогон апдейтера безвреден.
+  const lastScaleRef = useRef<string | null>(null);
 
   // Все правки патча идут через этот сеттер: он пишет историю.
   // Быстрые изменения (движение ползунка) коалесцируются в один шаг (< 700 мс).
@@ -161,6 +165,19 @@ export default function App() {
     setPatchRaw((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (next === prev) return prev;
+      const prevTracks = new Map(prev.tracks.map((t) => [t.id, t]));
+      for (const t of next.tracks) {
+        const o = prevTracks.get(t.id);
+        if (
+          o &&
+          (o.scale !== t.scale ||
+            o.freq !== t.freq ||
+            o.scaleOctUp !== t.scaleOctUp ||
+            o.scaleOctDown !== t.scaleOctDown)
+        ) {
+          lastScaleRef.current = t.id;
+        }
+      }
       const now = Date.now();
       if (now - lastPush.current > 700) {
         undoStack.current.push(prev);
@@ -706,26 +723,24 @@ export default function App() {
           filterEnvTime: t.filterEnvTime ?? 0.3,
         };
         const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
-        // Ноты выше новой шкалы — вниз; дубли строк (шкала схлопнулась) — один.
-        const patterns = track.patterns.map((pt) => ({
-          ...pt,
-          steps: pt.steps.map((s) => ({
-            ...s,
-            notes: s.notes
-              .map((nt) => ({ ...nt, n: Math.min(nt.n, scale.length - 1) }))
-              .filter((nt, i, arr) => arr.findIndex((x) => x.n === nt.n) === i),
-          })),
-        }));
+        // Строй (шкала/тоника/октавы) — часть пресета только для ПУСТОГО
+        // трека: свежему пресет задаёт и регистр («бас» от 55 Гц), а у
+        // сыгранного строй не отбираем — пресет меняет тембр, не высоты
+        // (перкуссия не схлопывает стан в «одну высоту»).
+        const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
         const updTrack: Track = {
           ...track,
-          freq: t.freq ?? track.freq,
-          scale,
-          scaleOctUp: 0,
-          scaleOctDown: 0,
+          ...(empty
+            ? {
+                freq: t.freq ?? track.freq,
+                scale,
+                scaleOctUp: 0,
+                scaleOctDown: 0,
+              }
+            : {}),
           effects: t.effects ?? [],
           mono: t.mono,
           mods: t.mods ? t.mods.map((m) => ({ ...m })) : track.mods,
-          patterns,
         };
         // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
         const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);
@@ -892,7 +907,10 @@ export default function App() {
     // должен остаться тем же (и он нужен, чтобы открыть библиотеку).
     const id = uid('t');
     setPatchStep((p) => {
-      const prev = p.tracks[0];
+      // Наследование строя — от последнего трека, у которого его правили
+      // (lastScaleRef), а не от верхнего в списке.
+      const prev =
+        p.tracks.find((t) => t.id === lastScaleRef.current) ?? p.tracks[0];
       const { track, instrument } = makeTrackWithInstrument({
         id,
         name: uniqueName('трек', p.tracks.map((t) => t.name)),
@@ -1266,7 +1284,14 @@ export default function App() {
       if (!t) return;
       try {
         const blob = await engine.renderScratchWav(t);
-        const meta = await putSample(blob, `${t.name} скрэтч`);
+        // Штамп даты/времени: жестей много, имя должно отличать их —
+        // иначе в библиотеке они неразличимы (одинаковый жест по хешу
+        // контента и вовсе перезапишет прежний сэмпл).
+        const now = new Date();
+        const stamp = `${now
+          .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+          .replace('.', '')} ${now.toLocaleTimeString('ru-RU')}`;
+        const meta = await putSample(blob, `${t.name} скрэтч ${stamp}`);
         void alertDialog(
           `Скрэтч сохранён в библиотеку: «${meta.name}» — панель «инструменты», вкладка «сэмплы»`,
           'скрэтч в сэмпл',
