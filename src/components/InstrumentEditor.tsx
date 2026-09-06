@@ -391,9 +391,21 @@ export function InstrumentEditor({
   const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
   // Рендер «в сэмпл» идёт — кнопка занята.
   const [scratchSaving, setScratchSaving] = useState(false);
-  // Имя для «в сэмпл»: дефолт — база «<трек> скрэтч»; нетронутое/пустое
-  // поле App дополнит штампом даты-времени (жесты не путаются).
-  const [scratchName, setScratchName] = useState(`${track.name} скрэтч`);
+  // Имя для «в сэмпл»: поле появляется ПОСЛЕ клика по кнопке (справа от
+  // неё), сохранение — по «ок»/Enter. Имя = ровно текст поля, файл
+  // называется так же. Успех — галочкой на полторы секунды, без модалки.
+  const [scratchNaming, setScratchNaming] = useState(false);
+  const [scratchName, setScratchName] = useState('');
+  const [scratchSavedTick, setScratchSavedTick] = useState(false);
+  const saveScratchNamed = () => {
+    setScratchSaving(true);
+    void Promise.resolve(onScratchSave(track.id, scratchName)).finally(() => {
+      setScratchSaving(false);
+      setScratchNaming(false);
+      setScratchSavedTick(true);
+      window.setTimeout(() => setScratchSavedTick(false), 1600);
+    });
+  };
   const dragIdx = useRef<number | null>(null);
   const pendingAdd = useRef<{ t: number; pos: number } | null>(null);
   const downXY = useRef<{ x: number; y: number } | null>(null);
@@ -842,25 +854,53 @@ export function InstrumentEditor({
                 >
                   {scratchPlaying ? '▶ играет…' : '▶ послушать'}
                 </button>
-                <input
-                  className="scratch-name"
-                  data-ob="scratch-name"
-                  value={scratchName}
-                  spellCheck={false}
-                  title="Имя, под которым жест ляжет в библиотеку сэмплов. Оставишь как есть — добавлю дату и время, чтобы жесты одного трека не путались"
-                  onChange={(e) => setScratchName(e.target.value)}
-                />
                 <button
                   disabled={scratchSaving}
                   data-ob="scratch-save"
-                  title="Заморозить удачную настройку: жест отрендерится в WAV и ляжет в библиотеку сэмплов под именем из поля слева — готовый скрэтч без пэда и точек"
+                  title="Назвать и заморозить жест: справа появится поле имени — «ок» отрендерит WAV в библиотеку сэмплов, готовый скрэтч без пэда и точек"
                   onClick={() => {
-                    setScratchSaving(true);
-                    void Promise.resolve(onScratchSave(track.id, scratchName)).finally(() => setScratchSaving(false));
+                    setScratchName(`${track.name} скрэтч`);
+                    setScratchNaming(true);
                   }}
                 >
-                  {scratchSaving ? 'сохраняю…' : 'в сэмпл'}
+                  {scratchSaving ? 'рендер…' : 'в сэмпл'}
                 </button>
+                {scratchNaming && !scratchSaving && (
+                  <>
+                    <input
+                      className="scratch-name"
+                      data-ob="scratch-name"
+                      autoFocus
+                      value={scratchName}
+                      spellCheck={false}
+                      title="Имя, под которым жест ляжет в библиотеку — файл будет называться ровно так. Одинаковые имена различай сам: например, дописывай номер"
+                      onChange={(e) => setScratchName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveScratchNamed();
+                        if (e.key === 'Escape') setScratchNaming(false);
+                      }}
+                    />
+                    <button
+                      className="scratch-ok"
+                      title="Сохранить жест в библиотеку под этим именем"
+                      onClick={saveScratchNamed}
+                    >
+                      ок
+                    </button>
+                    <button
+                      className="scratch-cancel"
+                      title="Отменить — жест не сохранится"
+                      onClick={() => setScratchNaming(false)}
+                    >
+                      ×
+                    </button>
+                  </>
+                )}
+                {scratchSavedTick && (
+                  <span className="scratch-saved" title="Жест в библиотеке сэмплов">
+                    ✓
+                  </span>
+                )}
                 <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
                 <span
                   className="mini-info"

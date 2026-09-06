@@ -339,7 +339,12 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   // Движок один — Web Audio (нативный Rust-вывод отложен: звук не сходился
   // с эталоном). Конструктор дешёвый: AudioContext создаётся лениво.
-  if (!engineRef.current) engineRef.current = new AudioEngine();
+  if (!engineRef.current) {
+    engineRef.current = new AudioEngine();
+    // Тихие падения превью («▶ нота», жесты) — причина «не слышно» без
+    // объяснений; движок докладывает их сюда сообщением.
+    engineRef.current.warnSink = (m) => void alertDialog(m, 'звук');
+  }
   const engine: AudioBackend = engineRef.current;
   const getSampleBuffer = useCallback(
     (id?: string) => engine.getSampleBuffer(id),
@@ -1284,22 +1289,11 @@ export default function App() {
       if (!t) return;
       try {
         const blob = await engine.renderScratchWav(t);
-        // Имя: поле у кнопки «в сэмпл». Нетронутое/пустое поле — база
-        // «<трек> скрэтч» + штамп даты/времени: жестей много, имя должно
-        // отличать их (одинаковый жест по хешу контента и вовсе перезапишет
-        // прежний сэмпл). Своё имя — как есть.
-        const base = `${t.name} скрэтч`;
-        const typed = (name ?? '').trim();
-        const now = new Date();
-        const stamp = `${now
-          .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-          .replace('.', '')} ${now.toLocaleTimeString('ru-RU')}`;
-        const final = !typed || typed === base ? `${base} ${stamp}` : typed;
-        const meta = await putSample(blob, final);
-        void alertDialog(
-          `Скрэтч сохранён в библиотеку: «${meta.name}» — панель «инструменты», вкладка «сэмплы»`,
-          'скрэтч в сэмпл',
-        );
+        // Имя — ровно из поля у кнопки (пустое — база «<трек> скрэтч»):
+        // файл называется так, как видно в интерфейсе, без сюрпризов.
+        const final = (name ?? '').trim() || `${t.name} скрэтч`;
+        await putSample(blob, final);
+        // Успех — молча: галочку рисует сам редактор (scratchSavedTick).
       } catch (e) {
         void alertDialog(`Не удалось сохранить скрэтч: ${errText(e)}`, 'скрэтч в сэмпл');
       }

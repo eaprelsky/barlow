@@ -47,6 +47,9 @@ export interface AudioBackend {
   scratchEnd(): void;
   /** Прослушать жест; null — сыграло, строка — причина тишины (покажет UI). */
   previewScratch(track: Track): Promise<string | null>;
+  /** Приёмник ошибок превью («▶ нота», сэмплы): тихие падения — загадка
+   *  «не слышно», UI показывает их сообщением. */
+  warnSink?: (msg: string) => void;
 
   /** Пики волны сэмпла (64 сегмента, 0..1) для мини-карты скрэтч-пэда. */
   getSamplePeaks(id: string | undefined): Promise<{ peaks: number[]; duration: number } | null>;

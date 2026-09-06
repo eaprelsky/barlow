@@ -2493,8 +2493,8 @@ button.danger:hover {
   gap: 8px;
 }
 
-/* Имя для «в сэмпл»: поле прямо у кнопки, дефолт — база имени,
-   штамп даты-времени добавится при сохранении нетронутого поля */
+/* Имя для «в сэмпл»: поле появляется по клику на кнопку, рядом справа;
+   «ок» сохраняет, «×» отменяет. Имя = ровно текст поля */
 .scratch-name {
   width: 150px;
   min-width: 0;
@@ -2504,6 +2504,24 @@ button.danger:hover {
   background: var(--cell-bg);
   border: 1px solid var(--border);
   border-radius: 4px;
+}
+
+.scratch-ok {
+  padding: 1px 8px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.scratch-cancel {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Галочка «сохранено» — на месте поля, без модалки */
+.scratch-saved {
+  color: var(--accent-2);
+  font-size: 13px;
 }
 
 .scratch-row {

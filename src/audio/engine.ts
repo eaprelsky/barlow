@@ -99,6 +99,9 @@ function validSceneId(patch: Patch | null, want: string): string {
 export class AudioEngine implements AudioBackend {
   // Дебаг-мост: приёмник событий нот live-планировщика.
   noteSink?: (trackId: string, at: number, notes: Note[]) => void;
+  /** Приёмник ошибок превью (послушать жест/ноту/сэмпл): тихие падения —
+   *  загадка «не слышно», UI показывает их сообщением. */
+  warnSink?: (msg: string) => void;
 
   private ctx: AudioContext | null = null;
   private master: MasterNodes | null = null;
@@ -656,9 +659,16 @@ export class AudioEngine implements AudioBackend {
   async previewScratch(track: Track): Promise<string | null> {
     const patch = this.patch;
     if (!patch) return 'патч ещё не загружен';
-    await this.ensureSamples(patch);
+    // Контекст и resume — синхронно, в стеке клика: после первого await
+    // выйдем из пользовательского жеста, и resume подвисшего контекста
+    // может не пройти (autoplay-политика).
     const ctx = this.ensureCtx();
-    if (ctx.state === 'suspended') await ctx.resume();
+    if (ctx.state === 'suspended') void ctx.resume();
+    try {
+      await this.ensureSamples(patch);
+    } catch {
+      return 'сэмпл дорожки не загрузился (битый файл в библиотеке?)';
+    }
     const st = stOf(patch, track);
     const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
     if (!sample) return 'в слоте дорожки нет сэмпла';
@@ -668,36 +678,40 @@ export class AudioEngine implements AudioBackend {
     const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
     const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
     if (re - rs < 0.01) return 'обрезка сэмпла почти пустая — расширь кусок в редакторе волны';
-    const dest: AudioNode = chain ? chain.hp : this.master!.input;
-    const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
-    const len =
-      st.noteSteps && st.noteSteps > 0
-        ? st.noteSteps * stepSec
-        : st.attack + st.decay;
-    const node = makeScratchNode(ctx, sample);
-    const pos = node.parameters.get('position')!;
-    const off = node.parameters.get('off')!;
-    const mapPos = (p: number) =>
-      Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
-    const t0 = ctx.currentTime + 0.02;
-    const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
-    if (points.length === 0) {
-      pos.setValueAtTime(mapPos(0), t0);
-      pos.linearRampToValueAtTime(mapPos(1), t0 + len);
-    } else {
-      pos.setValueAtTime(mapPos(points[0].pos), t0);
-      for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
+    try {
+      const dest: AudioNode = chain ? chain.hp : this.master!.input;
+      const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
+      const len =
+        st.noteSteps && st.noteSteps > 0
+          ? st.noteSteps * stepSec
+          : st.attack + st.decay;
+      const node = makeScratchNode(ctx, sample);
+      const pos = node.parameters.get('position')!;
+      const off = node.parameters.get('off')!;
+      const mapPos = (p: number) =>
+        Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
+      const t0 = ctx.currentTime + 0.02;
+      const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
+      if (points.length === 0) {
+        pos.setValueAtTime(mapPos(0), t0);
+        pos.linearRampToValueAtTime(mapPos(1), t0 + len);
+      } else {
+        pos.setValueAtTime(mapPos(points[0].pos), t0);
+        for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
+      }
+      off.setValueAtTime(0, t0);
+      off.setValueAtTime(1, t0 + len + 0.1);
+      const amp = ctx.createGain();
+      amp.gain.setValueAtTime(0, t0);
+      amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
+      amp.gain.setValueAtTime(0.9, t0 + len * 0.88);
+      amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      node.connect(amp);
+      amp.connect(dest);
+      return null;
+    } catch (e) {
+      return `ошибка звука: ${e instanceof Error ? e.message : String(e)}`;
     }
-    off.setValueAtTime(0, t0);
-    off.setValueAtTime(1, t0 + len + 0.1);
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(0, t0);
-    amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
-    amp.gain.setValueAtTime(0.9, t0 + len * 0.88);
-    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
-    node.connect(amp);
-    amp.connect(dest);
-    return null;
   }
 
   /** Отпустили: узел завершает себя по расписанию off. */
@@ -834,38 +848,57 @@ export class AudioEngine implements AudioBackend {
    *  для трека из текущего патча. Тот же triggerVoice, что и в
    *  планировщике — слышим ровно то, что будет в паттерне. */
   previewSounding(st: SoundingTrack, noteRow = 0): void {
+    // Контекст и resume — синхронно, в стеке клика (см. previewScratch).
+    const ctx0 = this.ensureCtx();
+    if (ctx0.state === 'suspended') void ctx0.resume();
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
-      await this.ensureSamples(patch);
-      const ctx = this.ensureCtx();
-      if (ctx.state === 'suspended') void ctx.resume();
-      if (!this.master || !this.noiseBuffer) return;
-      const chain = this.chains.get(st.id);
-      // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
-      const pseudo: TrackChain = chain
-        ? chain
-        : ({ hp: ctx.createGain() } as unknown as TrackChain);
-      if (!chain) (pseudo.hp as GainNode).connect(this.master.input);
-      const pattern = patternInScene(st, this.scene());
-      const stepSec = stepDuration(st, patch.bpm, pattern);
-      const notes = [makeNote(noteRow, 0.9, 1)];
-      const voice = triggerVoice(
-        ctx,
-        pseudo,
-        this.noiseBuffer,
-        this.sampleCache.get(st.sampleId ?? '') ?? null,
-        st,
-        notes,
-        ctx.currentTime + 0.02,
-        stepSec,
-      );
-      // Голос живёт своей огибающей; хвост подчищаем по stopAt.
-      const src = voice.sources[0];
       try {
-        (src as AudioScheduledSourceNode).stop?.(voice.stopAt);
+        await this.ensureSamples(patch);
       } catch {
-        /* уже остановлен */
+        this.warnSink?.('Сэмпл не загрузился — «▶ нота» молчит (битый файл в библиотеке?)');
+        return;
+      }
+      const ctx = this.ensureCtx();
+      if (!this.master || !this.noiseBuffer) return;
+      // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
+      // без объяснений; говорим.
+      if (st.waveform === 'sample' && !this.sampleCache.get(st.sampleId ?? '')) {
+        this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
+        return;
+      }
+      const chain = this.chains.get(st.id);
+      try {
+        // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
+        const pseudo: TrackChain = chain
+          ? chain
+          : ({ hp: ctx.createGain() } as unknown as TrackChain);
+        if (!chain) (pseudo.hp as GainNode).connect(this.master.input);
+        const pattern = patternInScene(st, this.scene());
+        const stepSec = stepDuration(st, patch.bpm, pattern);
+        const notes = [makeNote(noteRow, 0.9, 1)];
+        const voice = triggerVoice(
+          ctx,
+          pseudo,
+          this.noiseBuffer,
+          this.sampleCache.get(st.sampleId ?? '') ?? null,
+          st,
+          notes,
+          ctx.currentTime + 0.02,
+          stepSec,
+        );
+        // Голос живёт своей огибающей; хвост подчищаем по stopAt.
+        const src = voice.sources[0];
+        try {
+          (src as AudioScheduledSourceNode).stop?.(voice.stopAt);
+        } catch {
+          /* уже остановлен */
+        }
+      } catch (e) {
+        this.warnSink?.(
+          `Нота не прозвучала: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     })();
   }
