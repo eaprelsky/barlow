@@ -1,0 +1,10 @@
+# ИИ и ключи
+
+- Настройки ИИ в localStorage `barlow.ai.v1`: `{providerId, keys}` — ключ
+  на каждого провайдера (ElevenLabs, fal.ai), переключение не теряет ключи
+  (личный локальный инструмент). fal.ai — очередь `queue.fal.run` +
+  поллинг, CORS открыт; модель Stable Audio 3 small SFX (a2a и t2s),
+  аудио уходит data URI.
+- При публикации/Tauri ключи — за нативным слоем, не в браузере.
+- Провайдер-агностик: `src/ai/providers.ts`. Генерация текст→звук и
+  морфинг сэмпла audio-to-audio.
