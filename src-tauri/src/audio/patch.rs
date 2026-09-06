@@ -21,6 +21,9 @@ pub enum Waveform {
     Formant,
     Modal,
     Organ,
+    // v39: живой движок — Web Audio; здесь спящие ветви прежних моделей
+    // остаются для старых патчей, Wave — единственный тип текущих.
+    Wave,
     Sample,
 }
 

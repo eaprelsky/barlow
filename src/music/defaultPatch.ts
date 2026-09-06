@@ -3,6 +3,7 @@ import { SCALE_PRESETS } from './scales';
 import { PATCH_VERSION, makeNote, makePattern, makeScene, makeStep, makeTrackWithInstrument, uid } from '../types';
 import type { Instrument, Patch, Step, Track } from '../types';
 import type { Instrument as Inst } from '../types';
+import { recipe } from './waveRecipes';
 
 const scale = (name: string): number[] =>
   SCALE_PRESETS.find((p) => p.name === name)?.ratios ?? [1];
@@ -39,7 +40,8 @@ export function defaultPatch(): Patch {
       id: uid('t'),
       name: 'pulse',
       rate: 4,
-      waveform: 'sine',
+      waveform: 'wave',
+      wave: recipe('sine').wave,
       scale: scale('одна высота'),
       freq: 48,
       attack: 0.001,
@@ -54,7 +56,8 @@ export function defaultPatch(): Patch {
       id: uid('t'),
       name: 'grain',
       rate: 2,
-      waveform: 'noise',
+      waveform: 'wave',
+      wave: recipe('noise').wave,
       scale: scale('одна высота'),
       decay: 0.06,
       filterFreq: 6500,
@@ -69,7 +72,8 @@ export function defaultPatch(): Patch {
       id: uid('t'),
       name: 'lead',
       rate: 2,
-      waveform: 'triangle',
+      waveform: 'wave',
+      wave: recipe('triangle').wave,
       scale: scale('пентатоника, минор'),
       freq: 329.6,
       decay: 0.18,
@@ -84,7 +88,8 @@ export function defaultPatch(): Patch {
       id: uid('t'),
       name: 'bass',
       rate: 8,
-      waveform: 'sine',
+      waveform: 'wave',
+      wave: recipe('sine').wave,
       scale: [1, 3 / 2],
       freq: 41.2,
       mono: true,

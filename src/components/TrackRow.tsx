@@ -14,7 +14,6 @@ import type {
 import {
   AUTO_TARGET_LABELS,
   EFFECT_LABELS,
-  WAVEFORM_LABELS,
   makeNote,
   makeStep,
   scaleOf,
@@ -38,6 +37,13 @@ import { clip } from '../music/clip';
 import { HelpHint } from '../onboarding/Onboarding';
 
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
+// Подписи форм LFO — свои: типов волны с тех пор всего два (v39).
+const LFO_SHAPE_LABELS: Record<Mod['shape'], string> = {
+  sine: 'синус',
+  triangle: 'треугольник',
+  square: 'прямоугольник',
+  sawtooth: 'пила',
+};
 const MOD_SOURCE_LABELS: Record<string, string> = {
   lfo: 'LFO',
   sah: 'ступени (S&H)',
@@ -1880,7 +1886,7 @@ export const TrackRow = memo(function TrackRow({
                           onChange={(e) => updateMod(i, { shape: e.target.value as Mod['shape'] })}
                         >
                           {LFO_SHAPES.map((sh) => (
-                            <option key={sh} value={sh}>{WAVEFORM_LABELS[sh]}</option>
+                            <option key={sh} value={sh}>{LFO_SHAPE_LABELS[sh]}</option>
                           ))}
                         </select>
                       )}

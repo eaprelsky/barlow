@@ -2,6 +2,7 @@
 // пользователю остаётся накидать ноты в нотном стане.
 
 import type { Instrument, Track } from '../types';
+import { recipeForLegacy } from './waveRecipes';
 
 export interface InstrumentPreset {
   name: string;
@@ -32,10 +33,9 @@ const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay',
-  'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'unisonVoices', 'unisonDetune', 'unisonSpread',
-  'filterEnvAmount', 'filterEnvTime',
+  'filterEnvAmount', 'filterEnvTime', 'formants',
   'wave',
 ];
 
@@ -56,7 +56,15 @@ export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): s
   return 'своя настройка';
 }
 
-export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
+// Пресеты писались и под прежние модели (v38-): ниже — сырой список,
+// при загрузке модуля модели собираются в строки-операторы рецептами
+// (music/waveRecipes.ts) — тем же кодом, что мигрирует старые патчи.
+const RAW_PRESETS: {
+  name: string;
+  category: string;
+  hint?: string;
+  track: Record<string, unknown>;
+}[] = [
   // ---- Архетипы: отправные точки классов звуков. Минимум настроек,
   // рецепт — в подсказке: почему именно атака/спад/фильтр такие и что
   // крутить дальше. Готовые характеры — ниже по категориям.
@@ -759,6 +767,36 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
 ];
 
+/** v39: пресет прежней модели (или юзерский, сохранённый до v39)
+ *  пересобрать в строки-операторы; современные — без изменений. */
+const convertPresetV39 = (p: {
+  name: string;
+  category: string;
+  hint?: string;
+  track: Record<string, unknown>;
+}): InstrumentPreset => {
+  const conv = recipeForLegacy(p.track);
+  if (!conv) return p as unknown as InstrumentPreset;
+  const track = { ...p.track };
+  delete track.fmRatio;
+  delete track.fmIndex;
+  delete track.voiceMorph;
+  delete track.ksLife;
+  track.waveform = 'wave';
+  track.wave = conv.wave;
+  if (conv.formants) track.formants = conv.formants;
+  if (
+    conv.unison &&
+    (typeof track.unisonVoices !== 'number' || track.unisonVoices < conv.unison.voices)
+  ) {
+    track.unisonVoices = conv.unison.voices;
+    track.unisonDetune = conv.unison.detune;
+  }
+  return { ...p, track: track as unknown as InstrumentPreset['track'] };
+};
+
+export const INSTRUMENT_PRESETS: InstrumentPreset[] = RAW_PRESETS.map(convertPresetV39);
+
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр
 // с несущей под своим именем, в браузере инструментов категорией «мои».
 // Хранилище — localStorage (как автосейв патча); состав — те же звуковые
@@ -776,11 +814,10 @@ export const USER_PRESETS_EVENT = 'barlow:user-presets';
 const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
-  'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife', 'sampleMode',
-  'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+  'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay', 'scratchPoints', 'mods',
   'unisonVoices', 'unisonDetune', 'unisonSpread',
-  'filterEnvAmount', 'filterEnvTime',
+  'filterEnvAmount', 'filterEnvTime', 'formants',
   'wave',
 ];
 
@@ -792,14 +829,15 @@ export function loadUserPresets(): InstrumentPreset[] {
     if (!Array.isArray(arr)) return [];
     return arr
       .filter(
-        (p): p is { name: string; track: Partial<Track & Instrument> } =>
+        (p): p is { name: string; track: Record<string, unknown> } =>
           typeof p === 'object' &&
           p !== null &&
           typeof (p as { name?: unknown }).name === 'string' &&
           typeof (p as { track?: unknown }).track === 'object' &&
           (p as { track?: unknown }).track !== null,
       )
-      .map((p) => ({ name: p.name, category: USER_CATEGORY, track: p.track }));
+      // Сохранённые до v39 модели пересобираются в строки рецептами.
+      .map((p) => convertPresetV39({ name: p.name, category: USER_CATEGORY, track: p.track }));
   } catch {
     /* повреждённое хранилище — своих пресетов просто нет */
     return [];

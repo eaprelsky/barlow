@@ -14,7 +14,8 @@
    "slots": {
     "t1": "p1",
     "t2": "p2",
-    "t3": "p3"
+    "t3": "p3",
+    "t4": "p4"
    }
   }
  ],
@@ -291,6 +292,94 @@
          "prob": 1
         }
        ]
+      },
+      {
+       "notes": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "t4",
+   "name": "ops",
+   "rate": 1,
+   "phase": 0,
+   "waveform": "wave",
+   "wave": {
+    "partials": [
+     { "ratio": 1, "amp": 1, "type": "sine", "decay": 1.5 },
+     { "ratio": 2.01, "amp": 0.4, "type": "sine" },
+     { "ratio": 2, "amp": 2, "type": "sine", "decay": 0.4, "mod": 0 }
+    ]
+   },
+   "formants": [
+    { "freq": 800, "gain": 1 },
+    { "freq": 2000, "gain": 0.5 }
+   ],
+   "unisonVoices": 3,
+   "unisonDetune": 8,
+   "unisonSpread": 0.3,
+   "scale": [
+    1,
+    1.5
+   ],
+   "scaleOctUp": 0,
+   "scaleOctDown": 0,
+   "freq": 261.6,
+   "attack": 0.002,
+   "decay": 0.4,
+   "sustain": 0,
+   "pitchDrop": 1,
+   "pitchTime": 0.08,
+   "noteSteps": 2,
+   "filterLow": 40,
+   "filterFreq": 8000,
+   "volume": 0.55,
+   "pan": 0.5,
+   "mods": [],
+   "effects": [],
+   "mono": false,
+   "vibratoRate": 5,
+   "vibratoDepth": 0,
+   "patterns": [
+    {
+     "id": "p4",
+     "name": "A",
+     "length": 8,
+     "steps": [
+      {
+       "notes": [
+        {
+         "n": 0,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": [
+        {
+         "n": 1,
+         "vel": 0.8,
+         "prob": 1
+        }
+       ]
+      },
+      {
+       "notes": []
+      },
+      {
+       "notes": []
       },
       {
        "notes": []

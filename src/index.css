@@ -2505,32 +2505,49 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-/* Строки гармоник — скроллящийся список; форма волны над ним — первая
-   строка блока (компактная полоса, как поле), всегда на виду */
-.we-partial-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 220px;
+  max-height: 260px;
   overflow-y: auto;
   padding-right: 4px;
 }
 
-/* Первая строка таблицы — форма волны: подпись + полоса-поле, клик
-   разворачивает полосу в канвас рисования */
-.wave-strip-row {
-  cursor: pointer;
+/* Волна (v39): слева канвас + таблица операторов, справа — панель слоёв
+   (унисон/вибрато/форманты/заготовка), визуально отдельная */
+.we-wave-layers {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
-.wave-strip-row .wave-strip-wrap {
-  position: relative;
-  flex: 1;
+.we-wave-left {
+  flex: 1 1 auto;
   min-width: 0;
-  display: block;
-  border-radius: 3px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.we-layers {
+  flex: 0 0 216px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px;
+  border-left: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Строка-модулятор: не слагаемое, а настройка чужой частоты — подсветка */
+.partial-row.mod-row {
+  background: rgba(242, 178, 99, 0.06);
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+
+.formant-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .partial-row {

@@ -126,7 +126,8 @@ function uniqueName(base: string, used: string[]): string {
 const fallbackInst = (t: Track): Instrument => ({
   id: t.instrumentId,
   name: t.name,
-  waveform: 'sine',
+  waveform: 'wave',
+  wave: { partials: [{ ratio: 1, amp: 1, type: 'sine' }] },
   attack: 0.002,
   decay: 0.25,
   pitchDrop: 1,
@@ -715,9 +716,12 @@ export default function App() {
         const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
         if (!track || !inst) return p;
         const t = preset.track;
+        // Легаси-имена в INSTRUMENT_FIELDS (fmRatio…) в пресетах v39 пусты,
+        // но индексируем сырой записью — списком полей владеет types.ts.
+        const src = t as unknown as Record<string, unknown>;
         const instUpd: Record<string, unknown> = {};
         for (const f of INSTRUMENT_FIELDS) {
-          if (t[f] !== undefined) instUpd[f] = t[f];
+          if (src[f] !== undefined) instUpd[f] = src[f];
         }
         // Поля, у которых пресет задаёт базу, а не «пусто»:
         const instDefaults: Partial<Instrument> = {
@@ -727,10 +731,6 @@ export default function App() {
           filterLow: t.filterLow ?? 20,
           filterFreq: t.filterFreq ?? 8000,
           filterQ: t.filterQ ?? 0.8,
-          fmRatio: t.fmRatio ?? 2,
-          fmIndex: t.fmIndex ?? 3,
-          voiceMorph: t.voiceMorph ?? 0.5,
-          ksLife: t.ksLife ?? 2.5,
           sampleMode: t.sampleMode ?? 'plain',
           grainSizeMs: t.grainSizeMs ?? 120,
           grainCount: t.grainCount ?? 10,
@@ -744,6 +744,8 @@ export default function App() {
           vibratoDelay: t.vibratoDelay ?? 0,
           filterEnvAmount: t.filterEnvAmount ?? 0,
           filterEnvTime: t.filterEnvTime ?? 0.3,
+          // Формантный слой пресета или «нет» — прежний не тянется.
+          formants: t.formants,
         };
         const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
         const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));

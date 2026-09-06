@@ -1,17 +1,15 @@
 // Большой редактор инструмента дорожки: «раздвинутый» режим карточки
 // (остальные треки съёживаются). Пресет из панели инструментов
 // переставляет именно эти ручки — здесь тембр крутят и дотюнивают.
-// Вкладки: источник | огибающая | тембр. «Источник» — два мира:
-// осцилляторные волны/модели или сэмпл; всё сэмпловое (обрезка куска,
-// FFT-разложение в гармоники, ИИ, режимы и скрэтч) живёт там же, у
-// сэмпла. Редактор волны — на «источнике»: таблица гармоник стартует
-// со снапшота звучащего тембра (пила — своя пила, колокол — свои
-// негармоничные парциалы), правки идут в черновик — звучащий тембр
-// остаётся приглушённой линией на канвасе внизу, пока черновик не
-// применён («применить» пишет «свою волну»). Морф моделей подписан
-// конкретно (яркость, регистры, материал…) — это настройка гармоник.
+// Вкладки: источник | огибающая | тембр. «Источник» (v39): инструмент —
+// таблица строк-операторов (множитель, громкость/глубина, форма, хвост,
+// маршрут «в сумму / модулирует строку») плюс большой канвас суммы.
+// Правки идут в черновик — звучащий тембр остаётся призраком на канвасе,
+// пока черновик не применён. Слои, не привязанные к строкам (унисон,
+// вибрато, форманты, заготовка), — правой панелью. Моделей больше нет:
+// колокол, струна, FM, орган — заготовки таблицы (music/waveRecipes.ts).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ArpMode,
   Instrument,
@@ -20,15 +18,9 @@ import type {
   SoundingTrack,
   Track,
   WaveDef,
-  Waveform,
   WavePartial,
 } from '../types';
-import {
-  ARP_MODE_LABELS,
-  MORPH_LABELS,
-  PARTIAL_TYPE_LABELS,
-  WAVEFORM_LABELS,
-} from '../types';
+import { ARP_MODE_LABELS, PARTIAL_TYPE_LABELS } from '../types';
 import {
   instrumentNameOf,
   loadUserPresets,
@@ -36,16 +28,15 @@ import {
 } from '../music/instrumentPresets';
 import { Knob } from './Knob';
 import { NumField } from './NumField';
-import { WaveIcon } from './WaveIcon';
 import { WaveCanvas } from './WaveCanvas';
 import { NoteGraph } from './EnvGraph';
 import { confirmDialog, promptDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
-import { cycleToPartials, renderWaveCycle, sampleToPartials } from '../music/fft';
-import { CYCLE_N, renderInstrumentCycle, snapshotWave } from '../music/waveSnapshot';
+import { cycleToPartials, sampleToPartials } from '../music/fft';
+import { CYCLE_N, renderInstrumentCycle, renderOpCycle } from '../music/waveSnapshot';
+import { RECIPE_LABELS, recipe } from '../music/waveRecipes';
+import type { RecipeId } from '../music/waveRecipes';
 import { tickDuration } from '../audio/timing';
-
-const WAVEFORMS = Object.keys(WAVEFORM_LABELS).filter((w) => w !== 'sample') as Waveform[];
 
 export type InstEditorTab = 'snd' | 'env' | 'timbre';
 
@@ -55,10 +46,10 @@ const TABS: [InstEditorTab, string][] = [
   ['timbre', 'тембр'],
 ];
 
-/** Последняя не-сэмпл волна инструмента: возврат с сэмпла на «волну»
- *  сегмента источника восстанавливает прежний тембр, а не сваливается
- *  в синус. Живёт в модуле — переживает перемонтирование редактора. */
-const LAST_WAVE = new Map<string, Waveform>();
+/** Последняя волна (таблица строк) инструмента: возврат с сэмпла на
+ *  «волну» сегмента источника восстанавливает прежний тембр. Живёт
+ *  в модуле — переживает перемонтирование редактора. */
+const LAST_WAVE = new Map<string, WaveDef>();
 
 interface Props {
   track: Track;
@@ -106,92 +97,6 @@ function monoOf(buf: AudioBuffer): Float32Array {
 function clampSec(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
-
-/** Компактная полоса формы волны — как поле строки таблицы гармоник,
- *  без панелей и кнопок: тонкая линия цикла. Клик по ней (снаружи,
- *  здесь только рисунок) включает рисование. */
-function WaveStrip({ data, height = 36 }: { data: Float32Array | null; height?: number }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const paint = useCallback(() => {
-    const c = ref.current;
-    if (!c) return;
-    const dpr = window.devicePixelRatio || 1;
-    const w = c.clientWidth || 1;
-    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(height * dpr)) {
-      c.width = Math.round(w * dpr);
-      c.height = Math.round(height * dpr);
-    }
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#0e1319';
-    ctx.fillRect(0, 0, w, height);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, height / 2);
-    ctx.lineTo(w, height / 2);
-    ctx.stroke();
-    if (!data || data.length === 0) return;
-    const CYCLES = 3;
-    ctx.strokeStyle = '#f2b263';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let x = 0; x <= w; x++) {
-      const i = Math.min(data.length * CYCLES - 1, Math.round((x / w) * data.length * CYCLES));
-      const v = data[i % data.length];
-      const y = height / 2 - v * (height / 2 - 3);
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }, [data, height]);
-  useEffect(() => {
-    paint();
-    const onResize = () => paint();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [paint]);
-  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
-}
-
-const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
-  kind === 'sine'
-    ? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] }
-    : kind === 'noise'
-      ? { partials: [{ ratio: 1, amp: 0.8, type: 'noise' }], noiseGrainMs: 40 }
-      : kind === 'saw'
-        ? {
-            partials: Array.from({ length: 16 }, (_, i) => ({
-              ratio: i + 1,
-              amp: Math.pow(i + 1, -1),
-              type: 'sine' as const,
-            })),
-          }
-        : {
-            // Меандр: нечётные гармоники 1/k.
-            partials: Array.from({ length: 8 }, (_, i) => ({
-              ratio: i * 2 + 1,
-              amp: 1 / (i * 2 + 1),
-              type: 'sine' as const,
-            })),
-          };
-
-/** Источники, которым положен унисон (ручки в группе «унисон» тембра):
- *  базовые волны — копии осциллятора, сэмпл — копии скорости (кроме
- *  скрэтча: там питч задаёт жест). Остальным моделям ручки не звучат —
- *  группа приглушается с пояснением. */
-const UNISON_SOURCES = new Set(['sine', 'square', 'triangle', 'sawtooth']);
-
-/** Морф — по сути настройка гармоник модели; подпись говорит, ЧЕМ он
- *  рулит у конкретной модели, вместо безликого «морф». */
-const MORPH_SHORT: Partial<Record<Waveform, string>> = {
-  supersaw: 'расстройка',
-  additive: 'яркость',
-  formant: 'гласная',
-  modal: 'материал',
-  organ: 'регистры',
-};
 
 export function InstrumentEditor({
   track,
@@ -247,10 +152,10 @@ export function InstrumentEditor({
     };
   }, [tab, inst.sampleId, getBuffer]);
 
-  // Память о последней не-сэмпл волне — для возврата с сэмпла сегментом.
+  // Память о последней волне — для возврата с сэмпла сегментом.
   useEffect(() => {
-    if (inst.waveform !== 'sample') LAST_WAVE.set(inst.id, inst.waveform);
-  }, [inst.id, inst.waveform]);
+    if (inst.waveform !== 'sample' && inst.wave) LAST_WAVE.set(inst.id, inst.wave);
+  }, [inst.id, inst.waveform, inst.wave]);
 
   const mono = useMemo(() => (buffer ? monoOf(buffer) : null), [buffer]);
   const dur = buffer?.duration ?? 0;
@@ -269,19 +174,19 @@ export function InstrumentEditor({
         ? dur
         : undefined;
 
-  // ---- Волна: снапшот звучащего тембра + черновик ----
-  // Таблица гармоник стартует со снапшота звучащего тембра (snapshotWave:
-  // пила — своя пила, колокол — свои негармоничные парциалы), а правки
-  // ложатся в ЧЕРНОВИК: звучащий инструмент не меняется, пока черновик
-  // не применён. Канвас показывает черновик яркой линией, звучащий
-  // тембр — приглушённой (призрак), «▶ нота» слушает черновик.
-  const applied = useMemo(() => snapshotWave(inst, track.freq), [inst, track.freq]);
+  // ---- Волна: таблица строк-операторов инструмента + черновик ----
+  // Инструмент и есть таблица (v39): она всегда показывает звучащий
+  // тембр. Правки ложатся в ЧЕРНОВИК: звучащий инструмент не меняется,
+  // пока черновик не применён. Канвас рисует черновик яркой линией,
+  // звучащий тембр — призраком; «▶ нота» слушает черновик.
+  const applied = useMemo<WaveDef>(
+    () => inst.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] },
+    [inst.wave],
+  );
   const [draft, setDraft] = useState<WaveDef | null>(null);
   const wave = draft ?? applied;
-  // Форма звучащего тембра: пила/FM/шум — формулой, модели — своими
-  // парциалами; «своя волна» — парциалами из патча.
   const soundingForm = useMemo(() => renderInstrumentCycle(inst), [inst]);
-  const draftForm = useMemo(() => renderWaveCycle(wave, CYCLE_N), [wave]);
+  const draftForm = useMemo(() => renderOpCycle(wave), [wave]);
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(applied);
   const applyDraft = () => {
     if (draft) onChangeInst({ waveform: 'wave', wave: draft });
@@ -289,15 +194,37 @@ export function InstrumentEditor({
   };
 
   // Режим точек: локальная таблица (в черновик уходит конвертацией
-  // в гармоники).
+  // в строки).
   const [points, setPoints] = useState<Float32Array | null>(null);
   const pointsRef = useRef<Float32Array | null>(null);
   pointsRef.current = points;
 
+  // Смена инструмента извне (пресет, загрузка патча, возврат с сэмпла)
+  // обнуляет черновик: таблица всегда показывает то, что звучит.
+  const appliedKey = JSON.stringify(applied);
+  const prevAppliedKey = useRef(appliedKey);
+  useEffect(() => {
+    if (prevAppliedKey.current !== appliedKey) {
+      prevAppliedKey.current = appliedKey;
+      setDraft(null);
+      pointsRef.current = null;
+      setPoints(null);
+    }
+  }, [appliedKey]);
+
   const setPartial = (i: number, upd: Partial<WavePartial>) =>
     setDraft({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
-  const removePartial = (i: number) =>
-    setDraft({ ...wave, partials: wave.partials.filter((_, j) => j !== i) });
+  /** Убрать строку i: её модуляторы теряют цель — снимаются тоже,
+   *  маршруты на строки дальше i сдвигаются. */
+  const removePartial = (i: number) => {
+    const kept = wave.partials.filter((_, j) => j !== i && wave.partials[j].mod !== i);
+    setDraft({
+      ...wave,
+      partials: kept.map((p) =>
+        p.mod !== undefined && p.mod > i ? { ...p, mod: p.mod - 1 } : p,
+      ),
+    });
+  };
   const addPartial = () => {
     const used = new Set(wave.partials.map((p) => p.ratio));
     let r = 1;
@@ -423,7 +350,6 @@ export function InstrumentEditor({
   const sampleFileRef = useRef<HTMLInputElement>(null);
   const isSample = st.waveform === 'sample';
   const scratchMode = isSample && (st.sampleMode ?? 'plain') === 'scratch';
-  const unisonOk = UNISON_SOURCES.has(st.waveform) || (isSample && !scratchMode);
 
   /** Закрытие с неприменённым черновиком волны — сперва спросить. */
   const tryClose = async () => {
@@ -465,8 +391,8 @@ export function InstrumentEditor({
         <span className="spacer" />
         <button
           className="env-listen"
-          title="Прослушать ноту тоники текущим тембром"
-          onClick={() => onPreviewNote(inst)}
+          title="Прослушать ноту тоники — черновиком, если он не применён"
+          onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}
         >
           ▶ нота
         </button>
@@ -498,14 +424,19 @@ export function InstrumentEditor({
       {tab === 'snd' && (
         <div className="we-body">
           <div className="group" data-ob="inst-group">
-            {/* Источник — два мира: осцилляторные волны/модели или сэмпл
+            {/* Источник — два мира: таблица строк-операторов или сэмпл
                 из библиотеки. У сэмпла весь его инструментарий живёт
                 здесь же — отдельной вкладки «сэмпл» больше нет. */}
             <div className="seg src-seg" data-ob="src-seg">
               <button
                 className={!isSample ? 'on' : ''}
-                title="Волны и модели тембра: синус, пила, FM, струна, форманты, своя волна. Возврат со сэмпла восстановит прежнюю волну"
-                onClick={() => onChangeInst({ waveform: LAST_WAVE.get(inst.id) ?? 'sine' })}
+                title="Таблица строк-операторов: сумма и модуляция, хвосты-звоны. Возврат со сэмпла восстановит прежнюю таблицу"
+                onClick={() =>
+                  onChangeInst({
+                    waveform: 'wave',
+                    wave: LAST_WAVE.get(inst.id) ?? applied,
+                  })
+                }
               >
                 волна
               </button>
@@ -517,54 +448,6 @@ export function InstrumentEditor({
                 сэмпл
               </button>
             </div>
-            {!isSample && (
-              <>
-                {/* Волна — иконками, «как на приборе»: одна форма — один глиф. */}
-                <div className="lbl" title="Форма волны осциллятора — основа тембра">
-                  волна
-                  <span className="wave-pick" data-ob="wave-pick">
-                    {WAVEFORMS.map((w) => (
-                      <button
-                        key={w}
-                        className={st.waveform === w ? 'on' : ''}
-                        title={WAVEFORM_LABELS[w]}
-                        aria-label={WAVEFORM_LABELS[w]}
-                        onClick={() => onChangeInst({ waveform: w })}
-                      >
-                        <WaveIcon wave={w} />
-                      </button>
-                    ))}
-                  </span>
-                </div>
-                {st.waveform === 'fm' && (
-                  <>
-                    <label title="Отношение частоты модулятора к ноте. Целые (1, 2, 3) — гармоничные тембры; иррациональные (1.41 ≈ √2) — колокольный негармоничный звон">
-                      FM-отношение, ×
-                      <NumField value={st.fmRatio ?? 2} min={0.25} max={16} step={0.01} onChange={(fmRatio) => onChangeInst({ fmRatio })} />
-                    </label>
-                    <label title="Глубина модуляции: 0 — чистый синус, 1–3 — мягкие электронные тембры, 5+ — ржа и металл. Индекс тает к хвосту ноты">
-                      FM-глубина
-                      <NumField value={st.fmIndex ?? 3} min={0} max={16} step={0.1} onChange={(fmIndex) => onChangeInst({ fmIndex })} />
-                    </label>
-                  </>
-                )}
-                {MORPH_LABELS[st.waveform] && (
-                  <Knob
-                    label={MORPH_SHORT[st.waveform] ?? 'морф'}
-                    title={`${MORPH_SHORT[st.waveform] ?? 'Морф'} модели «${WAVEFORM_LABELS[st.waveform]}» — по сути настройка её гармоник: ${MORPH_LABELS[st.waveform]}. Двойной клик — точное число`}
-                    value={Math.round((st.voiceMorph ?? 0.5) * 100)}
-                    min={0} max={100} step={1}
-                    onChange={(v) => onChangeInst({ voiceMorph: v / 100 })}
-                  />
-                )}
-                {st.waveform === 'karplus' && (
-                  <label title="Сколько секунд струна звенит до полной тишины — собственное затухание струны, поверх обычной огибающей ноты">
-                    затухание струны, с
-                    <NumField value={st.ksLife ?? 2.5} min={0.2} max={8} step={0.1} onChange={(ksLife) => onChangeInst({ ksLife })} />
-                  </label>
-                )}
-              </>
-            )}
             {isSample && (
               <label title="Сэмпл из хранилища. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
                 сэмпл
@@ -592,185 +475,314 @@ export function InstrumentEditor({
             )}
           </div>
 
-          {/* Редактор волны — на вкладке источника, под ручками модели:
-              гармоники — суть тембра (таблица), форма волны — их следствие
-              (канвас внизу). Правки идут в черновик: звучащий тембр
-              остаётся призраком на канвасе, пока черновик не применён. */}
+          {/* Волна (v39): инструмент = таблица строк-операторов. Большой
+              канвас — сумма (модуляторы видны фазовой модуляцией целей),
+              правки — в черновик; унисон, вибрато, форманты и заготовка —
+              универсальные слои правой панелью, к строкам не привязаны. */}
           {!isSample && (
-            <>
-              <div className="we-row" data-ob="we-wave-tools">
-                <span
-                  className="we-cap"
-                  title="Что звучит сейчас — гармоники в таблице ниже; полоса «волна» там же: яркая линия — черновик, приглушённая — звучащий тембр"
-                >
-                  звучит: {WAVEFORM_LABELS[st.waveform]}
-                </span>
-                {st.waveform !== 'wave' && !dirty && (
-                  <span
-                    className="mini-info"
-                    title={
-                      st.waveform === 'sine' || st.waveform === 'triangle' || st.waveform === 'square' || st.waveform === 'sawtooth'
-                        ? 'Гармоники показывают спектр звучащего тембра. Правка любой из них переснимет волну в «свою» — звучание то же, тембр становится редактируемым'
-                        : 'Гармоники показывают спектр звучащей модели. Правка любой из них переснимет её в «свою волну»: звучание сохранится, а спецэффекты модели (звон резонаторов, detune-хорус) уступят место честным парциалам'
-                    }
-                  >
-                    {st.waveform === 'sine' || st.waveform === 'triangle' || st.waveform === 'square' || st.waveform === 'sawtooth'
-                      ? 'правки переснимут в свою волну'
-                      : 'правка снимет модель в свою волну'}
-                  </span>
-                )}
-                <span className="we-sep" />
-                <span className="we-cap">заготовка:</span>
-                {(['sine', 'saw', 'square', 'noise'] as const).map((k) => (
-                  <button
-                    key={k}
-                    title={`Пересобрать тембр: ${PARTIAL_TYPE_LABELS[k]}${k === 'noise' ? ' (зерно — размер крупы)' : ''} — ляжет в черновик`}
-                    onClick={() => {
-                      pointsRef.current = null;
-                      setPoints(null);
-                      setDraft(genPartials(k));
-                    }}
-                  >
-                    {PARTIAL_TYPE_LABELS[k]}
-                  </button>
-                ))}
-                <span className="we-sep" />
-                {points ? (
-                  <button
-                    title="Рисунок уже переведён в гармоники черновика — это возврат к их виду"
-                    onClick={() => {
-                      pointsRef.current = null;
-                      setPoints(null);
-                    }}
-                  >
-                    к гармоникам
-                  </button>
-                ) : (
-                  <button
-                    title="Нарисовать форму мышью — черновик меняется прямо при рисовании, слушай «▶ нота»"
-                    onClick={() => {
-                      const pts = Float32Array.from(draftForm ?? soundingForm ?? new Float32Array(CYCLE_N));
-                      pointsRef.current = pts;
-                      setPoints(pts);
-                    }}
-                  >
-                    рисовать форму
-                  </button>
-                )}
-                <span className="we-sep" />
-                <button
-                  title="Прослушать одну ноту черновиком (тоника шкалы дорожки)"
-                  onClick={() => onPreviewNote(dirty ? { ...inst, waveform: 'wave', wave } : inst)}
-                >
-                  ▶ нота
-                </button>
-                <button
-                  className={dirty ? 'we-apply' : ''}
-                  disabled={!dirty}
-                  title="Черновик становится волной инструмента (тип волны — «своя волна»); до этого звучит прежний тембр"
-                  onClick={applyDraft}
-                >
-                  применить
-                </button>
-                <button
-                  disabled={!dirty}
-                  title="Отбросить черновик: вернуться к звучащей волне"
-                  onClick={() => setDraft(null)}
-                >
-                  сбросить
-                </button>
-              </div>
-
-              <div className="we-partials" data-ob="we-partials">
-                {/* Форма волны — первая строка таблицы гармоник, тем же
-                    языком, что и остальные строки: компактная полоса
-                    вместо панели. Яркая линия — черновик, приглушённая —
-                    звучащий тембр; клик по полосе — рисовать форму
-                    (полоса разворачивается в канвас прямо на месте). */}
-                {points ? (
-                  <div className="we-canvas-stack" data-ob="we-wave-canvas">
+            <div className="we-wave-layers">
+              <div className="we-wave-left">
+                <div className="we-canvas-stack" data-ob="we-wave-canvas">
+                  {dirty && soundingForm && (
+                    <div
+                      className="we-ghost"
+                      aria-hidden="true"
+                      title="Приглушённая линия — звучащий сейчас тембр; яркая — черновик"
+                    >
+                      <WaveCanvas data={soundingForm} sampleRate={CYCLE_N} cycles={4} />
+                    </div>
+                  )}
+                  {points ? (
                     <WaveCanvas data={points} sampleRate={CYCLE_N} editable onDraw={drawPoint} />
-                  </div>
-                ) : (
-                  <div className="partial-row wave-strip-row" data-ob="we-wave-canvas">
-                    <span className="ph-cap" title="Итог всех гармоник — форма волны. Клик — рисовать форму прямо в этой строке">
-                      волна
-                    </span>
-                    <span
-                      className="wave-strip-wrap"
-                      title="Форма волны: яркая линия — черновик, приглушённая — звучащий тембр. Клик — рисовать"
+                  ) : (
+                    <WaveCanvas data={draftForm ?? soundingForm} sampleRate={CYCLE_N} cycles={4} />
+                  )}
+                </div>
+                <div className="we-row" data-ob="we-draft-row">
+                  {points ? (
+                    <button
+                      title="Рисунок уже переведён в строки черновика — это возврат к их виду"
                       onClick={() => {
-                        const pts = Float32Array.from(draftForm ?? soundingForm ?? new Float32Array(CYCLE_N));
+                        pointsRef.current = null;
+                        setPoints(null);
+                      }}
+                    >
+                      к строкам
+                    </button>
+                  ) : (
+                    <button
+                      title="Нарисовать форму мышью — рисунок разложится в строки черновика (маршруты модуляции при этом теряются), слушай «▶ нота»"
+                      onClick={() => {
+                        const pts = Float32Array.from(
+                          draftForm ?? soundingForm ?? new Float32Array(CYCLE_N),
+                        );
                         pointsRef.current = pts;
                         setPoints(pts);
                       }}
                     >
-                      {dirty && soundingForm && (
-                        <span className="we-ghost" aria-hidden="true">
-                          <WaveStrip data={soundingForm} />
-                        </span>
-                      )}
-                      <WaveStrip data={dirty ? draftForm : soundingForm} />
-                    </span>
-                  </div>
-                )}
-                <div className="we-partial-rows">
-                {wave.partials.length > 0 && (
+                      рисовать форму
+                    </button>
+                  )}
+                  {dirty && (
+                    <>
+                      <button
+                        className="we-apply"
+                        title="Черновик становится таблицей инструмента; до этого звучит прежний тембр"
+                        onClick={applyDraft}
+                      >
+                        применить
+                      </button>
+                      <button
+                        title="Отбросить черновик: вернуться к звучащей таблице"
+                        onClick={() => setDraft(null)}
+                      >
+                        сбросить
+                      </button>
+                      <span
+                        className="mini-info"
+                        title="Черновик отличается от звучащей волны — «применить» перенесёт его в инструмент"
+                      >
+                        черновик не применён
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <div className="we-partials" data-ob="we-partials">
                   <div className="partial-row head" aria-hidden="true">
                     <span />
-                    <span className="ph-cap">номер</span>
+                    <span className="ph-cap">множитель</span>
                     <span className="ph-cap">громкость</span>
                     <span className="ph-cap">форма</span>
+                    <span className="ph-cap">хвост, с</span>
+                    <span className="ph-cap">куда</span>
                   </div>
-                )}
-                {wave.partials.map((p, i) => (
-                  <div className="partial-row" key={i}>
-                    <button className="remove" title="Убрать гармонику" onClick={() => removePartial(i)}>×</button>
-                    <label title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
-                      ×
-                      <NumField
-                        value={Math.round(p.ratio * 100) / 100} min={0.25} max={64} step={0.25} narrow
-                        onChange={(v) => setPartial(i, { ratio: Math.round(v * 100) / 100 })}
-                      />
-                    </label>
-                    <label title="Амплитуда гармоники, %">
-                      <NumField
-                        value={Math.round(p.amp * 100)} min={0} max={100} step={5} narrow
-                        onChange={(v) => setPartial(i, { amp: v / 100 })}
-                      />%
-                    </label>
-                    <select
-                      value={p.type}
-                      title="Форма гармоники"
-                      onChange={(e) => setPartial(i, { type: e.target.value as WavePartial['type'] })}
+                  {wave.partials.map((p, i) => (
+                    <div
+                      className={'partial-row' + (p.mod !== undefined ? ' mod-row' : '')}
+                      key={i}
                     >
-                      {(Object.keys(PARTIAL_TYPE_LABELS) as WavePartial['type'][]).map((t) => (
-                        <option key={t} value={t}>{PARTIAL_TYPE_LABELS[t]}</option>
-                      ))}
-                    </select>
+                      <button
+                        className="remove"
+                        title={
+                          p.mod !== undefined
+                            ? 'Убрать строку (её модуляторы снимутся тоже)'
+                            : 'Убрать строку'
+                        }
+                        onClick={() => removePartial(i)}
+                      >
+                        ×
+                      </button>
+                      <label title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
+                        ×
+                        <NumField
+                          value={Math.round(p.ratio * 100) / 100} min={0.25} max={64} step={0.25} narrow
+                          onChange={(v) => setPartial(i, { ratio: Math.round(v * 100) / 100 })}
+                        />
+                      </label>
+                      {p.mod === undefined ? (
+                        <label title="Громкость строки в сумме, %">
+                          <NumField
+                            value={Math.round(p.amp * 100)} min={0} max={100} step={5} narrow
+                            onChange={(v) => setPartial(i, { amp: v / 100 })}
+                          />%
+                        </label>
+                      ) : (
+                        <label title="Глубина модуляции (индекс): девиация частоты цели = индекс × частота ноты × множитель строки. 1–3 — мягкие тембры, 5+ — ржа и металл">
+                          <NumField
+                            value={Math.round(p.amp * 10) / 10} min={0} max={24} step={0.1} narrow
+                            onChange={(v) => setPartial(i, { amp: v })}
+                          />
+                        </label>
+                      )}
+                      <select
+                        value={p.type}
+                        title="Форма строки"
+                        onChange={(e) => setPartial(i, { type: e.target.value as WavePartial['type'] })}
+                      >
+                        {(Object.keys(PARTIAL_TYPE_LABELS) as WavePartial['type'][]).map((t) => (
+                          <option key={t} value={t}>{PARTIAL_TYPE_LABELS[t]}</option>
+                        ))}
+                      </select>
+                      <label title="Собственный хвост строки (T60): гаснет сам и переживает релиз ноты — звон колокола, темнеющая струна. 0 — живёт под общей огибающей">
+                        <NumField
+                          value={p.decay ?? 0} min={0} max={8} step={0.05} narrow
+                          onChange={(v) => setPartial(i, v <= 0.001 ? { decay: undefined } : { decay: v })}
+                        />
+                      </label>
+                      <select
+                        value={p.mod === undefined ? 'sum' : String(p.mod)}
+                        title="Маршрут: в сумму или модулировать частоту другой строки (FM-оператор)"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPartial(i, v === 'sum' ? { mod: undefined } : { mod: Number(v) });
+                        }}
+                      >
+                        <option value="sum">в сумму</option>
+                        {wave.partials.map((q, j) =>
+                          j !== i ? (
+                            <option key={j} value={j}>
+                              мод. ×{Math.round(q.ratio * 100) / 100}
+                            </option>
+                          ) : null,
+                        )}
+                      </select>
+                    </div>
+                  ))}
+                  <div className="we-row">
+                    <button onClick={addPartial} title="Добавить строку-оператор">+ строка</button>
+                    {hasNoise && (
+                      <label title="Размер зерна шумовых строк, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
+                        зерно шума, мс
+                        <NumField
+                          value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
+                          onChange={(v) => setDraft({ ...wave, noiseGrainMs: Math.round(v) })}
+                        />
+                      </label>
+                    )}
+                    <span className="mini-info">{wave.partials.length}/64 строк</span>
                   </div>
-                ))}
-                <div className="we-row">
-                  <button onClick={addPartial} title="Добавить гармонику">+ гармоника</button>
-                  {hasNoise && (
-                    <label title="Размер зерна шумовых гармоник, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
-                      зерно шума, мс
-                      <NumField
-                        value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
-                        onChange={(v) => setDraft({ ...wave, noiseGrainMs: Math.round(v) })}
-                      />
-                    </label>
-                  )}
-                  <span className="mini-info">{wave.partials.length}/64 гармоник</span>
-                  {dirty && (
-                    <span className="mini-info" title="Черновик отличается от звучащей волны — «применить» перенесёт его в инструмент">
-                      черновик не применён
-                    </span>
-                  )}
-                </div>
                 </div>
               </div>
-            </>
+
+              {/* Правая панель: слои тембра, не привязанные к строкам. */}
+              <div className="we-layers" data-ob="we-layers">
+                <div className="group sub" data-ob="unison-group">
+                  <span className="sub-cap">унисон</span>
+                  {isSample && !scratchMode && (
+                    <span
+                      className="scope-cap"
+                      title="Унисон на сэмпле — N копий со скоростью ±детюн (хорус/стена из одного сэмпла); в гранулярном режиме — разброс зёрен"
+                    >
+                      сэмпл
+                    </span>
+                  )}
+                  {scratchMode && (
+                    <span className="scope-cap" title="Скрэтчу унисон не нужен: скорость задаёт жест иглы">
+                      скрэтч
+                    </span>
+                  )}
+                  <span className={'knob-row' + (scratchMode ? ' dim' : '')}>
+                    <Knob
+                      label="голоса"
+                      title="Унисон: сколько расстроенных копий играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире (супер-пила = пила + унисон). Двойной клик — точное число"
+                      value={st.unisonVoices ?? 1} min={1} max={8} step={1}
+                      onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
+                    />
+                    <Knob
+                      label="детюн"
+                      title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
+                      value={st.unisonDetune ?? 12} min={0} max={50} step={1}
+                      onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
+                    />
+                    <Knob
+                      label="разброс"
+                      title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
+                      value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
+                      onChange={(v) => onChangeInst({ unisonSpread: v / 100 })}
+                    />
+                  </span>
+                </div>
+                <div className="group sub knob-row">
+                  <span className="sub-cap">вибрато</span>
+                  <Knob
+                    label="скорость"
+                    title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
+                    value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
+                    onChange={(vibratoRate) => onChangeInst({ vibratoRate })}
+                  />
+                  <Knob
+                    label="глубина"
+                    title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
+                    value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
+                    onChange={(vibratoDepth) => onChangeInst({ vibratoDepth })}
+                  />
+                  <Knob
+                    label="задержка"
+                    title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
+                    value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
+                    onChange={(vibratoDelay) => onChangeInst({ vibratoDelay })}
+                  />
+                </div>
+                <div className="group sub" data-ob="formant-group">
+                  <span className="sub-cap">форманты</span>
+                  <span
+                    className="mini-info"
+                    title="Бугры громкости на фиксированных герцах поверх любой волны и сэмпла: гласная не зависит от высоты ноты (как гортань у человека). Пусто — слой выключен"
+                  >
+                    бугры, Гц
+                  </span>
+                  {(st.formants ?? []).map((b, i) => (
+                    <div className="formant-row" key={i}>
+                      <button
+                        className="remove"
+                        title="Убрать формант"
+                        onClick={() =>
+                          onChangeInst({ formants: (st.formants ?? []).filter((_, j) => j !== i) })
+                        }
+                      >
+                        ×
+                      </button>
+                      <label title="Частота бугра, Гц">
+                        <NumField
+                          value={Math.round(b.freq)} min={80} max={9000} step={10} narrow
+                          onChange={(freq) =>
+                            onChangeInst({
+                              formants: (st.formants ?? []).map((x, j) => (j === i ? { ...x, freq } : x)),
+                            })
+                          }
+                        />
+                      </label>
+                      <label title="Громкость бугра, ×">
+                        <NumField
+                          value={Math.round(b.gain * 100) / 100} min={0} max={2} step={0.05} narrow
+                          onChange={(gain) =>
+                            onChangeInst({
+                              formants: (st.formants ?? []).map((x, j) => (j === i ? { ...x, gain } : x)),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                  ))}
+                  {(st.formants ?? []).length < 5 && (
+                    <button
+                      title="Добавить формантный бугор (вокальная гласная — три бугра, заготовка «вокал» ставит их сама)"
+                      onClick={() => onChangeInst({ formants: [...(st.formants ?? []), { freq: 800, gain: 1 }] })}
+                    >
+                      + формант
+                    </button>
+                  )}
+                </div>
+                <div className="group sub" data-ob="recipe-pick">
+                  <span className="sub-cap">заготовка волны</span>
+                  <select
+                    value=""
+                    title="Пересобрать таблицу строк из заготовки — ляжет черновиком, огибающая ноты остаётся. «Вокал» ставит форманты, «супер-пила» — унисон"
+                    onChange={(e) => {
+                      const id = e.target.value as RecipeId;
+                      if (!id) return;
+                      const r = recipe(id);
+                      pointsRef.current = null;
+                      setPoints(null);
+                      setDraft(r.wave);
+                      if (r.formants) onChangeInst({ formants: r.formants });
+                      if (r.unison) {
+                        onChangeInst({
+                          unisonVoices: r.unison.voices,
+                          unisonDetune: r.unison.detune,
+                        });
+                      }
+                    }}
+                  >
+                    <option value="">выбрать…</option>
+                    {(Object.keys(RECIPE_LABELS) as RecipeId[]).map((id) => (
+                      <option key={id} value={id}>{RECIPE_LABELS[id]}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           )}
 
           {isSample && (!inst.sampleId || !buffer ? (
@@ -1359,6 +1371,8 @@ export function InstrumentEditor({
 
       {tab === 'timbre' && (
         <div className="we-body">
+          {/* Вибрато и унисон переехали на «источник» (v39): это слои
+              тембра рядом с таблицей операторов, а не вкладка фильтров. */}
           <div className="group sub knob-row" data-ob="timbre-tab">
             <span className="sub-cap">фильтры</span>
             <Knob
@@ -1392,71 +1406,6 @@ export function InstrumentEditor({
               value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}
               onChange={(filterEnvTime) => onChangeInst({ filterEnvTime })}
             />
-          </div>
-          <div className="group sub knob-row">
-            <span className="sub-cap">вибрато</span>
-            <Knob
-              label="скорость"
-              title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
-              value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
-              onChange={(vibratoRate) => onChangeInst({ vibratoRate })}
-            />
-            <Knob
-              label="глубина"
-              title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
-              value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
-              onChange={(vibratoDepth) => onChangeInst({ vibratoDepth })}
-            />
-            <Knob
-              label="задержка"
-              title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
-              value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
-              onChange={(vibratoDelay) => onChangeInst({ vibratoDelay })}
-            />
-          </div>
-          <div className="group sub" data-ob="unison-group">
-            <span className="sub-cap">унисон</span>
-            {unisonOk ? (
-              isSample && (
-                <span
-                  className="scope-cap"
-                  title="Унисон на сэмпле — N копий со скоростью ±детюн (хорус/стена из одного сэмпла); в гранулярном режиме — разброс зёрен"
-                >
-                  сэмпл
-                </span>
-              )
-            ) : (
-              <span
-                className="scope-cap"
-                title={
-                  st.waveform === 'supersaw'
-                    ? 'Супер-пила — уже унисон из семи пил: ширина задаётся ручкой «морф» на вкладке «источник»'
-                    : 'Этот источник не играет унисоном — ручки молчат. Переключись на базовую волну или сэмпл'
-                }
-              >
-                {st.waveform === 'supersaw' ? 'уже унисон — морф' : 'не для этого источника'}
-              </span>
-            )}
-            <span className={'knob-row' + (unisonOk ? '' : ' dim')}>
-              <Knob
-                label="голоса"
-                title="Унисон: сколько расстроенных копий играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире. Двойной клик — точное число"
-                value={st.unisonVoices ?? 1} min={1} max={8} step={1}
-                onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
-              />
-              <Knob
-                label="детюн"
-                title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
-                value={st.unisonDetune ?? 12} min={0} max={50} step={1}
-                onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
-              />
-              <Knob
-                label="разброс"
-                title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
-                value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
-                onChange={(v) => onChangeInst({ unisonSpread: v / 100 })}
-              />
-            </span>
           </div>
           <div className="group sub" data-ob="arp-group">
             <div className="sub-head">

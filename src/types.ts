@@ -5,46 +5,20 @@
 //   паттерн (эскиз дорожки) → сцена (какой паттерн играет каждый трек)
 //   → цепочка (порядок сцен с длинами = арранжмент).
 
-export type Waveform =
-  | 'sine'
-  | 'square'
-  | 'triangle'
-  | 'sawtooth'
-  | 'noise'
-  | 'fm'
-  | 'karplus'
-  | 'supersaw'
-  | 'additive'
-  | 'formant'
-  | 'modal'
-  | 'organ'
-  | 'wave'
-  | 'sample';
+// Заготовки волны: миграция v39 собирает строки-операторы из прежних
+// моделей. Импорт односторонний (waveRecipes берёт из types только типы),
+// цикла в рантайме нет.
+import { recipeForLegacy } from './music/waveRecipes';
+
+// v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
+// Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
+// струна…) пересобираются в строки при нормализации (music/waveRecipes.ts),
+// заготовками живут в выпадашке редактора и в пресетах библиотеки.
+export type Waveform = 'wave' | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
-  sine: 'синус',
-  triangle: 'треугольник',
-  square: 'прямоугольник',
-  sawtooth: 'пила',
-  noise: 'шум',
-  fm: 'FM',
-  karplus: 'струна',
-  supersaw: 'супер-пила',
-  additive: 'гармоники',
-  formant: 'вокал',
-  modal: 'колокол',
-  organ: 'орган',
   wave: 'своя волна',
   sample: 'сэмпл',
-};
-
-// Модели голоса (порт идей Plaits): у каждой — свой смысл ручки «морф».
-export const MORPH_LABELS: Partial<Record<Waveform, string>> = {
-  supersaw: 'расстройка голосов',
-  additive: 'яркость (число гармоник)',
-  formant: 'гласная А → У',
-  modal: 'материал: маримба → колокол',
-  organ: 'регистры: микс верхних',
 };
 
 /** Как сэмплер играет буфер: напрямую, облаком гранул или скрэтчем. */
@@ -86,15 +60,22 @@ export function normalizeArp(raw: unknown): Arp | undefined {
   };
 }
 
-/** Один парциал своей волны: типовая форма на множителе к ноте.
- *  Множитель может быть дробным — микротюнинг тембра. */
-export type PartialType = 'sine' | 'saw' | 'square' | 'noise';
+/** Одна строка-оператор своей волны (v39): типовая форма на множителях
+ *  к ноте. Множитель может быть дробным — микротюнинг тембра. Строка
+ *  либо добавляется в сумму, либо (задан mod) модулирует частоту другой
+ *  строки — FM-оператор; её amp тогда индекс модуляции. */
+export type PartialType = 'sine' | 'saw' | 'square' | 'triangle' | 'noise';
 
 export interface WavePartial {
   ratio: number;
-  // Амплитуда 0..1.
+  // В сумму — амплитуда 0..1; модулятору (задан mod) — индекс модуляции.
   amp: number;
   type: PartialType;
+  // Собственный хвост строки, с (T60): гаснет сам и может пережить ноту —
+  // звон колокола, темнеющая струна. Нет — живёт под общей огибающей.
+  decay?: number;
+  // Маршрут: индекс строки, ЧАСТОТУ которой эта модулирует. Нет — в сумму.
+  mod?: number;
 }
 
 /** Своя волна: аддитивный тембр из парциалов. Компактный JSON в патче
@@ -109,25 +90,45 @@ export const PARTIAL_TYPE_LABELS: Record<PartialType, string> = {
   sine: 'синус',
   saw: 'пила',
   square: 'прямоугольник',
+  triangle: 'треугольник',
   noise: 'шум',
 };
 
-/** Довести определение волны до валидного: клампы, лимит парциалов. */
+/** Довести определение волны до валидного: клампы, лимит строк,
+ *  маршруты в пределах таблицы. */
 export function normalizeWave(raw: unknown): WaveDef | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const list = (raw as { partials?: unknown }).partials;
   if (!Array.isArray(list)) return undefined;
-  const types: PartialType[] = ['sine', 'saw', 'square', 'noise'];
+  const types: PartialType[] = ['sine', 'saw', 'square', 'triangle', 'noise'];
   const partials: WavePartial[] = [];
   for (const p of list as Partial<WavePartial>[]) {
     if (!p || typeof p !== 'object') continue;
+    const isMod = typeof p.mod === 'number';
     const ratio = clamp(typeof p.ratio === 'number' ? p.ratio : 1, 0.25, 64, 1);
-    const amp = clamp(typeof p.amp === 'number' ? p.amp : 0.5, 0, 1, 0.5);
+    // Модулятору amp — индекс (до 24, как прежний fmIndex), сумме — 0..1.
+    const amp = clamp(
+      typeof p.amp === 'number' ? p.amp : 0.5,
+      0,
+      isMod ? 24 : 1,
+      0.5,
+    );
     const type = types.includes(p.type as PartialType) ? (p.type as PartialType) : 'sine';
-    partials.push({ ratio: +ratio.toFixed(4), amp, type });
+    const partial: WavePartial = { ratio: +ratio.toFixed(4), amp, type };
+    if (typeof p.decay === 'number' && p.decay > 0.001) {
+      partial.decay = +clamp(p.decay, 0.05, 8, 1).toFixed(3);
+    }
+    if (isMod) partial.mod = Math.round(p.mod!);
+    partials.push(partial);
     if (partials.length >= 64) break;
   }
   if (partials.length === 0) return undefined;
+  // Маршруты: только на другую существующую строку, иначе — в сумму.
+  partials.forEach((p, i) => {
+    if (p.mod !== undefined && (p.mod < 0 || p.mod >= partials.length || p.mod === i)) {
+      delete p.mod;
+    }
+  });
   const grain = (raw as { noiseGrainMs?: unknown }).noiseGrainMs;
   return {
     partials,
@@ -390,19 +391,10 @@ export interface Instrument {
   grainScatter?: number;
   // Скрэтч: жест иглы по сэмплу (ломаная t→pos), проигрывается на нотах.
   scratchPoints?: ScratchPoint[];
-  // FM: отношение частоты модулятора к ноте. Целые — гармоничные тембры,
-  // иррациональные (≈√2) — колокола и металл.
-  fmRatio?: number;
-  // FM: индекс модуляции (девиация = индекс × частота модулятора).
-  fmIndex?: number;
-  // Модели голоса: морф 0..1, смысл зависит от волны (см. MORPH_LABELS).
-  voiceMorph?: number;
   // Вибрато: частота (Гц) и глубина (в центах) на голосах осцилляторов
   // и скорости сэмпла.
   vibratoRate?: number;
   vibratoDepth?: number;
-  // Karplus-Strong: время собственного затухания струны, с (T60).
-  ksLife?: number;
   // Огибающая ноты, сек.
   attack: number;
   decay: number;
@@ -423,7 +415,7 @@ export interface Instrument {
   // Резонанс lowpass (Q): 0.8 — ровный обрез, 4–10 — звонкое «горло»
   // (воббл, сквелч), 15+ — самозвон на частоте среза.
   filterQ?: number;
-  // Унисон (базовые волны): N расстроенных копий осциллятора на ноту.
+  // Унисон (любая волна и сэмпл): N расстроенных копий на ноту.
   // Детюн — центы на крайнем голосе, разброс 0..1 — по каналам.
   unisonVoices?: number;
   unisonDetune?: number;
@@ -435,10 +427,15 @@ export interface Instrument {
   // и съезд к базе за время. Плюс — яркая атака (плак), минус — свелл.
   filterEnvAmount?: number;
   filterEnvTime?: number;
+  // Формантный слой (v39, универсальный): бугры громкости на фиксированных
+  // частотах (Гц) поверх любой волны и сэмпла — вокальные гласные,
+  // «горло» инструмента, не зависящее от высоты ноты.
+  formants?: { freq: number; gain: number }[];
 }
 
 /** Поля Track, принадлежащие инструменту: маршрутизация пресетов и
- *  миграции v33 → v34. */
+ *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
+ *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
   'waveform', 'wave', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
@@ -446,7 +443,7 @@ export const INSTRUMENT_FIELDS = [
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'vibratoRate', 'vibratoDepth',
   'unisonVoices', 'unisonDetune', 'unisonSpread', 'vibratoDelay',
-  'filterEnvAmount', 'filterEnvTime',
+  'filterEnvAmount', 'filterEnvTime', 'formants',
 ] as const;
 
 /** Дорожка со слитым инструментом — то, что получает синтез. */
@@ -507,7 +504,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 38;
+export const PATCH_VERSION = 39;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -538,7 +535,9 @@ export function makeInstrument(
   partial: Partial<Instrument> & { id: string; name: string },
 ): Instrument {
   return {
-    waveform: partial.waveform ?? 'sine',
+    waveform: partial.waveform ?? 'wave',
+    // Дефолт — честный синус одной строкой: патч всегда валиден.
+    wave: partial.wave ?? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] },
     pitchDrop: partial.pitchDrop ?? 1,
     pitchTime: partial.pitchTime ?? 0.08,
     filterLow: partial.filterLow ?? 20,
@@ -550,13 +549,8 @@ export function makeInstrument(
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
     sampleEnd: partial.sampleEnd,
-    wave: partial.wave,
-    fmRatio: partial.fmRatio,
-    fmIndex: partial.fmIndex,
-    voiceMorph: partial.voiceMorph,
     vibratoRate: partial.vibratoRate,
     vibratoDepth: partial.vibratoDepth,
-    ksLife: partial.ksLife,
     sampleMode: partial.sampleMode,
     grainSizeMs: partial.grainSizeMs,
     grainCount: partial.grainCount,
@@ -570,6 +564,7 @@ export function makeInstrument(
     vibratoDelay: partial.vibratoDelay,
     filterEnvAmount: partial.filterEnvAmount,
     filterEnvTime: partial.filterEnvTime,
+    formants: partial.formants,
     id: partial.id,
     name: partial.name,
   };
@@ -818,20 +813,58 @@ function normalizeSteps(
 // v5 и ниже: единственный рисунок трека становится паттерном «A»,
 // создаётся одна сцена и цепочка из неё.
 // v16 → v17: соло переезжает с эскиза в сцену (эксклюзивное soloTrackId).
+/** v39: модели синтеза (синус, пила, FM, колокол, струна, вокал…)
+ *  пересобираются в таблицу строк-операторов — см. music/waveRecipes.ts.
+ *  Звук близкий, но не бит-в-бит: модели были живыми алгоритмами,
+ *  таблица — честный срез их спектра. Работает и для легаси-полей
+ *  дорожек v33 (они проходят через normalizeInstrument при миграции). */
+function migrateV39(raw: Record<string, unknown>): Record<string, unknown> {
+  const wf = raw.waveform;
+  if (wf !== 'wave' && wf !== 'sample') {
+    const r = recipeForLegacy(raw);
+    if (r) {
+      const out: Record<string, unknown> = { ...raw, waveform: 'wave', wave: r.wave };
+      if (r.formants) out.formants = r.formants;
+      // Супер-пиле нужен её унисон; пользовательские настройки не трогаем,
+      // только поднимаем до её минимальной ширины.
+      if (r.unison) {
+        const cur = typeof raw.unisonVoices === 'number' ? raw.unisonVoices : 1;
+        if (cur < r.unison.voices) out.unisonVoices = r.unison.voices;
+        if (cur < r.unison.voices) out.unisonDetune = r.unison.detune;
+      }
+      return out;
+    }
+  }
+  return raw;
+}
+
 /** Довести инструмент до валидного: клампы звуковых полей (v34;
  *  переехали из нормализации трека без изменений). */
 function normalizeInstrument(
-  raw: Record<string, unknown>,
+  rawIn: Record<string, unknown>,
   id: string,
   name: string,
 ): Instrument {
   // Приведение через unknown: сырой JSON, поля могут быть чем угодно.
+  const raw = migrateV39(rawIn);
   const t = raw as unknown as Partial<Instrument>;
   const waveforms = Object.keys(WAVEFORM_LABELS) as Waveform[];
+  const formants = Array.isArray(t.formants)
+    ? (t.formants as { freq?: unknown; gain?: unknown }[])
+        .filter(
+          (b) => b && typeof b === 'object' && typeof b.freq === 'number' && Number.isFinite(b.freq),
+        )
+        .slice(0, 5)
+        .map((b) => ({
+          freq: clamp(b.freq as number, 80, 9000, 800),
+          gain: clamp(typeof b.gain === 'number' ? b.gain : 1, 0, 2, 1),
+        }))
+    : undefined;
   return {
     id,
     name,
-    waveform: waveforms.includes(t.waveform as Waveform) ? (t.waveform as Waveform) : 'sine',
+    waveform: waveforms.includes(t.waveform as Waveform) ? (t.waveform as Waveform) : 'wave',
+    wave: normalizeWave(t.wave),
     pitchDrop: clamp(t.pitchDrop ?? 1, 1, 16, 1),
     pitchTime: clamp(t.pitchTime ?? 0.08, 0, 2, 0.08),
     filterLow: clamp(t.filterLow ?? 20, 20, 4000, 20),
@@ -847,13 +880,8 @@ function normalizeInstrument(
       typeof t.sampleStart === 'number' ? clamp(t.sampleStart, 0, 3600, 0) : undefined,
     sampleEnd:
       typeof t.sampleEnd === 'number' ? clamp(t.sampleEnd, 0.001, 3600, 3600) : undefined,
-    wave: normalizeWave(t.wave),
-    fmRatio: clamp(t.fmRatio ?? 2, 0.125, 24, 2),
-    fmIndex: clamp(t.fmIndex ?? 3, 0, 24, 3),
-    voiceMorph: clamp(t.voiceMorph ?? 0.5, 0, 1, 0.5),
     vibratoRate: clamp(t.vibratoRate ?? 5, 0.1, 30, 5),
     vibratoDepth: clamp(t.vibratoDepth ?? 0, 0, 1200, 0),
-    ksLife: clamp(t.ksLife ?? 2.5, 0.2, 8, 2.5),
     sampleMode:
       t.sampleMode === 'grain' || t.sampleMode === 'scratch' ? t.sampleMode : 'plain',
     grainSizeMs: clamp(t.grainSizeMs ?? 120, 10, 1000, 120),
@@ -878,6 +906,7 @@ function normalizeInstrument(
     vibratoDelay: clamp(t.vibratoDelay ?? 0, 0, 4, 0),
     filterEnvAmount: clamp(t.filterEnvAmount ?? 0, -24, 24, 0),
     filterEnvTime: clamp(t.filterEnvTime ?? 0.3, 0.01, 4, 0.3),
+    formants: formants && formants.length > 0 ? formants : undefined,
   };
 }
 

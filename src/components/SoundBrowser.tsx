@@ -148,7 +148,7 @@ export function SoundBrowser({
     // Поиск смотрит и в пояснение встроенных — «дабстеп» находит воббл.
     const filtered = q
       ? all.filter((p) =>
-          [p.name, p.hint ?? '', p.category, WAVEFORM_LABELS[p.track.waveform ?? 'sine']]
+          [p.name, p.hint ?? '', p.category, WAVEFORM_LABELS[p.track.waveform ?? 'wave']]
             .join(' ')
             .toLowerCase()
             .includes(q),
@@ -199,7 +199,10 @@ export function SoundBrowser({
 
   const applyTo = targetId;
   const targetTrack = tracks.find((t) => t.id === targetId) ?? null;
-  const waveOf = (p: InstrumentPreset) => WAVEFORM_LABELS[p.track.waveform ?? 'sine'];
+  // Бейдж источника: у волны (v39 — почти все пресеты) он не говорит
+  // ничего — показываем только сэмпл.
+  const waveOf = (p: InstrumentPreset) =>
+    p.track.waveform === 'sample' ? WAVEFORM_LABELS.sample : '';
 
   const presetRow = (p: InstrumentPreset) => {
     const user = p.category === USER_CATEGORY;
