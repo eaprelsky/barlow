@@ -4,13 +4,14 @@
 // Вкладки: источник | огибающая | тембр. «Источник» — два мира:
 // осцилляторные волны/модели или сэмпл; всё сэмпловое (обрезка куска,
 // FFT-разложение в гармоники, ИИ, режимы и скрэтч) живёт там же, у
-// сэмпла. У волны редактор сразу на вкладке «источник» и правит
-// настоящий тембр: таблица гармоник стартует со снапшота звучащего
-// источника (пила — своя пила, колокол — свои негармоничные парциалы),
-// первая же правка переснимает инструмент в «свою волну» — без
-// черновиков и «применить».
+// сэмпла. Редактор волны — на «источнике»: таблица гармоник стартует
+// со снапшота звучащего тембра (пила — своя пила, колокол — свои
+// негармоничные парциалы), правки идут в черновик — звучащий тембр
+// остаётся приглушённой линией на канвасе внизу, пока черновик не
+// применён («применить» пишет «свою волну»). Морф моделей подписан
+// конкретно (яркость, регистры, материал…) — это настройка гармоник.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ArpMode,
   Instrument,
@@ -40,7 +41,7 @@ import { WaveCanvas } from './WaveCanvas';
 import { NoteGraph } from './EnvGraph';
 import { confirmDialog, promptDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
-import { cycleToPartials, sampleToPartials } from '../music/fft';
+import { cycleToPartials, renderWaveCycle, sampleToPartials } from '../music/fft';
 import { CYCLE_N, renderInstrumentCycle, snapshotWave } from '../music/waveSnapshot';
 import { tickDuration } from '../audio/timing';
 
@@ -106,6 +107,54 @@ function clampSec(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/** Компактная полоса формы волны — как поле строки таблицы гармоник,
+ *  без панелей и кнопок: тонкая линия цикла. Клик по ней (снаружи,
+ *  здесь только рисунок) включает рисование. */
+function WaveStrip({ data, height = 36 }: { data: Float32Array | null; height?: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const paint = useCallback(() => {
+    const c = ref.current;
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth || 1;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(height * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(height * dpr);
+    }
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0e1319';
+    ctx.fillRect(0, 0, w, height);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(w, height / 2);
+    ctx.stroke();
+    if (!data || data.length === 0) return;
+    const CYCLES = 3;
+    ctx.strokeStyle = '#f2b263';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x++) {
+      const i = Math.min(data.length * CYCLES - 1, Math.round((x / w) * data.length * CYCLES));
+      const v = data[i % data.length];
+      const y = height / 2 - v * (height / 2 - 3);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }, [data, height]);
+  useEffect(() => {
+    paint();
+    const onResize = () => paint();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [paint]);
+  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
+}
+
 const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
   kind === 'sine'
     ? { partials: [{ ratio: 1, amp: 1, type: 'sine' }] }
@@ -133,6 +182,16 @@ const genPartials = (kind: 'sine' | 'saw' | 'square' | 'noise'): WaveDef =>
  *  скрэтча: там питч задаёт жест). Остальным моделям ручки не звучат —
  *  группа приглушается с пояснением. */
 const UNISON_SOURCES = new Set(['sine', 'square', 'triangle', 'sawtooth']);
+
+/** Морф — по сути настройка гармоник модели; подпись говорит, ЧЕМ он
+ *  рулит у конкретной модели, вместо безликого «морф». */
+const MORPH_SHORT: Partial<Record<Waveform, string>> = {
+  supersaw: 'расстройка',
+  additive: 'яркость',
+  formant: 'гласная',
+  modal: 'материал',
+  organ: 'регистры',
+};
 
 export function InstrumentEditor({
   track,
@@ -210,48 +269,57 @@ export function InstrumentEditor({
         ? dur
         : undefined;
 
-  // ---- Волна: снапшот и прямые правки ----
-  // Таблица гармоник живёт со снапшота звучащего тембра (snapshotWave):
-  // правка любой строки сразу пишет в инструмент как «свою волну» —
-  // звучание меняется тут же, без черновика и «применить».
-  const wave = useMemo(() => snapshotWave(inst, track.freq), [inst, track.freq]);
-  const writeWave = (next: WaveDef) => onChangeInst({ waveform: 'wave', wave: next });
+  // ---- Волна: снапшот звучащего тембра + черновик ----
+  // Таблица гармоник стартует со снапшота звучащего тембра (snapshotWave:
+  // пила — своя пила, колокол — свои негармоничные парциалы), а правки
+  // ложатся в ЧЕРНОВИК: звучащий инструмент не меняется, пока черновик
+  // не применён. Канвас показывает черновик яркой линией, звучащий
+  // тембр — приглушённой (призрак), «▶ нота» слушает черновик.
+  const applied = useMemo(() => snapshotWave(inst, track.freq), [inst, track.freq]);
+  const [draft, setDraft] = useState<WaveDef | null>(null);
+  const wave = draft ?? applied;
   // Форма звучащего тембра: пила/FM/шум — формулой, модели — своими
   // парциалами; «своя волна» — парциалами из патча.
   const soundingForm = useMemo(() => renderInstrumentCycle(inst), [inst]);
+  const draftForm = useMemo(() => renderWaveCycle(wave, CYCLE_N), [wave]);
+  const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(applied);
+  const applyDraft = () => {
+    if (draft) onChangeInst({ waveform: 'wave', wave: draft });
+    setDraft(null);
+  };
 
-  // Режим точек: локальная таблица (в инструмент уходит конвертацией
+  // Режим точек: локальная таблица (в черновик уходит конвертацией
   // в гармоники).
   const [points, setPoints] = useState<Float32Array | null>(null);
   const pointsRef = useRef<Float32Array | null>(null);
   pointsRef.current = points;
 
   const setPartial = (i: number, upd: Partial<WavePartial>) =>
-    writeWave({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
+    setDraft({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
   const removePartial = (i: number) =>
-    writeWave({ ...wave, partials: wave.partials.filter((_, j) => j !== i) });
+    setDraft({ ...wave, partials: wave.partials.filter((_, j) => j !== i) });
   const addPartial = () => {
     const used = new Set(wave.partials.map((p) => p.ratio));
     let r = 1;
     while (used.has(r) && r < 64) r++;
-    writeWave({ ...wave, partials: [...wave.partials, { ratio: r, amp: 0.5, type: 'sine' }] });
+    setDraft({ ...wave, partials: [...wave.partials, { ratio: r, amp: 0.5, type: 'sine' }] });
   };
 
-  /** Штрих мышью: точка в таблице + перевод в гармоники инструмента —
-   *  звучание меняется прямо при рисовании, слушай «▶ нота». */
+  /** Штрих мышью: точка в таблице + перевод в гармоники черновика.
+   *  Слушать — «▶ нота» (звучит черновик), применять — кнопкой. */
   const drawPoint = (x: number, y: number) => {
     const amp = Math.min(1, Math.max(-1, (y - 0.5) * 2));
-    const pts = Float32Array.from(pointsRef.current ?? soundingForm ?? new Float32Array(CYCLE_N));
+    const pts = Float32Array.from(pointsRef.current ?? draftForm ?? new Float32Array(CYCLE_N));
     const idx = Math.min(CYCLE_N - 1, Math.max(0, Math.round(x * CYCLE_N)));
     pts[idx] = amp;
     pointsRef.current = pts;
     setPoints(pts);
     const partials = cycleToPartials(pts, 64);
-    if (partials.length > 0) writeWave({ partials });
+    if (partials.length > 0) setDraft({ partials });
   };
 
-  /** Сэмпл → огрублённый набор гармоник: тембровый слепок куска сразу
-   *  становится волной инструмента. */
+  /** Сэмпл → огрублённый набор гармоник: тембровый слепок куска ложится
+   *  черновиком в редактор волны ниже — сравни с звучащим и примени. */
   const decompose = () => {
     if (!mono || !buffer) return;
     const from = selSec?.[0] ?? 0;
@@ -272,7 +340,7 @@ export function InstrumentEditor({
       });
       return;
     }
-    writeWave({ partials });
+    setDraft({ partials });
     setPoints(null);
     setF0Manual(Math.round(f0 * 10) / 10);
   };
@@ -357,8 +425,17 @@ export function InstrumentEditor({
   const scratchMode = isSample && (st.sampleMode ?? 'plain') === 'scratch';
   const unisonOk = UNISON_SOURCES.has(st.waveform) || (isSample && !scratchMode);
 
-  /** Закрыть редактор (правки волны уже в инструменте — терять нечего). */
-  const tryClose = () => {
+  /** Закрытие с неприменённым черновиком волны — сперва спросить. */
+  const tryClose = async () => {
+    if (dirty) {
+      const ok = await confirmDialog({
+        title: 'волна не применена',
+        text: 'Черновик отличается от звучащей волны. Применить его перед закрытием?',
+        okLabel: 'применить',
+        cancelLabel: 'отбросить',
+      });
+      if (ok) applyDraft();
+    }
     setPoints(null);
     onClose();
   };
@@ -378,7 +455,13 @@ export function InstrumentEditor({
             </button>
           ))}
         </span>
-        {/* Имя инструмента не дублируем: оно уже в чипе заголовка трека. */}
+        {/* Имя инструмента не дублируем: оно уже в чипе заголовка трека.
+            Осталась только пометка неприменённого черновика волны. */}
+        {dirty && tab === 'snd' && !isSample && (
+          <span className="we-title" title="Черновик волны отличается от звучащей — «применить» перенесёт его в инструмент">
+            черновик волны не применён
+          </span>
+        )}
         <span className="spacer" />
         <button
           className="env-listen"
@@ -406,7 +489,7 @@ export function InstrumentEditor({
           className="we-close"
           title="Закрыть редактор инструмента"
           aria-label="закрыть редактор инструмента"
-          onClick={tryClose}
+          onClick={() => void tryClose()}
         >
           ✕
         </button>
@@ -467,8 +550,8 @@ export function InstrumentEditor({
                 )}
                 {MORPH_LABELS[st.waveform] && (
                   <Knob
-                    label="морф"
-                    title={`Морф модели «${WAVEFORM_LABELS[st.waveform]}»: ${MORPH_LABELS[st.waveform]}. Двойной клик — точное число`}
+                    label={MORPH_SHORT[st.waveform] ?? 'морф'}
+                    title={`${MORPH_SHORT[st.waveform] ?? 'Морф'} модели «${WAVEFORM_LABELS[st.waveform]}» — по сути настройка её гармоник: ${MORPH_LABELS[st.waveform]}. Двойной клик — точное число`}
                     value={Math.round((st.voiceMorph ?? 0.5) * 100)}
                     min={0} max={100} step={1}
                     onChange={(v) => onChangeInst({ voiceMorph: v / 100 })}
@@ -509,27 +592,20 @@ export function InstrumentEditor({
             )}
           </div>
 
-          {/* Редактор волны — сразу на вкладке источника: канвас честной
-              формы звучащего тембра + таблица его гармоник. Правки пишутся
-              в инструмент напрямую; модель (колокол, струна…) первая же
-              правка переснимает в «свою волну» со спектром модели. */}
+          {/* Редактор волны — на вкладке источника, под ручками модели:
+              гармоники — суть тембра (таблица), форма волны — их следствие
+              (канвас внизу). Правки идут в черновик: звучащий тембр
+              остаётся призраком на канвасе, пока черновик не применён. */}
           {!isSample && (
             <>
-              <div className="we-canvas-stack" data-ob="we-wave-canvas">
-                {points ? (
-                  <WaveCanvas data={points} sampleRate={CYCLE_N} editable onDraw={drawPoint} />
-                ) : soundingForm ? (
-                  <WaveCanvas data={soundingForm} sampleRate={CYCLE_N} cycles={4} />
-                ) : null}
-              </div>
               <div className="we-row" data-ob="we-wave-tools">
                 <span
                   className="we-cap"
-                  title="Что звучит сейчас — форма на канвасе и гармоники ниже; меняется пресетами из панели инструментов"
+                  title="Что звучит сейчас — гармоники в таблице ниже; полоса «волна» там же: яркая линия — черновик, приглушённая — звучащий тембр"
                 >
                   звучит: {WAVEFORM_LABELS[st.waveform]}
                 </span>
-                {st.waveform !== 'wave' && (
+                {st.waveform !== 'wave' && !dirty && (
                   <span
                     className="mini-info"
                     title={
@@ -548,11 +624,11 @@ export function InstrumentEditor({
                 {(['sine', 'saw', 'square', 'noise'] as const).map((k) => (
                   <button
                     key={k}
-                    title={`Пересобрать тембр: ${PARTIAL_TYPE_LABELS[k]}${k === 'noise' ? ' (зерно — размер крупы)' : ''} — сразу станет волной инструмента`}
+                    title={`Пересобрать тембр: ${PARTIAL_TYPE_LABELS[k]}${k === 'noise' ? ' (зерно — размер крупы)' : ''} — ляжет в черновик`}
                     onClick={() => {
                       pointsRef.current = null;
                       setPoints(null);
-                      writeWave(genPartials(k));
+                      setDraft(genPartials(k));
                     }}
                   >
                     {PARTIAL_TYPE_LABELS[k]}
@@ -561,7 +637,7 @@ export function InstrumentEditor({
                 <span className="we-sep" />
                 {points ? (
                   <button
-                    title="Рисунок уже переведён в гармоники инструмента — это возврат к их виду"
+                    title="Рисунок уже переведён в гармоники черновика — это возврат к их виду"
                     onClick={() => {
                       pointsRef.current = null;
                       setPoints(null);
@@ -571,9 +647,9 @@ export function InstrumentEditor({
                   </button>
                 ) : (
                   <button
-                    title="Нарисовать форму мышью — правки уходят в инструмент прямо при рисовании, слушай «▶ нота»"
+                    title="Нарисовать форму мышью — черновик меняется прямо при рисовании, слушай «▶ нота»"
                     onClick={() => {
-                      const pts = Float32Array.from(soundingForm ?? new Float32Array(CYCLE_N));
+                      const pts = Float32Array.from(draftForm ?? soundingForm ?? new Float32Array(CYCLE_N));
                       pointsRef.current = pts;
                       setPoints(pts);
                     }}
@@ -583,14 +659,62 @@ export function InstrumentEditor({
                 )}
                 <span className="we-sep" />
                 <button
-                  title="Прослушать одну ноту текущим тембром (тоника шкалы дорожки)"
-                  onClick={() => onPreviewNote(inst)}
+                  title="Прослушать одну ноту черновиком (тоника шкалы дорожки)"
+                  onClick={() => onPreviewNote(dirty ? { ...inst, waveform: 'wave', wave } : inst)}
                 >
                   ▶ нота
+                </button>
+                <button
+                  className={dirty ? 'we-apply' : ''}
+                  disabled={!dirty}
+                  title="Черновик становится волной инструмента (тип волны — «своя волна»); до этого звучит прежний тембр"
+                  onClick={applyDraft}
+                >
+                  применить
+                </button>
+                <button
+                  disabled={!dirty}
+                  title="Отбросить черновик: вернуться к звучащей волне"
+                  onClick={() => setDraft(null)}
+                >
+                  сбросить
                 </button>
               </div>
 
               <div className="we-partials" data-ob="we-partials">
+                {/* Форма волны — первая строка таблицы гармоник, тем же
+                    языком, что и остальные строки: компактная полоса
+                    вместо панели. Яркая линия — черновик, приглушённая —
+                    звучащий тембр; клик по полосе — рисовать форму
+                    (полоса разворачивается в канвас прямо на месте). */}
+                {points ? (
+                  <div className="we-canvas-stack" data-ob="we-wave-canvas">
+                    <WaveCanvas data={points} sampleRate={CYCLE_N} editable onDraw={drawPoint} />
+                  </div>
+                ) : (
+                  <div className="partial-row wave-strip-row" data-ob="we-wave-canvas">
+                    <span className="ph-cap" title="Итог всех гармоник — форма волны. Клик — рисовать форму прямо в этой строке">
+                      волна
+                    </span>
+                    <span
+                      className="wave-strip-wrap"
+                      title="Форма волны: яркая линия — черновик, приглушённая — звучащий тембр. Клик — рисовать"
+                      onClick={() => {
+                        const pts = Float32Array.from(draftForm ?? soundingForm ?? new Float32Array(CYCLE_N));
+                        pointsRef.current = pts;
+                        setPoints(pts);
+                      }}
+                    >
+                      {dirty && soundingForm && (
+                        <span className="we-ghost" aria-hidden="true">
+                          <WaveStrip data={soundingForm} />
+                        </span>
+                      )}
+                      <WaveStrip data={dirty ? draftForm : soundingForm} />
+                    </span>
+                  </div>
+                )}
+                <div className="we-partial-rows">
                 {wave.partials.length > 0 && (
                   <div className="partial-row head" aria-hidden="true">
                     <span />
@@ -633,11 +757,17 @@ export function InstrumentEditor({
                       зерно шума, мс
                       <NumField
                         value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
-                        onChange={(v) => writeWave({ ...wave, noiseGrainMs: Math.round(v) })}
+                        onChange={(v) => setDraft({ ...wave, noiseGrainMs: Math.round(v) })}
                       />
                     </label>
                   )}
                   <span className="mini-info">{wave.partials.length}/64 гармоник</span>
+                  {dirty && (
+                    <span className="mini-info" title="Черновик отличается от звучащей волны — «применить» перенесёт его в инструмент">
+                      черновик не применён
+                    </span>
+                  )}
+                </div>
                 </div>
               </div>
             </>

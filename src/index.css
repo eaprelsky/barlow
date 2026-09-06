@@ -2414,7 +2414,7 @@ button.danger:hover {
 }
 
 /* Редактор инструмента — та же механика, свои вкладки (источник |
-   огибающая | тембр | волна | сэмпл) */
+   огибающая | тембр) */
 .inst-editor .we-head .env-listen,
 .inst-editor .we-head .save-inst {
   flex: none;
@@ -2505,9 +2505,32 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Строки гармоник — скроллящийся список; форма волны над ним — первая
+   строка блока (компактная полоса, как поле), всегда на виду */
+.we-partial-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   max-height: 220px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* Первая строка таблицы — форма волны: подпись + полоса-поле, клик
+   разворачивает полосу в канвас рисования */
+.wave-strip-row {
+  cursor: pointer;
+}
+
+.wave-strip-row .wave-strip-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: block;
+  border-radius: 3px;
+  overflow: hidden;
 }
 
 .partial-row {
