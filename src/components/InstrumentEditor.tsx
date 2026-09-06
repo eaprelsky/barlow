@@ -85,8 +85,9 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
-  /** Заморозить жест сэмпла: оффлайн-рендер в библиотеку сэмплов. */
-  onScratchSave: (trackId: string) => void | Promise<void>;
+  /** Заморозить жест сэмпла: оффлайн-рендер в библиотеку сэмплов.
+   *  name — из поля у кнопки (нетронутое/пустое — App добавит штамп). */
+  onScratchSave: (trackId: string, name?: string) => void | Promise<void>;
   onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
 }
 
@@ -390,6 +391,9 @@ export function InstrumentEditor({
   const [dragPts, setDragPts] = useState<ScratchPoint[] | null>(null);
   // Рендер «в сэмпл» идёт — кнопка занята.
   const [scratchSaving, setScratchSaving] = useState(false);
+  // Имя для «в сэмпл»: дефолт — база «<трек> скрэтч»; нетронутое/пустое
+  // поле App дополнит штампом даты-времени (жесты не путаются).
+  const [scratchName, setScratchName] = useState(`${track.name} скрэтч`);
   const dragIdx = useRef<number | null>(null);
   const pendingAdd = useRef<{ t: number; pos: number } | null>(null);
   const downXY = useRef<{ x: number; y: number } | null>(null);
@@ -838,13 +842,21 @@ export function InstrumentEditor({
                 >
                   {scratchPlaying ? '▶ играет…' : '▶ послушать'}
                 </button>
+                <input
+                  className="scratch-name"
+                  data-ob="scratch-name"
+                  value={scratchName}
+                  spellCheck={false}
+                  title="Имя, под которым жест ляжет в библиотеку сэмплов. Оставишь как есть — добавлю дату и время, чтобы жесты одного трека не путались"
+                  onChange={(e) => setScratchName(e.target.value)}
+                />
                 <button
                   disabled={scratchSaving}
                   data-ob="scratch-save"
-                  title="Заморозить удачную настройку: жест отрендерится в WAV и ляжет в библиотеку сэмплов — готовый скрэтч без пэда и точек"
+                  title="Заморозить удачную настройку: жест отрендерится в WAV и ляжет в библиотеку сэмплов под именем из поля слева — готовый скрэтч без пэда и точек"
                   onClick={() => {
                     setScratchSaving(true);
-                    void Promise.resolve(onScratchSave(track.id)).finally(() => setScratchSaving(false));
+                    void Promise.resolve(onScratchSave(track.id, scratchName)).finally(() => setScratchSaving(false));
                   }}
                 >
                   {scratchSaving ? 'сохраняю…' : 'в сэмпл'}

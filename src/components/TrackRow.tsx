@@ -147,8 +147,9 @@ interface Props {
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
   onScratchPreview: () => void;
-  /** Заморозить жест сэмпла: рендер в библиотеку сэмплов. */
-  onScratchSave: (trackId: string) => void | Promise<void>;
+  /** Заморозить жест сэмпла: рендер в библиотеку сэмплов. name — из поля
+   *  у кнопки (нетронутое/пустое — App добавит штамп даты-времени). */
+  onScratchSave: (trackId: string, name?: string) => void | Promise<void>;
   onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
   patternSceneCounts: Record<string, number>;
   // Для сайдчейна и связки инструментов: все дорожки патча.

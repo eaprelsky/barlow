@@ -618,7 +618,7 @@ export class AudioEngine implements AudioBackend {
       if (!patch) return;
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
-      if (ctx.state === 'suspended') void ctx.resume();
+      if (ctx.state === 'suspended') await ctx.resume();
       const st = stOf(patch, track);
       const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       const chain = this.chains.get(track.id);
@@ -651,51 +651,53 @@ export class AudioEngine implements AudioBackend {
   }
 
   /** Прослушать жест одной нотой: работает и без играющего транспорта —
-   *  сэмпл догружается, при отсутствии цепочки трека звук идёт в мастер. */
-  previewScratch(track: Track): void {
-    void (async () => {
-      const patch = this.patch;
-      if (!patch) return;
-      await this.ensureSamples(patch);
-      const ctx = this.ensureCtx();
-      if (ctx.state === 'suspended') void ctx.resume();
-      const st = stOf(patch, track);
-      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
-      const chain = this.chains.get(track.id);
-      if (!sample || (!chain && !this.master)) return;
-      const dest: AudioNode = chain ? chain.hp : this.master!.input;
-      const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
-      const len =
-        st.noteSteps && st.noteSteps > 0
-          ? st.noteSteps * stepSec
-          : st.attack + st.decay;
-      const node = makeScratchNode(ctx, sample);
-      const pos = node.parameters.get('position')!;
-      const off = node.parameters.get('off')!;
-      // Жест иглы ходит по обрезанному куску сэмпла.
-      const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
-      const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
-      const mapPos = (p: number) =>
-        Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
-      const t0 = ctx.currentTime + 0.02;
-      const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
-      if (points.length === 0) {
-        pos.setValueAtTime(mapPos(0), t0);
-        pos.linearRampToValueAtTime(mapPos(1), t0 + len);
-      } else {
-        pos.setValueAtTime(mapPos(points[0].pos), t0);
-        for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
-      }
-      off.setValueAtTime(0, t0);
-      off.setValueAtTime(1, t0 + len + 0.1);
-      const amp = ctx.createGain();
-      amp.gain.setValueAtTime(0, t0);
-      amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
-      amp.gain.setValueAtTime(0.9, t0 + len * 0.88);
-      amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
-      node.connect(amp);
-      amp.connect(dest);
-    })();
+   *  сэмпл догружается, при отсутствии цепочки трека звук идёт в мастер.
+   *  Возвращает null, если сыграло, или причину тишины (покажет UI). */
+  async previewScratch(track: Track): Promise<string | null> {
+    const patch = this.patch;
+    if (!patch) return 'патч ещё не загружен';
+    await this.ensureSamples(patch);
+    const ctx = this.ensureCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const st = stOf(patch, track);
+    const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
+    if (!sample) return 'в слоте дорожки нет сэмпла';
+    const chain = this.chains.get(track.id);
+    if (!chain && !this.master) return 'звуковой граф не поднят';
+    // Игла ходит по обрезанному куску сэмпла; пустая обрезка — тишина.
+    const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
+    const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
+    if (re - rs < 0.01) return 'обрезка сэмпла почти пустая — расширь кусок в редакторе волны';
+    const dest: AudioNode = chain ? chain.hp : this.master!.input;
+    const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
+    const len =
+      st.noteSteps && st.noteSteps > 0
+        ? st.noteSteps * stepSec
+        : st.attack + st.decay;
+    const node = makeScratchNode(ctx, sample);
+    const pos = node.parameters.get('position')!;
+    const off = node.parameters.get('off')!;
+    const mapPos = (p: number) =>
+      Math.min(1, Math.max(0, p)) * ((re - rs) / sample.duration) + rs / sample.duration;
+    const t0 = ctx.currentTime + 0.02;
+    const points = (st.scratchPoints ?? []).slice().sort((x, y) => x.t - y.t);
+    if (points.length === 0) {
+      pos.setValueAtTime(mapPos(0), t0);
+      pos.linearRampToValueAtTime(mapPos(1), t0 + len);
+    } else {
+      pos.setValueAtTime(mapPos(points[0].pos), t0);
+      for (const pt of points) pos.linearRampToValueAtTime(mapPos(pt.pos), t0 + pt.t * len);
+    }
+    off.setValueAtTime(0, t0);
+    off.setValueAtTime(1, t0 + len + 0.1);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(0.9, t0 + 0.005);
+    amp.gain.setValueAtTime(0.9, t0 + len * 0.88);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    node.connect(amp);
+    amp.connect(dest);
+    return null;
   }
 
   /** Отпустили: узел завершает себя по расписанию off. */

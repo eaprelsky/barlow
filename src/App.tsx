@@ -1279,19 +1279,23 @@ export default function App() {
   /** Заморозить жест скрэтча сэмпла: оффлайн-рендер ноты жеста → WAV
    *  в библиотеку (десктоп положит файлом в папку сэмплов). */
   const saveScratchSample = useCallback(
-    async (trackId: string) => {
+    async (trackId: string, name?: string) => {
       const t = patch.tracks.find((x) => x.id === trackId);
       if (!t) return;
       try {
         const blob = await engine.renderScratchWav(t);
-        // Штамп даты/времени: жестей много, имя должно отличать их —
-        // иначе в библиотеке они неразличимы (одинаковый жест по хешу
-        // контента и вовсе перезапишет прежний сэмпл).
+        // Имя: поле у кнопки «в сэмпл». Нетронутое/пустое поле — база
+        // «<трек> скрэтч» + штамп даты/времени: жестей много, имя должно
+        // отличать их (одинаковый жест по хешу контента и вовсе перезапишет
+        // прежний сэмпл). Своё имя — как есть.
+        const base = `${t.name} скрэтч`;
+        const typed = (name ?? '').trim();
         const now = new Date();
         const stamp = `${now
           .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
           .replace('.', '')} ${now.toLocaleTimeString('ru-RU')}`;
-        const meta = await putSample(blob, `${t.name} скрэтч ${stamp}`);
+        const final = !typed || typed === base ? `${base} ${stamp}` : typed;
+        const meta = await putSample(blob, final);
         void alertDialog(
           `Скрэтч сохранён в библиотеку: «${meta.name}» — панель «инструменты», вкладка «сэмплы»`,
           'скрэтч в сэмпл',
@@ -2036,7 +2040,13 @@ export default function App() {
             onScratchBegin={(pos) => engine.scratchBegin(t, pos)}
             onScratchMove={(pos) => engine.scratchMove(pos)}
             onScratchEnd={() => engine.scratchEnd()}
-            onScratchPreview={() => engine.previewScratch(t)}
+            onScratchPreview={() => {
+              // Молчаливые отказы превратили «не слышно» в загадку: теперь
+              // движок возвращает причину тишины — показываем её.
+              void engine.previewScratch(t).then((why) => {
+                if (why) void alertDialog(`Скрэтч не звучит: ${why}`, 'скрэтч');
+              });
+            }}
             onScratchSave={saveScratchSample}
             onScratchPeaks={() => engine.getSamplePeaks(t.instrumentId && instOf(patch, t).sampleId)}
             patternSceneCounts={patternSceneCounts}

@@ -45,7 +45,8 @@ export interface AudioBackend {
   scratchBegin(track: Track, pos0?: number): void;
   scratchMove(pos: number): void;
   scratchEnd(): void;
-  previewScratch(track: Track): void;
+  /** Прослушать жест; null — сыграло, строка — причина тишины (покажет UI). */
+  previewScratch(track: Track): Promise<string | null>;
 
   /** Пики волны сэмпла (64 сегмента, 0..1) для мини-карты скрэтч-пэда. */
   getSamplePeaks(id: string | undefined): Promise<{ peaks: number[]; duration: number } | null>;
