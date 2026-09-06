@@ -8,6 +8,8 @@ interface Props {
   track: Track;
   pattern: Pattern;
   patternSceneCounts: Record<string, number>;
+  /** В скольких сценах дорожка в мьюте — счётчик чипа M. */
+  muteSceneCount: number;
   /** Мьют слота текущей сцены. */
   slotMuted: boolean;
   onToggleSlotMute: (trackId: string) => void;
@@ -21,6 +23,7 @@ export function PatternChips({
   track,
   pattern,
   patternSceneCounts,
+  muteSceneCount,
   slotMuted,
   onToggleSlotMute,
   onSelectPattern,
@@ -32,14 +35,19 @@ export function PatternChips({
     <div className="pattern-chips" data-ob="chips">
       {/* Мьют — «эскиз тишины» в том же ряду выбора: горит либо он,
           либо эскиз — подсветка всегда одна. Клик по эскизу выбирает
-          партию, клик по M — тишину (часы партии идут). */}
+          партию, клик по M — тишину (часы партии идут). Счётчик —
+          в скольких сценах мьют, как у эскизов. */}
       <button
         className={slotMuted ? 'chip mute on-m' : 'chip mute'}
         data-ob="chip-mute"
-        title="Тишина в этой сцене — как пустой эскиз: дорожка молчит, но часы партии идут — сняв мьют, войдёшь в фазе. В других сценах эскиз играет как обычно"
+        title={
+          'Тишина в этой сцене — как пустой эскиз: дорожка молчит, но часы партии идут — сняв мьют, войдёшь в фазе. В других сценах эскиз играет как обычно' +
+          (muteSceneCount > 1 ? `. Мьют в ${muteSceneCount} сценах` : '')
+        }
         onClick={() => onToggleSlotMute(track.id)}
       >
         M
+        {muteSceneCount > 1 && <sup className="scene-cnt">{muteSceneCount}</sup>}
       </button>
       {track.patterns.map((pt) => {
         const scenes = patternSceneCounts[pt.id] ?? 0;

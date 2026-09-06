@@ -78,11 +78,9 @@ try {
     await page.waitForTimeout(400);
   };
 
-  // A: редактор волны (открывается из «трек» → «инструмент») → очистить всё
+  // A: редактор инструмента (открывается из «трек» → «инструмент») → очистить всё
   // → + трек: новый трек развёрнут.
   await page.locator('[data-ob="mode-inst"]').first().click();
-  await page.waitForTimeout(200);
-  await page.locator('button[aria-label="редактор волны"]').first().click();
   await page.waitForTimeout(300);
   await clearAll();
   await addTrack();
@@ -101,8 +99,6 @@ try {
   await page.waitForTimeout(800);
   await addTrack(); // нужна вторая дорожка — будет форс-свёрнута
   await page.locator('[data-ob="mode-inst"]').first().click();
-  await page.waitForTimeout(200);
-  await page.locator('button[aria-label="редактор волны"]').first().click();
   await page.waitForTimeout(300);
   st = await state();
   const others = st.collapsed;

@@ -603,6 +603,10 @@ export class AudioEngine implements AudioBackend {
         this.retiring = [];
         this.chains.clear();
         this.meters.clear();
+        // Мастер глушился только чтобы доели хвосты; источники хвостов
+        // разобраны — возвращаем громкость, иначе превью («▶ нота»,
+        // сэмпл, скрэтч) молчит до следующего play или правки патча.
+        if (this.master) this.master.setVolume(this.patch?.masterVolume ?? 1, this.ctx!.currentTime);
       }, 120);
     }
   }
@@ -622,6 +626,7 @@ export class AudioEngine implements AudioBackend {
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') await ctx.resume();
+      if (!this.playing) this.applyMasterVolume(patch.masterVolume);
       const st = stOf(patch, track);
       const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       const chain = this.chains.get(track.id);
@@ -664,6 +669,7 @@ export class AudioEngine implements AudioBackend {
     // может не пройти (autoplay-политика).
     const ctx = this.ensureCtx();
     if (ctx.state === 'suspended') void ctx.resume();
+    if (!this.playing) this.applyMasterVolume(patch.masterVolume);
     try {
       await this.ensureSamples(patch);
     } catch {
@@ -820,6 +826,7 @@ export class AudioEngine implements AudioBackend {
       await this.ensureSamples(patch);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
+      if (!this.playing) this.applyMasterVolume(patch.masterVolume);
       const st = stOf(patch, track);
       const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       if (!sample || !this.master) return;
@@ -851,6 +858,8 @@ export class AudioEngine implements AudioBackend {
     // Контекст и resume — синхронно, в стеке клика (см. previewScratch).
     const ctx0 = this.ensureCtx();
     if (ctx0.state === 'suspended') void ctx0.resume();
+    // Стоп гасил мастер под хвосты — превью вне игры должно звучать.
+    if (!this.playing) this.applyMasterVolume(this.patch?.masterVolume ?? 1);
     void (async () => {
       const patch = this.patch;
       if (!patch) return;

@@ -33,13 +33,28 @@ export interface SampleProvider {
   transform?(params: TransformParams): Promise<Blob>;
 }
 
+/** fetch с внятной ошибкой сети: «Failed to fetch» ничего не говорит —
+ *  чаще всего это гео-блок провайдера (ElevenLabs не отдаёт CORS из
+ *  запрещённых регионов) или упавший прокси. */
+async function netFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    const host = new URL(url).host;
+    throw new Error(
+      `нет соединения с ${host} — сеть, прокси или гео-блок (ElevenLabs недоступен в этом регионе). ` +
+        'Смени провайдера в настройках ИИ (шестерёнка в шапке)',
+    );
+  }
+}
+
 const elevenlabs: SampleProvider = {
   id: 'elevenlabs',
   title: 'ElevenLabs (звуковые эффекты)',
   keyHint: 'Взять: elevenlabs.io → Profile → API Keys',
   supportsTransform: false,
   async generate({ apiKey, prompt, seconds }) {
-    const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+    const res = await netFetch('https://api.elevenlabs.io/v1/sound-generation', {
       method: 'POST',
       headers: {
         'xi-api-key': apiKey,
@@ -77,7 +92,7 @@ async function falRun(
   timeoutMs = 180_000,
 ): Promise<Record<string, unknown>> {
   const auth = { Authorization: `Key ${apiKey}` };
-  const sub = await fetch(`https://queue.fal.run/${model}`, {
+  const sub = await netFetch(`https://queue.fal.run/${model}`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -102,7 +117,7 @@ async function falRun(
       continue; // моргнула сеть — попробуем ещё
     }
     if (j?.status === 'COMPLETED') {
-      const res = await fetch(queued.response_url, { headers: auth });
+      const res = await netFetch(queued.response_url, { headers: auth });
       if (!res.ok) throw new Error(`fal.ai ${res.status}: результат не отдаётся`);
       return (await res.json()) as Record<string, unknown>;
     }
@@ -126,8 +141,8 @@ function toDataUri(blob: Blob): Promise<string> {
 async function falAudioOf(out: Record<string, unknown>): Promise<Blob> {
   const url = (out.audio as { url?: string } | undefined)?.url;
   if (!url) throw new Error('fal.ai: в ответе нет аудио');
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`fal.ai: аудио не скачивается (${res.status})`);
+  const res = await netFetch(url, {});
+  if (!res.ok) throw new Error(`fal.ai ${res.status}: аудио не скачивается`);
   return res.blob();
 }
 
@@ -161,5 +176,8 @@ const fal: SampleProvider = {
   },
 };
 
-export const PROVIDERS: SampleProvider[] = [elevenlabs, fal];
-export const DEFAULT_PROVIDER = elevenlabs.id;
+// fal — первый и дефолтный: умеет и генерацию, и морфинг, и доступен без
+// гео-ограничений (ElevenLabs из ряда регионов не отдаёт CORS — «Failed
+// to fetch»; выбрать его можно вручную в настройках ИИ).
+export const PROVIDERS: SampleProvider[] = [fal, elevenlabs];
+export const DEFAULT_PROVIDER = fal.id;

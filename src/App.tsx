@@ -458,10 +458,27 @@ export default function App() {
     });
   }, []);
 
+  // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
+  // меняет все сцены, где он играет». Замьюченный слот не играет — его
+  // эскиз в счётчик не попадает (тишина считается отдельно, у чипа M).
   const patternSceneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const sc of patch.scenes) {
-      for (const slot of Object.values(sc.slots)) counts[slot.patternId] = (counts[slot.patternId] ?? 0) + 1;
+      for (const slot of Object.values(sc.slots)) {
+        if (slot.muted) continue;
+        counts[slot.patternId] = (counts[slot.patternId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [patch.scenes]);
+
+  // В скольких сценах дорожка в мьюте — счётчик чипа M.
+  const muteSceneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const sc of patch.scenes) {
+      for (const [trackId, slot] of Object.entries(sc.slots)) {
+        if (slot.muted) counts[trackId] = (counts[trackId] ?? 0) + 1;
+      }
     }
     return counts;
   }, [patch.scenes]);
@@ -2038,6 +2055,7 @@ export default function App() {
             onScratchSave={saveScratchSample}
             onScratchPeaks={() => engine.getSamplePeaks(t.instrumentId && instOf(patch, t).sampleId)}
             patternSceneCounts={patternSceneCounts}
+            muteSceneCount={muteSceneCounts[t.id] ?? 0}
             allTracks={trackList}
             onGenerateSample={generateSample}
             onTransformSample={transformSample}

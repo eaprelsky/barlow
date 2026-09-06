@@ -151,6 +151,8 @@ interface Props {
   onScratchSave: (trackId: string, name?: string) => void | Promise<void>;
   onScratchPeaks: () => Promise<{ peaks: number[]; duration: number } | null>;
   patternSceneCounts: Record<string, number>;
+  /** В скольких сценах дорожка в мьюте — счётчик чипа M. */
+  muteSceneCount: number;
   // Для сайдчейна и связки инструментов: все дорожки патча.
   allTracks: { id: string; name: string; instrumentId: string }[];
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
@@ -205,6 +207,7 @@ export const TrackRow = memo(function TrackRow({
   onScratchSave,
   onScratchPeaks,
   patternSceneCounts,
+  muteSceneCount,
   allTracks,
   onGenerateSample,
   onTransformSample,
@@ -1010,6 +1013,7 @@ export const TrackRow = memo(function TrackRow({
       track={track}
       pattern={pattern}
       patternSceneCounts={patternSceneCounts}
+      muteSceneCount={muteSceneCount}
       slotMuted={slotMuted}
       onToggleSlotMute={onToggleSlotMute}
       onSelectPattern={onSelectPattern}
@@ -1460,6 +1464,10 @@ export const TrackRow = memo(function TrackRow({
             </span>
             {patternChips}
           </div>
+          {/* Слот сцены в мьюте — играет «эскиз тишины»: стан и ручки
+              партии спрятаны до снятия M, иначе правишь невидимое. */}
+          {!slotMuted ? (
+            <>
           <div className="sketch-bar">
             <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
               длина
@@ -1730,7 +1738,7 @@ export const TrackRow = memo(function TrackRow({
         </div>
       </div>
 
-      {selectedStep && selectedCol !== null && (
+      {selectedStep && selectedCol !== null && !slotMuted && (
         <div className="step-panel" data-ob="step-panel">
           <span className="sp-label">шаг {selectedCol + 1}</span>
           {selectedStep.notes.length === 0 && (
@@ -1921,6 +1929,18 @@ export const TrackRow = memo(function TrackRow({
               </>
             )}
           </div>
+            </>
+          ) : (
+            <div className="sketch-muted" data-ob="sketch-muted">
+              <span className="skm-m">M</span>
+              <span className="skm-text">
+                тишина в этой сцене
+                <span className="mini-info">
+                  дорожка молчит, но часы партии идут — сними M, и эскиз «{pattern.name}» продолжится с той же фазы
+                </span>
+              </span>
+            </div>
+          )}
         </div>
       )}
 

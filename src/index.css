@@ -1785,6 +1785,36 @@ button.danger:hover {
 /* Мьют слота — живое состояние сцены (как соло): чипы эскизов остаются
    кликабельными — выбор партии снимает тишину, блокировать нечего */
 
+/* «Эскиз тишины» вместо стана: слот сцены в мьюте, партия спрятана */
+.sketch-muted {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 14px;
+  border: 1px dashed rgba(242, 178, 99, 0.35);
+  border-radius: 6px;
+  background: rgba(242, 178, 99, 0.04);
+}
+
+.sketch-muted .skm-m {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.sketch-muted .skm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text);
+}
+
 /* Мультиселект нот */
 .cell {
   touch-action: none;
