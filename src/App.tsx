@@ -686,8 +686,10 @@ export default function App() {
   }, [setPatchStep]);
 
   /** Применить пресет из библиотеки к дорожке: тембр — в инструмент
-   *  (v34; копия, если инструмент общий), строй/тоника/эффекты/моно — на
-   *  трек, ноты клемпятся в новую шкалу. Ноты и ритм — пользователя.
+   *  (v34; копия, если инструмент общий), плюс эффекты/моно/модуляции.
+   *  Из строя пресет приносит только несущую (регистр — часть тембра:
+   *  «бас» от 55 Гц) и только треку без нот; шкала (интервалы) и ноты —
+   *  всегда пользователя, у сыгранного тоника уже часть музыки.
    *  Отдельный шаг undo. */
   const applyPreset = useCallback(
     (trackId: string, preset: InstrumentPreset) => {
@@ -696,7 +698,6 @@ export default function App() {
         const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
         if (!track || !inst) return p;
         const t = preset.track;
-        const scale = t.scale && t.scale.length > 0 ? t.scale : [1];
         const instUpd: Record<string, unknown> = {};
         for (const f of INSTRUMENT_FIELDS) {
           if (t[f] !== undefined) instUpd[f] = t[f];
@@ -728,21 +729,10 @@ export default function App() {
           filterEnvTime: t.filterEnvTime ?? 0.3,
         };
         const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
-        // Строй (шкала/тоника/октавы) — часть пресета только для ПУСТОГО
-        // трека: свежему пресет задаёт и регистр («бас» от 55 Гц), а у
-        // сыгранного строй не отбираем — пресет меняет тембр, не высоты
-        // (перкуссия не схлопывает стан в «одну высоту»).
         const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
         const updTrack: Track = {
           ...track,
-          ...(empty
-            ? {
-                freq: t.freq ?? track.freq,
-                scale,
-                scaleOctUp: 0,
-                scaleOctDown: 0,
-              }
-            : {}),
+          ...(empty && t.freq !== undefined ? { freq: t.freq } : {}),
           effects: t.effects ?? [],
           mono: t.mono,
           mods: t.mods ? t.mods.map((m) => ({ ...m })) : track.mods,
@@ -764,13 +754,17 @@ export default function App() {
   );
 
   /** Слушать пресет в библиотеке: нота тоники дорожки, тембр пресета —
-   *  без применения (тот же triggerVoice, что будет в паттерне). */
+   *  без применения (тот же triggerVoice, что будет в паттерне). ▶ честен
+   *  с тем, что применится: пустому треку пресет принесёт и свою несущую
+   *  (регистр), сыгранному — только тембр. */
   const auditionPreset = useCallback(
     (trackId: string, preset: InstrumentPreset) => {
       const track = patch.tracks.find((t) => t.id === trackId);
       if (!track) return;
       const inst = instrumentOfFields(preset.track, uid('i'), preset.name);
-      engine.previewSounding({ ...track, ...inst });
+      const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
+      const freq = empty ? preset.track.freq ?? track.freq : track.freq;
+      engine.previewSounding({ ...track, ...inst, freq });
     },
     [patch.tracks, engine],
   );

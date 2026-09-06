@@ -24,13 +24,12 @@ export const CATEGORY_ORDER = [
   'прочее',
 ];
 
-const PENTATONIC_MINOR = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2];
-
-// Поля, которые переносит смена инструмента (applyInstrumentPreset в
-// TrackRow): по ним и опознаём текущий пресет. Ручки вне списка (громкость,
-// ритм, вибрато, сайдчейн) — пользователя, на совпадение не влияют.
+// Поля, которые переносит применение пресета (applyPreset в App): по ним
+// и опознаём текущий пресет. Несущая (freq) — пресетная, но применяется
+// только пустому треку (регистр — часть тембра); шкала — интервальный
+// строй — всегда пользователя и на совпадение не влияет.
 const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
-  'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
+  'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay',
   'fmRatio', 'fmIndex', 'ksLife', 'voiceMorph',
@@ -66,7 +65,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт удара: атака ~1 мс, короткий спад, падение тона сверху. Спад длиннее — тон короче — щелчок. Шум в волне — треск',
     track: {
-      name: 'удар', waveform: 'sine', freq: 60, scale: [1],
+      name: 'удар', waveform: 'sine', freq: 60,
       length: 8, rate: 4, attack: 0.001, decay: 0.25,
       pitchDrop: 3, pitchTime: 0.07,
       filterFreq: 3000,
@@ -77,7 +76,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт щипка: Karplus-Strong сам гаснет как струна, спад короткий. ksLife дольше — тянется; фильтр ниже — глухой палец',
     track: {
-      name: 'щипок', waveform: 'karplus', freq: 220, scale: PENTATONIC_MINOR,
+      name: 'щипок', waveform: 'karplus', freq: 220,
       ksLife: 2, length: 8, rate: 2, attack: 0.002, decay: 0.35, filterFreq: 6000,
     },
   },
@@ -86,7 +85,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт пада: медленная атака, долгий спад, унисон (супер-пила), реверб. Убери реверб — стена чистая',
     track: {
-      name: 'пад', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'пад', waveform: 'supersaw', freq: 110,
       voiceMorph: 0.45,
       length: 4, rate: 8, attack: 0.4, decay: 3, sustain: 0.9,
       filterFreq: 4000, volume: 0.4,
@@ -98,7 +97,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт лида: пила, плато-сустейн, вибрато (пока без задержки), лёгкий фильтр. Глубина вибрато 30–60 центов — живой голос',
     track: {
-      name: 'лид', waveform: 'sawtooth', freq: 330, scale: PENTATONIC_MINOR,
+      name: 'лид', waveform: 'sawtooth', freq: 330,
       length: 8, rate: 2, attack: 0.01, decay: 0.8, sustain: 0.75,
       vibratoRate: 5.5, vibratoDepth: 40, filterFreq: 6000,
     },
@@ -108,7 +107,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт язычка (кларнет/шахней): нечётные гармоники 1,3,5 — полый тон, вибрато узкое. Проверни фильтр — саксофон',
     track: {
-      name: 'язычок', waveform: 'wave', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'язычок', waveform: 'wave', freq: 220,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
@@ -125,7 +124,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт звона: модальные резонаторы (негармоничные частоты), атака мгновенная, спад долгий. Морф — от маримбы к колоколу',
     track: {
-      name: 'звон', waveform: 'modal', freq: 220, scale: [1, 6 / 5, 3 / 2, 2],
+      name: 'звон', waveform: 'modal', freq: 220,
       voiceMorph: 0.85,
       length: 8, rate: 2, attack: 0.001, decay: 3, filterFreq: 12000,
     },
@@ -135,7 +134,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт шума: белый шум + фильтр решает всё. Верх 6–8к — хэт; 300–600 — ветер; спад 0.03 — тик, 2 с — прибой',
     track: {
-      name: 'шум', waveform: 'noise', freq: 440, scale: [1],
+      name: 'шум', waveform: 'noise', freq: 440,
       length: 8, rate: 1, attack: 0.005, decay: 0.4, filterFreq: 7000,
     },
   },
@@ -144,7 +143,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'стартовые',
     hint: 'Рецепт баса: 49–55 Гц (ниже — не слышно на ноутбуках!), лёгкое падение тона — тычок, фильтр 400–600. Квадрат + дисторшн — рейв',
     track: {
-      name: 'бас', waveform: 'sine', freq: 55, scale: [1, 6 / 5, 3 / 2, 2],
+      name: 'бас', waveform: 'sine', freq: 55,
       length: 8, rate: 4, attack: 0.006, decay: 0.6,
       pitchDrop: 1.2, pitchTime: 0.15,
       filterFreq: 500, mono: true,
@@ -156,7 +155,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: 'тёплый бас: тон + октава + квинта чуть тише — слышен и на ноутбуке, фундамент не теряется',
     track: {
-      name: 'бас', waveform: 'wave', freq: 55, scale: [1, 6 / 5, 3 / 2, 2],
+      name: 'бас', waveform: 'wave', freq: 55,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
@@ -173,7 +172,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: 'дабстеп-вобл: треугольный LFO качает резонансный фильтр, дисторшн плотнит. Rate = восьмые при 118 BPM — под свой темп перецепи селектом «синхр»',
     track: {
-      name: 'воббл', waveform: 'supersaw', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
+      name: 'воббл', waveform: 'supersaw', freq: 55,
       voiceMorph: 0.25,
       length: 16, rate: 4, attack: 0.03, decay: 1.2, sustain: 0.3,
       pitchDrop: 1.2, pitchTime: 0.1,
@@ -189,7 +188,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'пентатоника, поющая нота с плато — мелодия сверху',
     track: {
-      name: 'лид', waveform: 'triangle', freq: 329.6, scale: PENTATONIC_MINOR,
+      name: 'лид', waveform: 'triangle', freq: 329.6,
       length: 7, rate: 2, attack: 0.01, decay: 0.9, sustain: 0.75,
       vibratoRate: 5.5, vibratoDepth: 25, vibratoDelay: 0.4,
       filterFreq: 4500,
@@ -201,7 +200,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'бочка: нота стартует высоко и падает вниз — «вумп», опора ритма',
     track: {
-      name: 'бочка', waveform: 'sine', freq: 48, scale: [1],
+      name: 'бочка', waveform: 'sine', freq: 48,
       length: 16, rate: 4, attack: 0.001, decay: 0.32,
       pitchDrop: 3.5, pitchTime: 0.09,
       filterFreq: 1400, volume: 0.9,
@@ -212,7 +211,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'короткий шум — тики и сыпь между ударами',
     track: {
-      name: 'хэт', waveform: 'noise', freq: 440, scale: [1],
+      name: 'хэт', waveform: 'noise', freq: 440,
       length: 11, rate: 1, decay: 0.05, filterFreq: 7000, volume: 0.45,
     },
   },
@@ -221,7 +220,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'фоны',
     hint: 'тянущийся фон-полотно: тёмная супер-пила, вход полсекунды, держится до перебоя',
     track: {
-      name: 'дрон', waveform: 'supersaw', freq: 110, scale: [1, 9 / 8],
+      name: 'дрон', waveform: 'supersaw', freq: 110,
       voiceMorph: 0.25,
       length: 3, rate: 16, attack: 0.5, decay: 3, sustain: 0.97,
       filterLow: 90, filterFreq: 650,
@@ -243,7 +242,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'Karplus-Strong: щипок струны, выросший из шума — живой и пластинчатый',
     track: {
-      name: 'струна', waveform: 'karplus', freq: 110, scale: PENTATONIC_MINOR,
+      name: 'струна', waveform: 'karplus', freq: 110,
       ksLife: 3,
       length: 11, rate: 2, attack: 0.002, decay: 1.6, filterFreq: 5000, volume: 0.7,
     },
@@ -253,7 +252,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'частотная модуляция: колокола и металл — крути FM-отношение (√2 ≈ 1.41 — негармоничный звон)',
     track: {
-      name: 'звон', waveform: 'fm', freq: 220, scale: PENTATONIC_MINOR,
+      name: 'звон', waveform: 'fm', freq: 220,
       fmRatio: 1.41, fmIndex: 4,
       length: 9, rate: 2, attack: 0.002, decay: 0.6, filterFreq: 9000, volume: 0.6,
       effects: [{ type: 'reverb', sizeSec: 2.5, mix: 0.3 }],
@@ -264,7 +263,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'фоны',
     hint: 'расстроенный унисон семи пил — жирная тянучая стена, атака мягкая, плато держится',
     track: {
-      name: 'супер-пила', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'супер-пила', waveform: 'supersaw', freq: 110,
       voiceMorph: 0.55,
       length: 16, rate: 4, attack: 0.05, decay: 1.5, sustain: 0.8, filterFreq: 5000,
     },
@@ -274,7 +273,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'пила сквозь форманты — поёт гласную «А»; вибрато с задержкой, как живой голос',
     track: {
-      name: 'вокал', waveform: 'formant', freq: 220, scale: PENTATONIC_MINOR,
+      name: 'вокал', waveform: 'formant', freq: 220,
       voiceMorph: 0.15,
       length: 13, rate: 2, attack: 0.08, decay: 1, sustain: 0.8,
       vibratoRate: 5.5, vibratoDepth: 30, vibratoDelay: 0.4,
@@ -287,7 +286,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'модальные резонаторы колокольного строя, долгий звон — морф к 1 даёт ярче негармоничность',
     track: {
-      name: 'колокол', waveform: 'modal', freq: 220, scale: [1, 6 / 5, 3 / 2, 2, 9 / 5 * 2],
+      name: 'колокол', waveform: 'modal', freq: 220,
       voiceMorph: 0.85,
       length: 9, rate: 2, attack: 0.001, decay: 2.5, filterFreq: 12000,
       effects: [{ type: 'reverb', sizeSec: 3.5, mix: 0.4 }],
@@ -298,7 +297,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'регистры 1,2,3,4,6,8 — морф открывает их по одному; хорус изображает вращающийся Лесли, вибрато позднее',
     track: {
-      name: 'орган', waveform: 'organ', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'орган', waveform: 'organ', freq: 220,
       voiceMorph: 0.5,
       length: 16, rate: 2, attack: 0.015, decay: 1.2, sustain: 0.9,
       vibratoRate: 5.5, vibratoDepth: 15, vibratoDelay: 0.6,
@@ -311,7 +310,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'аддитивный: морф = яркость, число гармоник 2–16; нота держится и мягко тает',
     track: {
-      name: 'гармоники', waveform: 'additive', freq: 220, scale: PENTATONIC_MINOR,
+      name: 'гармоники', waveform: 'additive', freq: 220,
       voiceMorph: 0.3,
       length: 12, rate: 2, attack: 0.02, decay: 0.9, sustain: 0.6,
       filterFreq: 7000,
@@ -332,7 +331,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     name: 'пустой',
     category: 'прочее',
     hint: 'чистый лист, всё настроешь сам',
-    track: { name: 'трек', waveform: 'square', freq: 220, scale: [1], length: 16, rate: 1 },
+    track: { name: 'трек', waveform: 'square', freq: 220, length: 16, rate: 1 },
   },
   {
     name: 'стекло',
@@ -381,7 +380,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'клавишные',
     hint: 'FM-пиано: индекс тает к хвосту, огибающая фильтра даёт звяк атаки. Мягче — индекс ниже, злее — выше',
     track: {
-      name: 'эл-пиано', waveform: 'fm', freq: 261.6, scale: [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2],
+      name: 'эл-пиано', waveform: 'fm', freq: 261.6,
       fmRatio: 1, fmIndex: 1.6,
       attack: 0.002, decay: 0.9, sustain: 0.25,
       filterEnvAmount: 9, filterEnvTime: 0.15,
@@ -393,7 +392,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'клавишные',
     hint: 'Хрустальные колокольчики FM: негармоничное отношение 3.51, хвост в реверб',
     track: {
-      name: 'чеймс', waveform: 'fm', freq: 659.3, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'чеймс', waveform: 'fm', freq: 659.3,
       fmRatio: 3.51, fmIndex: 2,
       attack: 0.002, decay: 1.3,
       filterFreq: 11000, volume: 0.5,
@@ -405,7 +404,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'клавишные',
     hint: 'Щипковая клавиатура: пила сквозь захлопывающийся фильтр (+12 пт за 0.08 с) — металлический чуть-чуть',
     track: {
-      name: 'клавесин', waveform: 'sawtooth', freq: 261.6, scale: [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2],
+      name: 'клавесин', waveform: 'sawtooth', freq: 261.6,
       attack: 0.002, decay: 0.35,
       filterEnvAmount: 12, filterEnvTime: 0.08,
       filterFreq: 6000, volume: 0.55,
@@ -416,7 +415,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'клавишные',
     hint: 'Нежный унисон из трёх синусов чуть врасстройку — мерцающее тепло, как одноимённый регистр органа',
     track: {
-      name: 'челеста', waveform: 'sine', freq: 523.3, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'челеста', waveform: 'sine', freq: 523.3,
       unisonVoices: 3, unisonDetune: 7, unisonSpread: 0.3,
       attack: 0.003, decay: 1.1,
       filterFreq: 9000, volume: 0.5,
@@ -427,7 +426,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'клавишные',
     hint: 'Полный орган с поздним вибрато: ручные регистры морфом, вибрато нарастает через полсекунды',
     track: {
-      name: 'орган', waveform: 'organ', freq: 220, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'орган', waveform: 'organ', freq: 220,
       voiceMorph: 0.7,
       attack: 0.01, decay: 0.8, sustain: 0.85,
       vibratoRate: 5.5, vibratoDepth: 18, vibratoDelay: 0.5,
@@ -439,7 +438,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: 'Рейв-бас: пила, фильтр щёлкает открытее на атаке (+5 пт), перегруз уплотняет',
     track: {
-      name: 'ребас', waveform: 'sawtooth', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 2],
+      name: 'ребас', waveform: 'sawtooth', freq: 55,
       attack: 0.003, decay: 0.4, sustain: 0.4,
       filterEnvAmount: 5, filterEnvTime: 0.06,
       filterFreq: 500, filterQ: 2, filterLow: 30,
@@ -452,7 +451,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: 'Сабвуферный тон: 49 Гц + чуть октавы (иначе на ноутбуке слышны только щелчки), атака мягкая — без тычка',
     track: {
-      name: 'саб', waveform: 'wave', freq: 49, scale: [1],
+      name: 'саб', waveform: 'wave', freq: 49,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
@@ -468,7 +467,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: 'Щипковый бас: Karplus короткой жизни — быстро гаснущая струна, удобно под глухой качающий рисунок',
     track: {
-      name: 'плюк', waveform: 'karplus', freq: 65.4, scale: [1, 6 / 5, 3 / 2, 2],
+      name: 'плюк', waveform: 'karplus', freq: 65.4,
       ksLife: 1.2,
       attack: 0.002, decay: 0.4,
       filterFreq: 2500, mono: true, volume: 0.75,
@@ -479,7 +478,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'бас',
     hint: '303-й: пила, Q=11, фильтр-огибание +14 пт — чпокающая атака. «Время» длиннее — скользит, короче — чпокает',
     track: {
-      name: 'ацид', waveform: 'sawtooth', freq: 55, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'ацид', waveform: 'sawtooth', freq: 55,
       attack: 0.003, decay: 0.3, sustain: 0.3,
       filterEnvAmount: 14, filterEnvTime: 0.25, filterQ: 11, filterFreq: 700,
       mono: true, volume: 0.6,
@@ -491,7 +490,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'смычок: стопка пил (1, 2, 3×) + зерно шума — смычковый шелест; вибрато дорастает за треть секунды',
     track: {
-      name: 'скрипка', waveform: 'wave', freq: 440, scale: PENTATONIC_MINOR,
+      name: 'скрипка', waveform: 'wave', freq: 440,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'saw' },
@@ -512,7 +511,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'нижний регистр смычка: пилы погуще, фильтр темнее, вибрато широкое с долгим подходом — дышит',
     track: {
-      name: 'виолончель', waveform: 'wave', freq: 164.8, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'виолончель', waveform: 'wave', freq: 164.8,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'saw' },
@@ -532,7 +531,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'Простая флейта-свисток: чистый синус, вибрато подступает мягко, атака чуть мягкая',
     track: {
-      name: 'дудка', waveform: 'sine', freq: 587.3, scale: PENTATONIC_MINOR,
+      name: 'дудка', waveform: 'sine', freq: 587.3,
       attack: 0.05, decay: 0.9, sustain: 0.9,
       vibratoRate: 5, vibratoDepth: 30, vibratoDelay: 0.3,
       filterEnvAmount: 4, filterEnvTime: 0.1,
@@ -544,7 +543,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'чистый тон с лёгким дыханием (шумового зерна всего 6%) — вибрато мягко подступает',
     track: {
-      name: 'флейта', waveform: 'wave', freq: 523.3, scale: [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2],
+      name: 'флейта', waveform: 'wave', freq: 523.3,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
@@ -562,7 +561,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'язычковый носовой тон: вторая гармоника главнее первой, гора спектра около 1 кГц',
     track: {
-      name: 'гобой', waveform: 'wave', freq: 349.2, scale: [1, 9 / 8, 5 / 4, 3 / 2, 2],
+      name: 'гобой', waveform: 'wave', freq: 349.2,
       wave: {
         partials: [
           { ratio: 1, amp: 0.8, type: 'sine' },
@@ -582,7 +581,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'Квадрат в унисоне 4 с эхом: широкий, чуть агрессивный сольный голос',
     track: {
-      name: 'синт-лид', waveform: 'square', freq: 329.6, scale: PENTATONIC_MINOR,
+      name: 'синт-лид', waveform: 'square', freq: 329.6,
       unisonVoices: 4, unisonDetune: 14, unisonSpread: 0.6,
       attack: 0.01, decay: 0.8, sustain: 0.7,
       vibratoRate: 5, vibratoDepth: 50, vibratoDelay: 0.4,
@@ -595,7 +594,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'тоны и лиды',
     hint: 'Тёплый треугольный лид: широкое позднее вибрато — винтажная sweetness',
     track: {
-      name: 'портве', waveform: 'triangle', freq: 261.6, scale: PENTATONIC_MINOR,
+      name: 'портве', waveform: 'triangle', freq: 261.6,
       attack: 0.1, decay: 1.2, sustain: 0.95,
       vibratoRate: 4, vibratoDepth: 45, vibratoDelay: 0.8,
       filterFreq: 5000, volume: 0.55,
@@ -606,7 +605,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'Хлопок: шум с обрезанным низом и средним спадом — ставь на вторую долю',
     track: {
-      name: 'клэп', waveform: 'noise', freq: 440, scale: [1],
+      name: 'клэп', waveform: 'noise', freq: 440,
       length: 8, rate: 4, attack: 0.001, decay: 0.16,
       filterLow: 800, filterFreq: 5000, volume: 0.6,
       effects: [{ type: 'reverb', sizeSec: 0.6, mix: 0.2 }],
@@ -617,7 +616,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'Том: синус соскальзывает с ×2.2 — барабанная бочка среднего регистра',
     track: {
-      name: 'том', waveform: 'sine', freq: 100, scale: [1],
+      name: 'том', waveform: 'sine', freq: 100,
       length: 8, rate: 4, attack: 0.001, decay: 0.4,
       pitchDrop: 2.2, pitchTime: 0.2,
       filterFreq: 2500, volume: 0.8,
@@ -628,7 +627,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'Модальный звон высоко (морф к колоколу, Q звенит долго) с большим ревербом — бубенцы и пыль',
     track: {
-      name: 'шиммер', waveform: 'modal', freq: 660, scale: [1, 3 / 2, 2],
+      name: 'шиммер', waveform: 'modal', freq: 660,
       voiceMorph: 0.9,
       length: 6, rate: 2, attack: 0.001, decay: 1.2,
       filterFreq: 12000,
@@ -640,7 +639,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'Сыпучий тычок с пересыпанием: шум сыплется ~0.16 с, ступенчатый LFO (S&H 11 Гц) трясёт громкость — семена стучат',
     track: {
-      name: 'маракас', waveform: 'noise', freq: 440, scale: [1],
+      name: 'маракас', waveform: 'noise', freq: 440,
       length: 8, rate: 2, attack: 0.001, decay: 0.16,
       filterLow: 2500, filterFreq: 10000,
       mods: [{ target: 'volume', source: 'sah', shape: 'sine', rate: 11, depth: 0.35 }],
@@ -651,7 +650,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'перкуссия',
     hint: 'Большой гонг: модальный банк колокольного строя низко, длинный звонастый хвост и много воздуха',
     track: {
-      name: 'там-там', waveform: 'modal', freq: 110, scale: [1],
+      name: 'там-там', waveform: 'modal', freq: 110,
       voiceMorph: 0.9,
       length: 4, rate: 8, attack: 0.001, decay: 3.5,
       filterFreq: 12000,
@@ -663,7 +662,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'фоны',
     hint: 'Смычковая подложка: узкая расстройка, фильтр приглушён — шелковое полотно, а не пила; вибрато подступает медленно',
     track: {
-      name: 'струнные', waveform: 'supersaw', freq: 110, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'струнные', waveform: 'supersaw', freq: 110,
       voiceMorph: 0.2,
       length: 4, rate: 8, attack: 0.3, decay: 2, sustain: 0.9,
       vibratoRate: 4.5, vibratoDepth: 12, vibratoDelay: 1,
@@ -676,7 +675,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'фоны',
     hint: 'Псевдовокальная пелена: форманты «А», медленный вход, вибрато с задержкой — поёт издалека',
     track: {
-      name: 'хор', waveform: 'formant', freq: 220, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'хор', waveform: 'formant', freq: 220,
       voiceMorph: 0.12,
       length: 4, rate: 8, attack: 0.35, decay: 2, sustain: 0.85,
       vibratoRate: 5, vibratoDepth: 22, vibratoDelay: 0.8,
@@ -711,7 +710,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'фоны',
     hint: 'Тёмный свелл: огибающая фильтра −9 пт за 1.5 с — звук выплывает из тени и остаётся мягким',
     track: {
-      name: 'пастель', waveform: 'additive', freq: 220, scale: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2],
+      name: 'пастель', waveform: 'additive', freq: 220,
       voiceMorph: 0.5,
       length: 4, rate: 8, attack: 0.15, decay: 2.5, sustain: 0.9,
       filterEnvAmount: -9, filterEnvTime: 1.5,
@@ -723,7 +722,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'прочее',
     hint: 'Космический зонд: FM с большим индексом медленно тает — сигнал из пустоты',
     track: {
-      name: 'зонд', waveform: 'fm', freq: 174.6, scale: [1, 2, 3],
+      name: 'зонд', waveform: 'fm', freq: 174.6,
       fmRatio: 1.41, fmIndex: 8,
       length: 4, rate: 8, attack: 0.01, decay: 3.5,
       filterFreq: 10000, volume: 0.45,
@@ -735,7 +734,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'прочее',
     hint: 'Плывущий тон: LFO 0.15 Гц качает панораму из стороны в сторону — пинг-понг на подложке',
     track: {
-      name: 'маяк', waveform: 'triangle', freq: 349.2, scale: [1, 3 / 2],
+      name: 'маяк', waveform: 'triangle', freq: 349.2,
       length: 4, rate: 16, attack: 0.05, decay: 2, sustain: 0.8,
       filterFreq: 4000, volume: 0.4,
       mods: [{ target: 'pan', shape: 'sine', rate: 0.15, depth: 0.8 }],
@@ -746,7 +745,7 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
     category: 'прочее',
     hint: 'Пароход: тон + октава, медленно вплывает, вибрато появляется через секунду — далёкий туман',
     track: {
-      name: 'гудок', waveform: 'wave', freq: 116.5, scale: [1, 6 / 5],
+      name: 'гудок', waveform: 'wave', freq: 116.5,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
@@ -760,10 +759,11 @@ export const INSTRUMENT_PRESETS: InstrumentPreset[] = [
   },
 ];
 
-// Пользовательские пресеты: «сохрани как инструмент» — настроенный трек
-// под своим именем, в браузере инструментов категорией «мои». Хранилище —
-// localStorage (как автосейв патча); состав — те же звуковые поля, что
-// переносит applyInstrumentPreset, чтобы сохранённое применялось без потерь.
+// Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр
+// с несущей под своим именем, в браузере инструментов категорией «мои».
+// Хранилище — localStorage (как автосейв патча); состав — те же звуковые
+// поля, что переносит применение пресета, чтобы сохранённое применялось
+// без потерь. Шкала — трека, в пресет не входит.
 
 const USER_KEY = 'barlow.instruments.v1';
 export const USER_CATEGORY = 'мои';
@@ -774,7 +774,7 @@ export const USER_CATEGORY = 'мои';
 export const USER_PRESETS_EVENT = 'barlow:user-presets';
 
 const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
-  'waveform', 'freq', 'scale', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
+  'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife', 'sampleMode',
   'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',

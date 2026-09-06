@@ -340,7 +340,7 @@ export function SoundBrowser({
           <select
             value={targetId ?? ''}
             onChange={(e) => onTarget(e.target.value)}
-            title="Клик по пресету или сэмплу применит его к этой дорожке: тембр и строй сменятся, ноты и ритм останутся твоими"
+            title="Клик по пресету или сэмплу применит его к этой дорожке: сменится тембр (пустому треку — ещё и регистр), а шкала, ноты и ритм останутся твоими"
           >
             {tracks.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
