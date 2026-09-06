@@ -22,7 +22,6 @@ import {
 import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import { bakeModToPoints } from '../music/modCurve';
-import { ScalePicker } from './ScalePicker';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
@@ -238,7 +237,6 @@ export const TrackRow = memo(function TrackRow({
     setView(v);
   };
   const [showPicker, setShowPicker] = useState(false);
-  const [showScales, setShowScales] = useState(false);
   // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
   const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
   const dragProps = {
@@ -1246,7 +1244,7 @@ export const TrackRow = memo(function TrackRow({
             className={view === 'track' && !editorOpen ? 'on' : ''}
             data-ob="mode-track"
             aria-label="настройка трека"
-            title="Трек — общее и комната: громкость/пан, фаза, тоника, эффекты, сайдчейн"
+            title="Трек — сведение и комната: громкость/пан, эффекты, сайдчейн (строй и время партии — в тулбаре стана)"
             onClick={() => switchView('track')}
           >
             трек
@@ -1317,17 +1315,8 @@ export const TrackRow = memo(function TrackRow({
                 display={panLabel(track.pan)}
                 onChange={(v) => change({ pan: v / 100 })}
               />
-              <label title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже">
-                фаза, шагов
-                <NumField
-                  value={track.phase} min={-64} max={64}
-                  onChange={(phase) => change({ phase: Math.round(phase) })}
-                />
-              </label>
-              <label title="Базовая частота шкалы. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше">
-                тоника, Гц
-                <NumField value={track.freq} min={20} max={9000} step={0.1} onChange={(freq) => change({ freq })} />
-              </label>
+              {/* Фаза и тоника переехали в тулбар стана — к шкале (строй)
+                  и к «ноте» (время партии); здесь только микс-общее. */}
             </div>
           </div>
           <div className="panel-row">
@@ -1538,10 +1527,11 @@ export const TrackRow = memo(function TrackRow({
             pattern={pattern}
             noteSteps={track.noteSteps ?? 0}
             onNoteSteps={(v) => change({ noteSteps: v > 0 ? +v.toFixed(2) : undefined })}
+            onTrack={change}
+            onApplyScale={applyScale}
             onFillAxis={onFillAxis}
             onMutate={onMutate}
             onPatternCommand={onPatternCommand}
-            onPickScale={() => setShowScales(true)}
           />
           <div className="roll" ref={rollRef} data-ob="roll">        <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
@@ -1932,14 +1922,6 @@ export const TrackRow = memo(function TrackRow({
             )}
           </div>
         </div>
-      )}
-
-      {showScales && (
-        <ScalePicker
-          current={track.scale}
-          onPick={applyScale}
-          onClose={() => setShowScales(false)}
-        />
       )}
 
       <LevelBar className="track-level" read={readLevel} />

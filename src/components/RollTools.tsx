@@ -1,14 +1,15 @@
-// Тулбар нотного стана: шкала + длина ноты + генерация (заполнение осей,
-// мутация с уровнем, очистка). Автоматизация партии (кривые и модуляции)
-// живёт отдельной панелью под станом. Выделено из TrackRow механически;
-// локальные состояния (панель, оси мутации, уровень) живут здесь —
-// наружу только команды.
+// Тулбар нотного стана: строй (шкала + тоника), время партии (длина ноты,
+// фаза) и генерация (заполнение осей, мутация с уровнем, очистка).
+// Автоматизация партии (кривые и модуляции) живёт отдельной панелью под
+// станом. Выделено из TrackRow механически; локальные состояния (панель,
+// оси мутации, уровень, выпадашка шкалы) живут здесь — наружу только команды.
 
 import { useState } from 'react';
-import type { Pattern, SoundingTrack } from '../types';
+import type { Pattern, SoundingTrack, Track } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { presetName } from '../music/scales';
 import { NumField } from './NumField';
+import { ScalePicker } from './ScalePicker';
 import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
@@ -17,6 +18,10 @@ interface Props {
   /** Длина ноты по умолчанию, шагов (0 — «авто» по огибающей). */
   noteSteps: number;
   onNoteSteps: (steps: number) => void;
+  /** Трековые ручки тулбара: тоника, фаза. */
+  onTrack: (patch: Partial<Track>) => void;
+  /** Применить шкалу (переиндексация нот — на стороне TrackRow). */
+  onApplyScale: (ratios: number[]) => void;
   onFillAxis: (
     id: string,
     axis: 'time' | 'height',
@@ -25,7 +30,6 @@ interface Props {
   ) => void;
   onMutate: (id: string, modes: MutateModes, edits: number) => void;
   onPatternCommand: (trackId: string, patternId: string, upd: Partial<Pattern>) => void;
-  onPickScale: () => void;
 }
 
 export function RollTools({
@@ -33,13 +37,15 @@ export function RollTools({
   pattern,
   noteSteps,
   onNoteSteps,
+  onTrack,
+  onApplyScale,
   onFillAxis,
   onMutate,
   onPatternCommand,
-  onPickScale,
 }: Props) {
   const [pulses, setPulses] = useState(3);
   const [showFill, setShowFill] = useState(false);
+  const [showScales, setShowScales] = useState(false);
   // Мутация: что правит (оси) и сколько правок за клик (уровень).
   const [mutTime, setMutTime] = useState(true);
   const [mutPitch, setMutPitch] = useState(true);
@@ -48,24 +54,48 @@ export function RollTools({
   return (
     <div className="roll-tools" data-ob="roll-tools">
       <HelpHint guide="roll" scope={`[data-track-id="${track.id}"]`} label="Гид: нотный стан" />
-      <label
-        className="rt-scale"
-        title={
-          track.waveform === 'sample'
-            ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-            : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
-        }
-      >
-        шкала
-        <button
-          className="scale-btn"
-          data-ob="scale-btn"
-          title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
-          onClick={onPickScale}
+      {/* Строй целиком — здесь: интервалы (шкала, выпадашкой с поиском)
+          и якорь (тоника). Панель «трек» остаётся комнатой микса. */}
+      <span className="rt-scale-wrap">
+        <label
+          className="rt-scale"
+          title={
+            track.waveform === 'sample'
+              ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
+              : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
+          }
         >
-          {presetName(track.scale)}
-        </button>
-        <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label="Гид: шкалы и строи" />
+          шкала
+          <button
+            className="scale-btn"
+            data-ob="scale-btn"
+            title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
+            onClick={() => setShowScales((v) => !v)}
+          >
+            {presetName(track.scale)}
+          </button>
+          <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label="Гид: шкалы и строи" />
+        </label>
+        {showScales && (
+          <ScalePicker
+            current={track.scale}
+            onPick={onApplyScale}
+            onClose={() => setShowScales(false)}
+          />
+        )}
+      </span>
+      <label
+        className="rt-freq"
+        data-ob="roll-tonic"
+        title="Несущая строя — базовая частота, от которой шкала отсчитывает высоты. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше"
+      >
+        тоника
+        <NumField
+          narrow w={64} wheel
+          value={track.freq} min={20} max={9000} step={0.1}
+          onChange={(freq) => onTrack({ freq })}
+        />
+        <span className="rt-label">Гц</span>
       </label>
       <span className="rt-sep" />
       {/* Длина ноты по умолчанию — ровно над станом: какой длины бары
@@ -85,6 +115,21 @@ export function RollTools({
           onChange={onNoteSteps}
         />
         <span className="rt-label">{noteSteps > 0 ? 'шагов' : 'авто'}</span>
+      </label>
+      {/* Фаза — время партии: где цикл стартует. Как и «нота» — трековая
+          ручка в шагах, но про смещение рисунка, а не длину ноты. */}
+      <label
+        className="rt-phase"
+        data-ob="roll-phase"
+        title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже"
+      >
+        фаза
+        <NumField
+          narrow w={56} wheel
+          value={track.phase} min={-64} max={64} step={1}
+          onChange={(phase) => onTrack({ phase: Math.round(phase) })}
+        />
+        <span className="rt-label">шагов</span>
       </label>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по
