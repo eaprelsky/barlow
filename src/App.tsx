@@ -5,6 +5,8 @@ import { Modal } from './components/Modal';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine } from './audio/engine';
 import { AudioStatus } from './components/AudioStatus';
+import { BridgeSettings } from './components/BridgeSettings';
+import { loadBridgeSession, saveBridgeSession, type BridgeSession, type BridgeStatus } from './bridgeSession';
 import { stepIndexAt } from './audio/timing';
 import type { AudioBackend } from './audio/backend';
 import { euclid, randomMask } from './music/euclid';
@@ -566,11 +568,14 @@ export default function App() {
   // а замыкания не должны протухать. Правки идут через перехваченный
   // setPatch/setPatchStep — undo-история общая с ручными правками.
   const bridgeRef = useRef<ReturnType<typeof createBridge> | null>(null);
+  const [bridgeSession, setBridgeSession] = useState<BridgeSession | null>(loadBridgeSession);
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ phase: 'off', message: 'Локальный агент отключён.' });
   const liveRef = useRef({ patch, sceneId, playing });
   liveRef.current = { patch, sceneId, playing };
 
   useEffect(() => {
     const bridge = createBridge({
+      onStatus: setBridgeStatus,
       appKind: isDesktop ? 'desktop' : 'web',
       getPatch: () => liveRef.current.patch,
       getTransport: () => ({
@@ -590,8 +595,9 @@ export default function App() {
         // Путь проверяем на копии текущего патча: исключение должно уйти
         // в ack моста, а не в рендер React (апдейтер setPatch выполняется
         // позже и уронил бы всё дерево).
-        setByPointer(liveRef.current.patch, pointer, value);
-        setPatch((p) => setByPointer(p, pointer, value));
+        const candidate = setByPointer(history.snapshot().present, pointer, value);
+        if (!isPatch(candidate)) throw new Error('Изменение нарушает структуру или ссылки проекта');
+        setPatchStep(normalizePatch(candidate));
       },
       onTransport(cmd) {
         const live = liveRef.current;
@@ -605,13 +611,14 @@ export default function App() {
           }
           if (engine.playing) engine.setScene(cmd.sceneId);
           setSceneId(cmd.sceneId);
-        } else if (cmd.action === 'bpm' && cmd.value) {
+        } else if (cmd.action === 'bpm' && Number.isFinite(cmd.value)) {
+          if (typeof cmd.value !== 'number') throw new Error('Неверный темп');
           const v = Math.max(30, Math.min(300, Math.round(cmd.value)));
           if (engine.playing) engine.setBpm(v);
           setPatch((p) => ({ ...p, bpm: v }));
-        }
+        } else throw new Error('Неизвестная команда транспорта или неверный параметр');
       },
-    });
+    }, bridgeSession);
     bridgeRef.current = bridge;
     // Ноты — в мост батчем: видно, что реально триггернулось (доли арпеджиатора тоже).
     engine.noteSink = (trackId, at, notes) =>
@@ -621,7 +628,7 @@ export default function App() {
       bridge.dispose();
       bridgeRef.current = null;
     };
-  }, [engine, setPatch, setPatchStep, startTransport, stopTransport]);
+  }, [engine, setPatch, setPatchStep, startTransport, stopTransport, bridgeSession, history]);
 
   // Патч и транспорт — стрим в мост (коалесценция внутри моста).
   useEffect(() => {
@@ -1479,7 +1486,7 @@ export default function App() {
           className={showAi ? 'on hdr-icon' : 'hdr-icon'}
           data-ob="ai-btn"
           onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
-          title="Настройки: ключ ИИ-генерации"
+          title="Настройки: исполнение, локальный агент и ИИ-генерация"
           aria-label="настройки"
         >
           <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
@@ -1780,6 +1787,9 @@ export default function App() {
 
       {showAi && (
         <div className="ai-panel" data-ob="ai-panel">
+          <BridgeSettings session={bridgeSession} status={bridgeStatus}
+            onConnect={value => { saveBridgeSession(value); setBridgeSession(value); }}
+            onDisconnect={() => { try { saveBridgeSession(null); } finally { setBridgeSession(null); } }} />
           <div className="inline seed-controls">
             <label title="Фиксировать случайный выбор нот, арпеджио и шумов при повторном старте и WAV-экспорте">
               <input type="checkbox" checked={patch.performanceSeed !== undefined}

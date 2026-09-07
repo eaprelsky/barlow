@@ -3546,3 +3546,13 @@ svg.auto-lane {
 .sample-zones .inline { gap: 14px; flex-wrap: wrap; }
 .audio-status { font-size: 11px; color: var(--muted); max-width: 260px; }
 .audio-status [role="status"] { color: #eeb467; }
+.bridge-settings { padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.bridge-settings summary { cursor: pointer; }
+.bridge-settings form { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.bridge-settings label { display: inline-flex; align-items: center; gap: 6px; }
+.bridge-settings p { font-size: 12px; }
+.bridge-settings { flex-basis: 100%; min-width: 0; box-sizing: border-box; }
+.bridge-settings input[type="password"] { width: 24ch; }
+.bridge-settings input[type="checkbox"], .seed-controls input[type="checkbox"] { width: auto; }
+.seed-controls { flex-basis: 100%; gap: 14px; }
+.seed-controls label { display: inline-flex; align-items: center; gap: 6px; }

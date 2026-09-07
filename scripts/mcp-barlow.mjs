@@ -129,9 +129,9 @@ const bridge = makeBridgeHost();
 const liveGuard = () => {
   if (bridge.state.connected) return null;
   return (
-    'приложение не подключено к мосту. Открой barlow (веб или десктоп) при ' +
-    'запущенном MCP — приложение коннектится к ws://127.0.0.1:' +
-    `${bridge.port} автоматически.`
+    'Приложение не подключено. В barlow открой настройки → Локальный агент, ' +
+    `вставь код ${bridge.pairingCode} и выбери разрешения. Код действует до перезапуска этого MCP. ` +
+    `Порт: ${bridge.port}. Не добавляй код в файл проекта или публичный отчёт.`
   );
 };
 
@@ -148,15 +148,17 @@ const liveTools = [
       'Живое приложение barlow: подключено ли к мосту, транспорт (играет/сцена/темп), ' +
       'сколько нот пришло, возраст патча. Начинай диагностику отсюда.',
     inputSchema: { type: 'object', properties: {} },
-    handler: needConnected(() => {
+    handler: () => {
+      const guard = liveGuard();
+      if (guard) return guard;
       const s = bridge.state;
       const age = s.patchAt ? `${((Date.now() - s.patchAt) / 1000).toFixed(1)} с назад` : '—';
       return (
         `подключено (${s.app ?? '?'}) · транспорт: ${s.transport.playing ? 'играет' : 'стоп'}` +
         `, сцена «${s.transport.sceneName || s.transport.sceneId}», bpm ${s.transport.bpm}` +
-        ` · патч получен ${age} · событий нот в буфере: ${s.notes.length}`
+        ` · патч получен ${age} · событий нот в буфере: ${s.notes.length} · права: ${s.capabilities.join(', ')}`
       );
-    }),
+    },
   },
   {
     name: 'live_patch',
@@ -181,7 +183,7 @@ const liveTools = [
       'Точечная правка живого патча: JSON-указатель (RFC 6901) и значение. Например ' +
       '"/tracks/0/volume" 0.5, "/bpm" 140 или "/tracks/0/patterns/0/muted" false. ' +
       'Правка идёт через setPatch приложения — попадает в undo-историю, играющий ' +
-      'звук обновляется на лету. Серийные правки ручки коалесцируются в один шаг undo.',
+      'звук обновляется на лету. Каждая команда — отдельный шаг undo.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -73,4 +73,10 @@ A20 — очередь/abort/late result, защищённый старт тра
 A09/A11/A16; полный live/offline parity и A10 ещё не закрыты.
 Проверки: DSP/import/planning 83/83, build, lint (без ошибок), UI,
 smoke/bridge проходят. Golden обновлён после изолированной проверки
-изменения старта LFO, повторная сверка проходит. Desktop/web — публикация.
+изменения старта LFO, повторная сверка проходит. Desktop/web опубликованы (d3df1e7).
+
+Волна A14 реализована: явное подключение локального агента, взаимный
+challenge/HMAC, session code, origin allowlist, read/write/transport,
+bounded frames/handshake/commands, защита JSON pointer и валидация
+получившегося патча. WebSocket и браузерные негативные тесты, build,
+lint (без ошибок), UI, smoke/bridge и golden проходят. Desktop/web — публикация.

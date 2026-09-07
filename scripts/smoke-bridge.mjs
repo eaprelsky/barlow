@@ -49,9 +49,10 @@ try {
   browser = await chromium.launch({ executablePath: BROWSER, headless: true });
   const page = await browser.newPage();
   // Порт моста для страницы — до загрузки скриптов.
-  await page.addInitScript((p) => {
-    window.__BARLOW_BRIDGE_PORT = p;
-  }, BRIDGE_PORT);
+  await page.addInitScript(({ port, code }) => {
+    window.__BARLOW_BRIDGE_PORT = port;
+    sessionStorage.setItem('barlow.bridge.session.v1', JSON.stringify({ secret: code, capabilities: ['read', 'write', 'transport'] }));
+  }, { port: BRIDGE_PORT, code: bridge.pairingCode });
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
 
   // 1. Приложение подключилось и прислало hello с патчем.

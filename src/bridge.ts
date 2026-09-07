@@ -1,7 +1,7 @@
 // Дебаг-мост: приложение — WebSocket-клиент хоста из ИИ-агента (MCP-сервер
-// scripts/mcp-barlow.mjs поднимает ws://127.0.0.1:22756). Подключается тихо
-// и переподключается само: нет хоста — нет моста, приложение не замечает.
-// ws://127.0.0.1 разрешён и из https-страниц (potentially trustworthy).
+// scripts/mcp-barlow.mjs поднимает ws://127.0.0.1:22756). Подключение
+// включается кодом из настроек; до взаимного proof патч не передаётся.
+// Браузер может отдельно запросить разрешение на локальную сеть.
 //
 // Поток: приложение шлёт hello/patch/transport/notes и ack на команды;
 // хост.commands: set_patch (замена патча), set_param (JSON-указатель),
@@ -9,6 +9,8 @@
 // перехваченный setPatch — undo-история живёт как у ручных правок.
 
 import type { Patch } from './types';
+import type { BridgeSession, BridgeStatus } from './bridgeSession';
+import { authProof, verifyProof, randomNonce, capabilities, BRIDGE_PROTOCOL, BRIDGE_MAX_BYTES } from './bridgeProtocol';
 
 const RECONNECT_MS = 2000;
 // Патч летит не чаще раза в 150 мс: слайдеры дают до сотни правок в секунду.
@@ -41,6 +43,7 @@ export interface BridgeHandlers {
   getTransport: () => BridgeTransportState;
   /** Где работает приложение — веб или десктоп (для статуса агента). */
   appKind: 'web' | 'desktop';
+  onStatus?: (status: BridgeStatus) => void;
 }
 
 interface Bridge {
@@ -50,12 +53,16 @@ interface Bridge {
   dispose: () => void;
 }
 
-export function createBridge(handlers: BridgeHandlers): Bridge {
+export function createBridge(handlers: BridgeHandlers, session: BridgeSession | null = null): Bridge {
   const port = (window as unknown as { __BARLOW_BRIDGE_PORT?: number }).__BARLOW_BRIDGE_PORT ?? 22756;
   const url = `ws://127.0.0.1:${port}`;
   let ws: WebSocket | null = null;
   let disposed = false;
   let reconnectTimer = 0;
+  let authenticated = false;
+  let challenge = '', nonce = '';
+  let authFailed = false;
+  let handshakeTimer = 0;
 
   let pendingPatch: Patch | null = null;
   let patchTimer = 0;
@@ -65,7 +72,14 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
   let noteTimer = 0;
 
   const send = (msg: Record<string, unknown>) => {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    if (!authenticated || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    const data = JSON.stringify(msg);
+    if (new TextEncoder().encode(data).byteLength > BRIDGE_MAX_BYTES) {
+      handlers.onStatus?.({ phase: 'error', message: 'Снимок проекта превышает лимит моста 8 МиБ.' });
+      return false;
+    }
+    ws.send(data);
+    return true;
   };
   const ack = (reqId: unknown, ok: boolean, error?: string) =>
     send({ type: 'ack', reqId, ok, error });
@@ -75,8 +89,7 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
     if (!pendingPatch) return;
     const json = JSON.stringify(pendingPatch);
     if (json !== lastSentPatch) {
-      lastSentPatch = json;
-      send({ type: 'patch', patch: pendingPatch });
+      if (send({ type: 'patch', patch: pendingPatch })) lastSentPatch = json;
     }
     pendingPatch = null;
   };
@@ -88,17 +101,44 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
     noteBuf = [];
   };
 
-  const onMessage = (data: string) => {
+  const onMessage = async (data: string, socket: WebSocket) => {
+    if (disposed || socket !== ws || !session) return;
+    if (new TextEncoder().encode(data).byteLength > BRIDGE_MAX_BYTES) { socket.close(4003, 'message too large'); return; }
     let msg: Record<string, unknown>;
     try {
       msg = JSON.parse(data);
     } catch {
+      socket.close(4003, 'invalid JSON');
       return;
     }
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) { socket.close(4003, 'invalid message'); return; }
     const reqId = msg.reqId;
     try {
+      if (!authenticated) {
+        if (msg.type === 'challenge' && !challenge && msg.protocol === BRIDGE_PROTOCOL && typeof msg.challenge === 'string') {
+          challenge = msg.challenge; nonce = randomNonce();
+          const proof = await authProof(session.secret, 'client', challenge, nonce, session.capabilities);
+          if (disposed || socket !== ws || socket.readyState !== WebSocket.OPEN) return;
+          socket.send(JSON.stringify({ type: 'authenticate', protocol: BRIDGE_PROTOCOL, nonce, proof, capabilities: session.capabilities }));
+          return;
+        }
+        if (msg.type !== 'authenticated' || msg.protocol !== BRIDGE_PROTOCOL || !challenge
+          || JSON.stringify(capabilities(msg.capabilities)) !== JSON.stringify(capabilities(session.capabilities))
+          || !await verifyProof(session.secret, msg.proof, 'server', challenge, nonce, session.capabilities)) throw new Error('Не удалось подтвердить локальный хост. Проверь код подключения.');
+        if (disposed || socket !== ws || socket.readyState !== WebSocket.OPEN) return;
+        authenticated = true;
+        window.clearTimeout(handshakeTimer); handshakeTimer = 0;
+        const patch = handlers.getPatch(); lastSentPatch = JSON.stringify(patch);
+        if (send({ type: 'hello', app: handlers.appKind, patch, transport: handlers.getTransport() }))
+          handlers.onStatus?.({ phase: 'connected', message: 'Локальный агент подключён.' });
+        return;
+      }
+      const required = ({ get_state: 'read', ping: 'read', set_patch: 'write', set_param: 'write', transport: 'transport' } as Record<string, string>)[String(msg.type)];
+      if (!required || !session.capabilities.some(c => c === required)) throw new Error(`Нет разрешения: ${required ?? 'неизвестная команда'}`);
       switch (msg.type) {
         case 'get_state':
+          if (!send({ type: 'patch', patch: handlers.getPatch() })) throw new Error('Не удалось передать снимок проекта');
+          send({ type: 'transport', transport: handlers.getTransport() });
           // Статус по запросу: хост сам держит последнее, но свежий снапшот
           // полезен сразу после переподключения.
           ack(reqId, true);
@@ -126,27 +166,41 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
           break;
       }
     } catch (e) {
+      if (!authenticated) {
+        authFailed = true;
+        handlers.onStatus?.({ phase: 'error', message: e instanceof Error ? e.message : 'Ошибка подтверждения хоста.' });
+        socket.close(4003, 'authentication failed'); return;
+      }
       ack(reqId, false, e instanceof Error ? e.message : String(e));
     }
   };
 
   const connect = () => {
-    if (disposed) return;
+    if (disposed || !session || authFailed) return;
+    authenticated = false; challenge = ''; nonce = '';
+    handlers.onStatus?.({ phase: 'connecting', message: 'Подключение к локальному агенту…' });
     try {
       ws = new WebSocket(url);
     } catch {
       scheduleReconnect();
       return;
     }
-    ws.onopen = () => {
-      // Представляемся и несём свежий снимок: хост мог перезапуститься.
-      const patch = handlers.getPatch();
-      lastSentPatch = JSON.stringify(patch);
-      send({ type: 'hello', app: handlers.appKind, patch, transport: handlers.getTransport() });
-    };
-    ws.onmessage = (ev) => onMessage(String(ev.data));
-    ws.onclose = () => {
+    const socket = ws;
+    handshakeTimer = window.setTimeout(() => {
+      if (!disposed && ws === socket && !authenticated) socket.close(4003, 'authentication timeout');
+    }, 6000);
+    ws.onmessage = (ev) => { void onMessage(String(ev.data), socket); };
+    ws.onclose = (ev) => {
+      if (ws !== socket) return;
+      window.clearTimeout(handshakeTimer); handshakeTimer = 0;
       ws = null;
+      authenticated = false;
+      if (ev.code === 4001 || ev.code === 4003) {
+        authFailed = true;
+        handlers.onStatus?.({ phase: 'error', message: ev.code === 4001 ? 'Агент подключён к другой вкладке. Нажми «подключить», чтобы вернуть управление.' : 'Код подключения отклонён или устарел. Получи новый код у локального агента.' });
+        return;
+      }
+      handlers.onStatus?.({ phase: 'waiting', message: 'Ожидание локального агента…' });
       scheduleReconnect();
     };
     ws.onerror = () => {
@@ -163,9 +217,11 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
   };
 
   connect();
+  if (!session) handlers.onStatus?.({ phase: 'off', message: 'Локальный агент отключён.' });
 
   return {
     pushPatch(patch) {
+      if (!session) return;
       pendingPatch = patch;
       if (!patchTimer) patchTimer = window.setTimeout(flushPatch, PATCH_FLUSH_MS);
     },
@@ -173,8 +229,8 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
       send({ type: 'transport', transport: state });
     },
     pushNotes(events) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      noteBuf.push(...events);
+      if (!authenticated || !ws || ws.readyState !== WebSocket.OPEN) return;
+      noteBuf.push(...events.slice(0, Math.max(0, 512 - noteBuf.length)));
       if (!noteTimer) noteTimer = window.setTimeout(flushNotes, NOTES_FLUSH_MS);
     },
     dispose() {
@@ -182,6 +238,7 @@ export function createBridge(handlers: BridgeHandlers): Bridge {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (patchTimer) window.clearTimeout(patchTimer);
       if (noteTimer) window.clearTimeout(noteTimer);
+      if (handshakeTimer) window.clearTimeout(handshakeTimer);
       if (ws) {
         ws.onclose = null; // не планируем реконнект после dispose
         try {
@@ -202,6 +259,8 @@ export function setByPointer<T>(root: T, pointer: string, value: unknown): T {
     .slice(1)
     .split('/')
     .map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'));
+  if (pointer.length > 4096 || tokens.length > 24 || tokens.some(t => ['__proto__', 'prototype', 'constructor'].includes(t)))
+    throw new Error('недопустимый путь параметра');
   if (tokens.length === 0) throw new Error('пустой указатель');
   const clone = structuredClone(root);
   let node: unknown = clone;
@@ -209,6 +268,7 @@ export function setByPointer<T>(root: T, pointer: string, value: unknown): T {
     if (node === null || typeof node !== 'object') {
       throw new Error(`путь обрывается на «/${tokens.slice(0, i + 1).join('/')}»`);
     }
+    if (!Object.hasOwn(node, tokens[i])) throw new Error('путь должен содержать только собственные поля патча');
     node = (node as Record<string, unknown>)[tokens[i]];
   }
   if (node === null || typeof node !== 'object') {
@@ -216,7 +276,7 @@ export function setByPointer<T>(root: T, pointer: string, value: unknown): T {
   }
   const key = tokens[tokens.length - 1];
   const holder = node as Record<string, unknown>;
-  if (!(key in holder)) throw new Error(`поля «${key}» нет по этому пути`);
+  if (!Object.hasOwn(holder, key)) throw new Error(`поля «${key}» нет по этому пути`);
   holder[key] = value;
   return clone;
 }
