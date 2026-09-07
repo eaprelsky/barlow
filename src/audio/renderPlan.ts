@@ -55,7 +55,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
           for (const [eventIndex, event] of planned.entries()) {
             const time = Math.max(start, at + event.dt * stepDur + (event.offsetSec ?? 0));
             if (time >= end) continue;
-            nodes += estimateVoiceNodes(st, event.notes.length);
+            nodes += estimateVoiceNodes(st, event.notes);
             if (events.length >= RENDER_LIMITS.events || nodes > RENDER_LIMITS.estimatedNodes)
               throw new Error('WAV: превышен бюджет синтеза (20 000 событий / 100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
             events.push({ ...event, at: time, part, stepDur, ordinal, eventIndex });

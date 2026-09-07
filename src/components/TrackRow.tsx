@@ -7,6 +7,7 @@ import type {
   Instrument,
   Mod,
   Note,
+  NoteLocks,
   Pattern,
   SoundingTrack,
   Step,
@@ -30,6 +31,7 @@ import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
 import { NumField } from './NumField';
+import { NoteLocksEditor } from './NoteLocksEditor';
 import { SliderField } from './SliderField';
 import { Knob } from './Knob';
 import { InstrumentEditor, type InstEditorTab } from './InstrumentEditor';
@@ -39,6 +41,7 @@ import { SamplePicker } from './SamplePicker';
 import { putSample } from '../audio/library';
 import { tickDuration, stepDuration } from '../audio/timing';
 import { clip } from '../music/clip';
+import { copySelection, moveSelection, pasteNotes } from '../music/noteEdits';
 import { HelpHint } from '../onboarding/Onboarding';
 
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -568,10 +571,16 @@ export const TrackRow = memo(function TrackRow({
   const clearCell = (col: number) => {
     changeSteps(pattern.steps.map((s, j) => (j === col ? { ...s, notes: [] } : s)));
   };
+  const setNoteLocks = (col: number, row: number, locks: NoteLocks | undefined, command: boolean) => {
+    const change = command ? onPatternCommand : onPatternChange;
+    change(track.id, pattern.id, { steps: pattern.steps.map((step, i) => i === col
+      ? { ...step, notes: step.notes.map(note => note.n === row ? { ...note, locks } : note) } : step) });
+  };
 
   // ---- Мультиселект нот: рамка, перенос группы, копипаст, удаление ----
 
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [noteEditMessage, setNoteEditMessage] = useState('');
   const [box, setBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(null);
   const [ghost, setGhost] = useState<{ dc: number; dr: number } | null>(null);
   // Растяжение ноты за правый край бара: стартовая длина в клетках.
@@ -700,88 +709,25 @@ export const TrackRow = memo(function TrackRow({
 
   /** Перенос выделенной группы: общий сдвиг клампится краями стана и цикла. */
   const applyMove = (dc: number, dr: number) => {
-    const entries = [...sel].map((k) => {
-      const [c, n] = k.split(':').map(Number);
-      return { c, n };
-    });
-    if (entries.length === 0 || (!dc && !dr)) return;
-    const rowsN = scaleOf(track).length;
-    const minC = Math.min(...entries.map((en) => en.c));
-    const maxC = Math.max(...entries.map((en) => en.c));
-    const minN = Math.min(...entries.map((en) => en.n));
-    const maxN = Math.max(...entries.map((en) => en.n));
-    const steps = pattern.steps;
-    const ddc = Math.max(-minC, Math.min(steps.length - 1 - maxC, dc));
-    const ddr = Math.max(-minN, Math.min(rowsN - 1 - maxN, dr));
-    if (!ddc && !ddr) return;
-    const taken: { c: number; n: number; vel: number; prob: number; len?: number }[] = [];
-    const out = steps.map((st, c) => ({
-      ...st,
-      notes: st.notes.filter((nt) => {
-        if (sel.has(`${c}:${nt.n}`)) {
-          taken.push({ c, n: nt.n, vel: nt.vel, prob: nt.prob, len: nt.len });
-          return false;
-        }
-        return true;
-      }),
-    }));
-    const moved = new Set<string>();
-    for (const t of taken) {
-      const nc = t.c + ddc;
-      const nn = t.n + ddr;
-      if (out[nc].notes.some((x) => x.n === nn)) continue;
-      out[nc].notes = [...out[nc].notes, { n: nn, vel: t.vel, prob: t.prob, len: t.len }];
-      moved.add(`${nc}:${nn}`);
-    }
-    changeSteps(out);
-    setSel(moved);
+    const result = moveSelection(pattern.steps, sel, dc, dr, scaleOf(track).length);
+    setNoteEditMessage(result.blocked ? 'Перенос отменён: место занято другой нотой. Исходные ноты сохранены.' : '');
+    if (result.steps !== pattern.steps) { changeSteps(result.steps); setSel(result.selection); }
   };
 
-  /** Вставка буфера в выделенную колонку (или в первый шаг); высоты
-   *  клампятся под стан получателя — копипаст работает и между треками. */
   const pasteClip = () => {
-    if (clip.notes.length === 0) return;
-    const minCol = Math.min(...clip.notes.map((cn) => cn.col));
-    const target = selectedCol ?? 0;
-    const maxN = scaleOf(track).length - 1;
-    const steps = pattern.steps.map((st) => ({ ...st, notes: st.notes.map((nt) => ({ ...nt })) }));
-    const added = new Set<string>();
-    for (const cn of clip.notes) {
-      const c = cn.col - minCol + target;
-      if (c < 0 || c >= steps.length) continue;
-      const n = Math.min(Math.max(cn.n, 0), maxN);
-      if (steps[c].notes.some((x) => x.n === n)) continue;
-      steps[c].notes = [...steps[c].notes, { n, vel: cn.vel, prob: cn.prob, len: cn.len }];
-      added.add(`${c}:${n}`);
-    }
-    changeSteps(steps);
-    setSel(added);
+    if (!clip.notes.length) return;
+    const result = pasteNotes(pattern.steps, clip.notes, selectedCol ?? 0, scaleOf(track).length);
+    changeSteps(result.steps); setSel(result.selection);
+    setNoteEditMessage(result.skipped ? `Не вставлено ${result.skipped} нот: место занято или находится за границей цикла.` : '');
   };
 
-  /** Дублировать выделение: копия справа от выделенного блока,
-   *  сдвиг на ширину блока; не влезающие в цикл ноты отбрасываются. */
   const duplicateSel = () => {
-    if (sel.size === 0) return;
-    const entries = [...sel].map((k) => {
-      const [c, n] = k.split(':').map(Number);
-      return { c, n };
-    });
-    const minC = Math.min(...entries.map((en) => en.c));
-    const maxC = Math.max(...entries.map((en) => en.c));
-    const shift = maxC - minC + 1;
-    const steps = pattern.steps.map((st) => ({ ...st, notes: st.notes.map((nt) => ({ ...nt })) }));
-    const added = new Set<string>();
-    for (const en of entries) {
-      const nt = pattern.steps[en.c]?.notes.find((x) => x.n === en.n);
-      if (!nt) continue;
-      const c = en.c + shift;
-      if (c >= steps.length) continue;
-      if (steps[c].notes.some((x) => x.n === en.n)) continue;
-      steps[c].notes = [...steps[c].notes, { n: en.n, vel: nt.vel, prob: nt.prob, len: nt.len }];
-      added.add(`${c}:${en.n}`);
-    }
-    changeSteps(steps);
-    setSel(added);
+    const notes = copySelection(pattern.steps, sel);
+    if (!notes.length) return;
+    const target = notes.reduce((max, note) => Math.max(max, note.col), -1) + 1;
+    const result = pasteNotes(pattern.steps, notes, target, scaleOf(track).length);
+    changeSteps(result.steps); setSel(result.selection);
+    setNoteEditMessage(result.skipped ? `Не скопировано ${result.skipped} нот: место занято или находится за границей цикла.` : '');
   };
 
   // Клавиатура — только у стана, работавшего последним.
@@ -795,11 +741,7 @@ export const TrackRow = memo(function TrackRow({
       const meta = e.ctrlKey || e.metaKey;
       if (meta && e.code === 'KeyC' && sel.size > 0) {
         e.preventDefault();
-        clip.notes = [...sel].map((k) => {
-          const [c, n] = k.split(':').map(Number);
-          const nt = pattern.steps[c]?.notes.find((x) => x.n === n);
-          return { col: c, n, vel: nt?.vel ?? 0.8, prob: nt?.prob ?? 1, len: nt?.len };
-        });
+        clip.notes = copySelection(pattern.steps, sel);
       } else if (meta && e.code === 'KeyV' && clip.notes.length > 0) {
         e.preventDefault();
         pasteClip();
@@ -1595,6 +1537,7 @@ export const TrackRow = memo(function TrackRow({
             onMutate={onMutate}
             onPatternCommand={onPatternCommand}
           />
+          {noteEditMessage && <p className="note-edit-status" role="status">{noteEditMessage}</p>}
           <div className="roll" ref={rollRef} data-ob="roll">        <div className="roll-side" data-ob="scale-rows">
           <div className="col-num-spacer oct-row" data-ob="octaves">
             <button className="oct-btn" title="Добавить октаву вверх" onClick={() => addOctave('up')}>+окт</button>
@@ -1680,7 +1623,7 @@ export const TrackRow = memo(function TrackRow({
                       data-col={col}
                       data-row={i}
                       tabIndex={col === focusedCol && i === focusedRow ? 0 : -1}
-                      aria-label={`Шаг ${col + 1}, ${(track.freq * ratio).toFixed(1)} Гц${on ? ', нота' : ', пусто'}. Enter — переключить, стрелки — переместить фокус, F2 — параметры`}
+                      aria-label={`Шаг ${col + 1}, ${(track.freq * ratio).toFixed(1)} Гц${on ? ', нота' : ', пусто'}${nt?.locks ? ', свой тембр ноты' : ''}. Enter — переключить, стрелки — переместить фокус, F2 — параметры`}
                       aria-pressed={on}
                       onFocus={() => { setFocusCell({ col, row: i }); clip.activeTrackId = track.id; }}
                       onKeyDown={e => {
@@ -1778,6 +1721,7 @@ export const TrackRow = memo(function TrackRow({
                                   onPointerCancel={grabUp}
                                 />
                               </span>
+                              {nt!.locks && <span className="note-lock-marker" aria-hidden="true">◆</span>}
                               {nt!.prob < 0.995 && (
                                 <span
                                   className="pbar"
@@ -1877,6 +1821,7 @@ export const TrackRow = memo(function TrackRow({
               <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>
                 ×
               </button>
+              <NoteLocksEditor note={nt} sounding={{ ...track, ...inst }} onChange={(locks, command) => setNoteLocks(selectedCol, nt.n, locks, command)} />
             </div>
           ))}
           {selectedStep.notes.length > 0 && (

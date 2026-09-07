@@ -997,7 +997,7 @@ export class AudioEngine implements AudioBackend {
           const stepSec = stepDuration(st, patch.bpm, pattern);
           const notes = [makeNote(noteRow, 0.9, 1)];
           this.voiceBudget.prune(ctx.currentTime);
-          if (!this.voiceBudget.allows(st, notes.length)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
+          if (!this.voiceBudget.allows(st, notes)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
           const voice = triggerVoice(
             ctx,
             pseudo,
@@ -1012,7 +1012,7 @@ export class AudioEngine implements AudioBackend {
             randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
             this.previewRoundRobin,
           );
-          this.voiceBudget.add(voice, st, notes.length);
+          this.voiceBudget.add(voice, st, notes);
           let cleaned = false;
           const cleanup = () => {
             if (cleaned) return;
@@ -1270,14 +1270,14 @@ export class AudioEngine implements AudioBackend {
       const chain = this.chains.get(track.id);
       if (!chain) { this.droppedEvents++; continue; }
       const st = stOf(patch, track);
-      if (!this.voiceBudget.allows(st, ev.notes.length)) { this.droppedEvents++; continue; }
+      if (!this.voiceBudget.allows(st, ev.notes)) { this.droppedEvents++; continue; }
       if (ev.at < ctx.currentTime) this.lateEvents++;
       const at = Math.max(ctx.currentTime + 0.001, ev.at);
       const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null,
         st, ev.notes, at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin);
+        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin, track.id);
       voice.amp.gain.value *= ev.gain;
-      this.voiceBudget.add(voice, st, ev.notes.length);
+      this.voiceBudget.add(voice, st, ev.notes);
       if (track.mono) this.lastVoices.register(track.id, voice, at);
       this.noteSink?.(track.id, at, ev.notes);
       for (const rt of patch.tracks) {
@@ -1373,14 +1373,14 @@ export class AudioEngine implements AudioBackend {
       for (const ev of plan.events) {
         const { track, st, itemIndex } = ev.part;
         voiceBudget.prune(ev.at);
-        if (!voiceBudget.allows(st, ev.notes.length))
+        if (!voiceBudget.allows(st, ev.notes))
           throw new Error('WAV: превышена полифония (128 нот / 8192 условных узла). Уменьши длину нот, унисон или плотность арпеджио.');
         const chain = chainsByKey.get(ev.part.key)!;
         const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
           st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex), roundRobin);
+          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex), roundRobin, track.id);
         voice.amp.gain.value *= ev.gain ?? 1;
-        voiceBudget.add(voice, st, ev.notes.length);
+        voiceBudget.add(voice, st, ev.notes);
         monoVoices.prune(ev.at);
         if (track.mono) monoVoices.register(track.id, voice, ev.at);
         for (const rt of patch.tracks) {

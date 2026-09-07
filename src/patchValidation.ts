@@ -1,5 +1,6 @@
 // Bounded validation before migrations or asset I/O; legacy versions retain
 // their own optional fields and are converted by normalizePatch afterwards.
+import { validNoteLocks } from './music/noteLocks.ts';
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128;
 
@@ -60,7 +61,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       if ((value.version as number) < 37) continue; // old step shapes are migrated
       for (const step of p.steps) {
         if (!record(step) || !Array.isArray(step.notes) || step.notes.length > 128) return false;
-        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number')) return false;
+        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number' || !validNoteLocks(n.locks))) return false;
       }
     }
   }

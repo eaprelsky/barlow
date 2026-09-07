@@ -1,13 +1,9 @@
 // Буфер копипаста нот между треками. activeTrackId — дорожка, чей нотный
 // стан работал последним: только она обрабатывает Ctrl+C/V/Delete/Escape.
 
-export interface ClipNote {
+import type { Note } from '../types';
+export interface ClipNote extends Note {
   col: number;
-  n: number;
-  vel: number;
-  prob: number;
-  /** Длина ноты в шагах (v37) — переносится с нотами. */
-  len?: number;
 }
 
 export const clip: { notes: ClipNote[]; activeTrackId: string } = {

@@ -13,6 +13,7 @@ import { validPatchInput } from './patchValidation';
 import { PARAMETERS, normalizeParameter, parameterAt, type ParameterId } from './parameters';
 import { normalizeMacros, type SoundMacro } from './music/macros';
 import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
+import { normalizeNoteLocks } from './music/noteLocks';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -171,7 +172,16 @@ export interface ScratchPoint {
   pos: number;
 }
 
+/** Voice-local overrides; shared track FX/filter/automation keep their owners. */
+export type NoteLocks = Partial<Pick<Instrument,
+  'attack' | 'decay' | 'sustain' | 'pitchDrop' | 'pitchTime' |
+  'filterEnvAmount' | 'filterEnvTime' | 'unisonVoices' | 'unisonDetune' | 'unisonSpread' |
+  'vibratoRate' | 'vibratoDepth' | 'vibratoDelay' | 'sampleStart' | 'sampleEnd' |
+  'grainSizeMs' | 'grainCount' | 'grainPos' | 'grainScatter'>>;
+export type NoteLockParameter = keyof NoteLocks;
+
 export interface Note {
+  locks?: NoteLocks;
   /** Retriggers within the first step of this note; 1 = ordinary note. */
   ratchet?: number;
   /** Bounded signed offset, independent of tempo/grid length. */
@@ -565,7 +575,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 46;
+export const PATCH_VERSION = 47;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -859,6 +869,7 @@ function normalizeSteps(
           prob: clamp(nt.prob ?? 1, 0, 1, 1),
           ratchet: Math.round(clamp(nt.ratchet ?? 1, 1, 8, 1)),
           microTimingMs: clamp(nt.microTimingMs ?? 0, -50, 50, 0),
+          locks: normalizeNoteLocks(nt.locks),
           len:
             typeof nt.len === 'number' && nt.len > 0
               ? clamp(nt.len, 0.1, 64, 1)

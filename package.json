@@ -26,6 +26,7 @@
     "test:palette": "node scripts/palette-contract.mjs",
     "test:assets": "node scripts/assets.test.mjs && node scripts/assets-contract.mjs",
     "test:binary": "node scripts/binary.test.mjs && node scripts/binary-contract.mjs",
+    "test:locks": "node scripts/note-edits.test.mjs && node scripts/locks-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },

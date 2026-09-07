@@ -902,6 +902,16 @@ footer {
   border-radius: 6px;
 }
 
+.note-locks { flex: 1 0 100%; padding: 8px 0; border-top: 1px solid var(--border); }
+.note-locks > select { width: auto; min-width: 220px; max-width: 100%; }
+.note-locks summary { cursor: pointer; color: var(--accent, #ffb347); }
+.note-locks p { max-width: 80ch; color: var(--muted, #8d98a6); margin: 8px 0; }
+.note-lock-list { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 8px; }
+.note-lock { display: flex; align-items: center; gap: 8px; }
+.note-lock label { display: flex; align-items: center; gap: 6px; }
+.note-lock > span { color: var(--muted, #8d98a6); }
+.note-lock-marker { position: absolute; right: 3px; top: 0; font-size: 9px; pointer-events: none; }
+
 .np-label {
   min-width: 44px;
   color: var(--accent-2);
