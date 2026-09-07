@@ -3544,3 +3544,5 @@ svg.auto-lane {
 .sample-zones fieldset > label { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .sample-zones fieldset select { min-width: 160px; max-width: 320px; }
 .sample-zones .inline { gap: 14px; flex-wrap: wrap; }
+.audio-status { font-size: 11px; color: var(--muted); max-width: 260px; }
+.audio-status [role="status"] { color: #eeb467; }

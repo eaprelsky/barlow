@@ -79,8 +79,16 @@ try {
   await cell.press('ArrowRight');
   assert.equal(await cell.getAttribute('data-col'), '1');
   assert.equal(await roll.locator('.cell[tabindex="0"]').count(), 1);
+  if (await cell.getAttribute('aria-pressed') !== 'true') await cell.press('Enter');
   await cell.press('F2');
   assert.ok(await page.locator('.col-wrap.sel').count() > 0);
+  const repeats = page.getByRole('spinbutton', { name: 'повторы', exact: true }).first();
+  await repeats.fill('4'); await repeats.press('Enter');
+  assert.equal(await repeats.inputValue(),'4');
+  await page.keyboard.press('Control+z'); assert.equal(await repeats.inputValue(),'1');
+  const shift = page.getByRole('spinbutton', { name: 'сдвиг, мс', exact: true }).first();
+  await shift.fill('-20'); await shift.press('Enter'); assert.equal(await shift.inputValue(),'-20');
+  console.log('PASS ratchet and microtiming numeric editing with undo');
   await page.locator('.rate-sel').first().selectOption('custom');
   const ratio = page.getByRole('textbox', { name: 'своё отношение шага' }).first();
   await ratio.fill('7/5'); await ratio.press('Enter');

@@ -547,7 +547,7 @@ export const TrackRow = memo(function TrackRow({
 
   // Слайдер панели шага — коалесцируется (движение = один шаг undo),
   // в отличие от командных правок нот.
-  const setNoteField = (col: number, row: number, field: 'vel' | 'prob' | 'len', v: number) => {
+  const setNoteField = (col: number, row: number, field: 'vel' | 'prob' | 'len' | 'ratchet' | 'microTimingMs', v: number) => {
     onPatternChange(
       track.id,
       pattern.id,
@@ -1840,6 +1840,14 @@ export const TrackRow = memo(function TrackRow({
                   value={nt.len ?? noteCellsBase} min={0.1} max={64} step={0.1} wheel
                   onChange={(v) => setNoteField(selectedCol, nt.n, 'len', Math.max(0.1, Math.round(v * 10) / 10))}
                 />
+              </label>
+              <label title="Повторные атаки внутри первого шага ноты (или доли арпеджиатора)">повторы
+                <NumField value={nt.ratchet ?? 1} min={1} max={8} step={1} narrow
+                  onChange={v => setNoteField(selectedCol,nt.n,'ratchet',Math.round(v))} />
+              </label>
+              <label title="Раньше/позже сетки; на первой ноте сцены отрицательный сдвиг ограничен её началом">сдвиг, мс
+                <NumField value={nt.microTimingMs ?? 0} min={-50} max={50} step={1} w={55}
+                  onChange={v => setNoteField(selectedCol,nt.n,'microTimingMs',v)} />
               </label>
               <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>
                 ×

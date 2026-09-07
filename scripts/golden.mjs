@@ -10,7 +10,7 @@
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -20,7 +20,7 @@ const UPDATE = process.argv.includes('--update');
 const BROWSER =
   process.env.BARLOW_BROWSER ??
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const PORT = 5199;
+const PORT = 5194;
 
 // Фикс-патч: только детерминированные узлы (осцилляторы, фильтры, delay,
 // LFO-модуляции, мастер-компрессия). Шум, реверб (случайный IR),
@@ -42,17 +42,19 @@ async function waitForServer(url, tries = 60) {
   throw new Error('vite dev-сервер не поднялся на ' + url);
 }
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
+const vite = spawn(process.execPath, [ROOT + '/node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
   cwd: ROOT,
-  shell: true,
   stdio: 'ignore',
 });
 
+let browser;
+mkdirSync(ROOT + '/tmp', { recursive: true });
+writeFileSync(ROOT + '/tmp/golden-contract.html', '<!doctype html><title>Golden audio contract</title>');
 try {
-  await waitForServer(`http://localhost:${PORT}/`);
-  const browser = await chromium.launch({ executablePath: BROWSER, headless: true });
+  await waitForServer(`http://127.0.0.1:${PORT}/`);
+  browser = await chromium.launch({ executablePath: BROWSER, headless: true });
   const page = await browser.newPage();
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${PORT}/tmp/golden-contract.html`, { waitUntil: 'domcontentloaded' });
 
   const fp = await page.evaluate(async (patchTemplate) => {
     const { AudioEngine } = await import('/src/audio/engine.ts');
@@ -100,8 +102,7 @@ try {
   if (UPDATE || !ref) {
     writeFileSync(FIXTURE, JSON.stringify(fp, null, 1) + '\n');
     console.log('эталон записан:', FIXTURE, `peak=${fp.peak} samples=${fp.samples}`);
-    process.exit(0);
-  }
+  } else {
   let worst = 0;
   for (let i = 0; i < ref.blocks.length; i++) {
     worst = Math.max(worst, Math.abs(ref.blocks[i] - fp.blocks[i]));
@@ -109,10 +110,12 @@ try {
   const peakDrift = Math.abs(ref.peak - fp.peak);
   const ok = worst <= 0.002 && peakDrift <= 0.01 && ref.samples === fp.samples;
   console.log(`golden: ${ok ? 'PASS' : 'FAIL'} — макс. дрейф RMS-блока ${worst.toExponential(2)}, пик ${peakDrift.toExponential(2)}, сэмплов ${fp.samples}`);
-  process.exit(ok ? 0 : 1);
+  process.exitCode = ok ? 0 : 1;
+  }
 } catch (e) {
   console.error('golden: ошибка —', e && e.message);
-  process.exit(1);
+  process.exitCode = 1;
 } finally {
+  await browser?.close();
   vite.kill();
 }

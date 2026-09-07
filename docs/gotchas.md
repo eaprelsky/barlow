@@ -34,6 +34,10 @@
 
 ## Движок и звук
 
+- v44: очередь событий, ratchet/microtiming, seed, полифония и лимиты WAV —
+  docs/performance.md. Не создавать длинные арпеджио аудиоузлами вне
+  lookahead; не ключевать оффлайн-цепочку только sceneId (сцена повторяется).
+
 - v40: контракт независимых нот, нормализации унисона/гармоник,
   `rootHz/keyTracking` и `beatsPerCycle` — docs/audio-contract.md.
   `npm run test:audio` проверяет DSP-инварианты; ручное прослушивание

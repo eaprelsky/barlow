@@ -172,6 +172,10 @@ export interface ScratchPoint {
 }
 
 export interface Note {
+  /** Retriggers within the first step of this note; 1 = ordinary note. */
+  ratchet?: number;
+  /** Bounded signed offset, independent of tempo/grid length. */
+  microTimingMs?: number;
   // Индекс строки шкалы (см. scaleOf).
   n: number;
   // Громкость этой ноты 0..1.
@@ -525,6 +529,8 @@ export interface ChainItem {
 export type MasterNoise = 'off' | 'white' | 'pink';
 
 export interface Patch {
+  /** Explicit deterministic performance; undefined preserves legacy randomness. */
+  performanceSeed?: number;
   version: number;
   bpm: number;
   // Название пьесы — попадает в имена файлов экспорта (транслит).
@@ -551,7 +557,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 43;
+export const PATCH_VERSION = 44;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -833,6 +839,8 @@ function normalizeSteps(
           n: Math.min(Math.max(Math.round(nt.n!), 0), maxNote),
           vel: clamp(nt.vel ?? 0.8, 0, 1, 0.8),
           prob: clamp(nt.prob ?? 1, 0, 1, 1),
+          ratchet: Math.round(clamp(nt.ratchet ?? 1, 1, 8, 1)),
+          microTimingMs: clamp(nt.microTimingMs ?? 0, -50, 50, 0),
           len:
             typeof nt.len === 'number' && nt.len > 0
               ? clamp(nt.len, 0.1, 64, 1)
@@ -1251,6 +1259,7 @@ export function normalizePatch(p: Patch): Patch {
 
   return {
     version: PATCH_VERSION,
+    performanceSeed: typeof p.performanceSeed === 'number' && Number.isFinite(p.performanceSeed) ? p.performanceSeed >>> 0 : undefined,
     bpm: Math.round(clamp(p.bpm, 30, 300, 120)),
     title:
       typeof (p as { title?: unknown }).title === 'string' &&

@@ -46,8 +46,7 @@ function figureOf(notes: Note[], mode: Arp['mode']): Note[] {
  *  аккорда в шагах сетки (максимум по нотам: своя длина len (v37), иначе
  *  «нота» трека или огибающая × гейт); нота делится на
  *  noteLenSteps × div долей длиной 1/div, фигура по долям циклится.
- *  random недетерминирован — в golden-фикстуру арпеджиатор не включать
- *  (как и вероятность). */
+ *  random получает отдельный seed-поток от общего event plan. */
 export function arpEvents(
   notes: Note[],
   arp: Arp,
@@ -55,7 +54,7 @@ export function arpEvents(
   rnd: () => number = Math.random,
 ): ArpEvent[] {
   if (notes.length === 0) return [];
-  const div = Math.max(0.25, arp.div || 1);
+  const div = Math.min(8, Math.max(0.25, arp.div || 1));
   const octaves = Math.min(4, Math.max(1, Math.round(arp.octaves)));
   // Своя длина ноты — абсолютная (v37); легаси-гейт множит базу аккорда.
   const noteLen = (nt: Note) =>

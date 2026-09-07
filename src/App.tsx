@@ -4,6 +4,7 @@ import { EditGestureContext } from './components/editGesture';
 import { Modal } from './components/Modal';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine } from './audio/engine';
+import { AudioStatus } from './components/AudioStatus';
 import { stepIndexAt } from './audio/timing';
 import type { AudioBackend } from './audio/backend';
 import { euclid, randomMask } from './music/euclid';
@@ -1438,6 +1439,7 @@ export default function App() {
         >
           {preparingPlay ? '…' : playing ? '■' : '▶'}
         </button>
+        <AudioStatus engine={engine} playing={playing} />
         <label data-ob="bpm" title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
           темп
           <NumField
@@ -1778,6 +1780,17 @@ export default function App() {
 
       {showAi && (
         <div className="ai-panel" data-ob="ai-panel">
+          <div className="inline seed-controls">
+            <label title="Фиксировать случайный выбор нот, арпеджио и шумов при повторном старте и WAV-экспорте">
+              <input type="checkbox" checked={patch.performanceSeed !== undefined}
+                onChange={e => setPatchStep(p=>({...p,performanceSeed:e.target.checked ? 1 : undefined}))} />повторяемый звук
+            </label>
+            {patch.performanceSeed !== undefined && <>
+              <label>вариант <NumField value={patch.performanceSeed} min={0} max={4294967295} step={1}
+                onChange={performanceSeed=>setPatch(p=>({...p,performanceSeed:performanceSeed>>>0}))} /></label>
+              <button onClick={()=>setPatchStep(p=>({...p,performanceSeed:crypto.getRandomValues(new Uint32Array(1))[0]}))}>новое исполнение</button>
+            </>}
+          </div>
           {(() => {
             const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
             return (

@@ -16,7 +16,12 @@ import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
 import { resolveMacros } from '../music/macros';
 import { sampleAssets } from '../music/sampleZones';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
-import { arpEvents } from './arp';
+import { planStepEvents } from './eventPlan';
+import { MonoVoices } from './monoVoices';
+import { randomFor } from './random';
+import { EventQueue } from './eventQueue';
+import { planRender } from './renderPlan';
+import { VoiceBudget } from './voiceBudget';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
 import type { AudioBackend } from './backend';
@@ -47,10 +52,7 @@ import {
   wetGain,
 } from './fx';
 import {
-  type Voice,
-  duckVoice,
   ensureScratchModule,
-  liveNotes,
   makeNoiseBuffer,
   makeScratchNode,
   normalizeBuffer,
@@ -98,16 +100,19 @@ function validSceneId(patch: Patch | null, want: string): string {
   return scenes.some((s) => s.id === want) ? want : (scenes[0]?.id ?? '');
 }
 
-function effModTempo(chain: TrackChain, mods: Mod[], bpm: number, at: number): void {
-  mods.forEach((m, i) => {
-    const source = chain.mods[i]?.src;
-    if (!source) return;
-    const param = (source as OscillatorNode).frequency ?? (source as AudioBufferSourceNode).playbackRate;
-    param?.setValueAtTime(modRateHz(m, bpm), at);
-  });
-}
-
 export class AudioEngine implements AudioBackend {
+  private pendingNotes = new EventQueue<{
+    at: number; trackId: string; patternId: string; notes: Note[];
+    stepDur: number; durSec?: number; gain: number; ordinal: number; eventIndex: number;
+  }>();
+  private voiceBudget = new VoiceBudget();
+  private droppedEvents = 0;
+  private lateEvents = 0;
+  get diagnostics() {
+    this.voiceBudget.prune(this.ctx?.currentTime ?? 0);
+    return { activeNotes: this.voiceBudget.notes, estimatedNodes: this.voiceBudget.estimatedNodes,
+      queuedEvents: this.pendingNotes.size, droppedEvents: this.droppedEvents, lateEvents: this.lateEvents };
+  }
   // Дебаг-мост: приёмник событий нот live-планировщика.
   noteSink?: (trackId: string, at: number, notes: Note[]) => void;
   /** Приёмник ошибок превью (послушать жест/ноту/сэмпл): тихие падения —
@@ -131,6 +136,7 @@ export class AudioEngine implements AudioBackend {
   private timer: number | null = null;
   private patch: Patch | null = null;
   private startAt = 0;
+  private sceneOccurrence = 0;
   // Декодированные сэмплы библиотеки, id → AudioBuffer.
   private sampleCache = new Map<string, AudioBuffer>();
   private previewRequest = 0;
@@ -149,7 +155,7 @@ export class AudioEngine implements AudioBackend {
     }
   }
   // Последний голос моно-трека — глушится при новой ноте.
-  private lastVoices = new Map<string, Voice>();
+  private lastVoices = new MonoVoices();
   private sceneId = '';
   // Живой темп: база из шапки или bpm текущего пункта цепочки (v35).
   private liveBpm = 120;
@@ -195,7 +201,7 @@ export class AudioEngine implements AudioBackend {
     if (!this.ctx) {
       this.ctx = new AudioContext();
       this.master = connectMaster(this.ctx, 1, this.patch?.masterComp ?? 0);
-      this.noiseBuffer = makeNoiseBuffer(this.ctx);
+      this.noiseBuffer = makeNoiseBuffer(this.ctx, this.patch?.performanceSeed);
     }
     return this.ctx;
   }
@@ -244,7 +250,7 @@ export class AudioEngine implements AudioBackend {
       return;
     }
     this.stopNoiseLayer();
-    this.noiseLayer = connectMasterNoise(ctx, kind, patch.masterNoiseLevel ?? 0.03);
+    this.noiseLayer = connectMasterNoise(ctx, kind, patch.masterNoiseLevel ?? 0.03, patch.performanceSeed, Math.max(ctx.currentTime, this.startAt));
     this.noiseKind = kind;
   }
 
@@ -258,6 +264,12 @@ export class AudioEngine implements AudioBackend {
   /** Обновить данные патча без остановки: движок читает их на каждом шаге.
    *  Параметры цепочек применяет scheduler — ему известен активный эскиз. */
   setPatch(patch: Patch): void {
+    if (this.ctx && this.patch?.performanceSeed !== patch.performanceSeed) {
+      this.noiseBuffer = makeNoiseBuffer(this.ctx, patch.performanceSeed);
+      this.stopNoiseLayer();
+      for (const chain of this.chains.values()) this.retireChain(chain,this.ctx.currentTime);
+      this.chains.clear(); this.lastVoices.clear();
+    }
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
     this.applyMasterFx(patch);
@@ -310,12 +322,6 @@ export class AudioEngine implements AudioBackend {
     return st.level > 1 ? 1 : st.level;
   }
 
-  private duckLastVoice(trackId: string, t: number): void {
-    const prev = this.lastVoices.get(trackId);
-    if (prev && prev.stopAt > t) duckVoice(prev, t);
-    this.lastVoices.delete(trackId);
-  }
-
   /** Применить эффективные параметры эскиза к цепочке трека.
    *  Смена набора модуляций пересобирает цепочку: старая мягко уходит
    *  (хвосты нот затухают в ней), новая включается параллельно. */
@@ -338,7 +344,7 @@ export class AudioEngine implements AudioBackend {
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       this.retireChain(chain, t0);
-      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm);
+      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
       this.chains.set(trackId, fresh);
       return fresh;
     }
@@ -373,7 +379,7 @@ export class AudioEngine implements AudioBackend {
         n.delay?.delayTime.setTargetAtTime(e.timeSec, t0, 0.05);
         n.feedback?.gain.setTargetAtTime(e.feedback, t0, 0.05);
       } else if (e.type === 'reverb' && n.convolver) {
-        const ir = getImpulse(ctx, e.sizeSec);
+        const ir = getImpulse(ctx, e.sizeSec, this.patch?.performanceSeed);
         if (n.convolver.buffer !== ir) n.convolver.buffer = ir;
       } else if (e.type === 'dist' && n.shaper) {
         n.shaper.curve = distCurve(e.drive);
@@ -519,18 +525,20 @@ export class AudioEngine implements AudioBackend {
   }
 
   private applyNextScene(t: number): void {
+    this.pendingNotes.clear();
+    this.sceneOccurrence++;
     const patch = this.patch!;
     // Темп-карта: bpm нового пункта цепочки действует с его границы —
     // часы треков всё равно сбрасываются на t, так что просто берём.
-    if (patch.followChain && !this.manualMode) {
-      this.liveBpm = patch.chain[this.chainPos]?.bpm ?? patch.bpm;
-    }
     if (this.pendingSceneId) {
       this.sceneId = this.validScene(this.pendingSceneId);
       this.pendingSceneId = '';
     } else if (patch.followChain && !this.manualMode) {
       this.chainPos = (this.chainPos + 1) % Math.max(1, patch.chain.length);
       this.sceneId = this.validScene(patch.chain[this.chainPos]?.sceneId ?? '');
+    }
+    if (patch.followChain && !this.manualMode) {
+      this.liveBpm = patch.chain[this.chainPos]?.bpm ?? patch.bpm;
     }
     // Часы треков стартуют заново с паттерном новой сцены.
     const scene = this.scene();
@@ -541,13 +549,17 @@ export class AudioEngine implements AudioBackend {
       clock.nextStepTime = t;
       clock.resetTime = t;
       clock.nextStepIndex = pattern ? startStepIndex(track, pattern) : 0;
+      clock.eventOrdinal = 0;
     }
     this.scheduleSceneAdvance(t);
   }
 
   play(patch: Patch, sceneId: string): void {
     this.stop();
+    this.droppedEvents = 0; this.lateEvents = 0;
+    this.sceneOccurrence = 0;
     const ctx = this.ensureCtx();
+    this.noiseBuffer = makeNoiseBuffer(ctx, patch.performanceSeed);
     if (ctx.state === 'suspended') void ctx.resume();
     this.patch = patch;
     this.setPatch(patch);
@@ -557,7 +569,7 @@ export class AudioEngine implements AudioBackend {
     const pos = patch.chain.findIndex((it) => it.sceneId === this.sceneId);
     this.chainPos = pos >= 0 ? pos : 0;
     this.startAt = ctx.currentTime + 0.1;
-    this.liveBpm = patch.bpm;
+    this.liveBpm = patch.followChain ? patch.chain[this.chainPos]?.bpm ?? patch.bpm : patch.bpm;
     const scene = this.scene();
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
@@ -569,7 +581,7 @@ export class AudioEngine implements AudioBackend {
     }
     if (patch.followChain && !this.manualMode) {
       const bars = patch.chain[this.chainPos]?.bars ?? 8;
-      this.sceneAdvanceTime = this.startAt + bars * BAR_TICKS * tickDuration(patch.bpm);
+      this.sceneAdvanceTime = this.startAt + bars * BAR_TICKS * tickDuration(this.liveBpm);
     } else {
       this.sceneAdvanceTime = null;
     }
@@ -582,6 +594,8 @@ export class AudioEngine implements AudioBackend {
   }
 
   stop(): void {
+    this.pendingNotes.clear();
+    this.voiceBudget.stop(this.ctx?.currentTime ?? 0);
     ++this.previewRequest;
     this.previewCleanup?.();
     this.previewCleanup = null;
@@ -900,7 +914,7 @@ export class AudioEngine implements AudioBackend {
       try {
         // Audition has its own complete chain: it must not inherit the old
         // track's filters/FX or alter its running notes.
-        const pseudo = makeChain(ctx, st, this.master.input, patch.bpm);
+        const pseudo = makeChain(ctx, st, this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
         const pattern = patternInScene(st, this.scene());
         const stepSec = stepDuration(st, patch.bpm, pattern);
         const notes = [makeNote(noteRow, 0.9, 1)];
@@ -915,6 +929,7 @@ export class AudioEngine implements AudioBackend {
           stepSec,
           undefined,
           (id) => this.sampleCache.get(id) ?? null,
+          randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
         );
         let cleaned = false;
         const cleanup = () => {
@@ -990,6 +1005,8 @@ export class AudioEngine implements AudioBackend {
     const ratio = tickDuration(bpm) / tickDuration(old);
     this.liveBpm = bpm;
     const stretch = (t: number) => now + (t - now) * ratio;
+    this.pendingNotes.transform(ev => ({ ...ev, at: stretch(ev.at), stepDur: ev.stepDur * ratio,
+      durSec: ev.durSec === undefined ? undefined : ev.durSec * ratio }));
     // Якорь тактов (nextBarTime) и граница сцены едут той же пропорцией.
     this.startAt = stretch(this.startAt);
     if (this.sceneAdvanceTime !== null) this.sceneAdvanceTime = stretch(this.sceneAdvanceTime);
@@ -1054,8 +1071,18 @@ export class AudioEngine implements AudioBackend {
     // Смены сцен внутри горизонта планирования.
     let guard = 0;
     while (this.sceneAdvanceTime !== null && this.sceneAdvanceTime < horizon && guard++ < 64) {
+      // Finish the outgoing scene before resetting its clocks. Otherwise
+      // the last lookahead window was silently skipped at every boundary.
+      this.scheduleWindow(this.sceneAdvanceTime);
       this.applyNextScene(this.sceneAdvanceTime);
     }
+    this.scheduleWindow(horizon);
+  }
+
+  private scheduleWindow(horizon: number): void {
+    const ctx = this.ctx;
+    const patch = this.patch;
+    if (!ctx || !patch || !this.noiseBuffer) return;
 
     const scene = this.scene();
     const audible = audibleSet(patch, scene);
@@ -1074,7 +1101,7 @@ export class AudioEngine implements AudioBackend {
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
       if (!chain && this.master) {
-        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm);
+        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, patch.performanceSeed, Math.max(ctx.currentTime,clock.resetTime));
         this.chains.set(track.id, chain);
         // Свежая цепочка: планируем ей вход (старт игры / вливание на ходу)
         // и, если граница сцен известна, переходный выход.
@@ -1084,46 +1111,20 @@ export class AudioEngine implements AudioBackend {
       chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
       const stepDur = stepDuration(track, this.liveBpm, pattern);
       let g = 0;
-      while (clock.nextStepTime < horizon && g++ < 1024) {
+      // Read up to 50 ms earlier for negative microtiming, but never read
+      // a grid step belonging to the next scene.
+      const planningEnd = Math.min(horizon + 0.05, this.sceneAdvanceTime ?? Infinity);
+      while (clock.nextStepTime < planningEnd && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
-        const notes = step ? liveNotes(step) : [];
-        if (notes.length > 0 && audible.has(pattern.id)) {
-          // Арпеджиатор дробит ноту на доли-перелив (каждая короче ноты);
-          // без него — одно событие со всеми нотами (как раньше).
-          // База аккорда — максимум по нотам: своя длина (len, v37),
-          // иначе «нота» трека или огибающая (легаси-гейт множит).
-          const chordBase =
-            st.noteSteps && st.noteSteps > 0
-              ? st.noteSteps
-              : (Math.max(st.attack, 0.0005) + st.decay) / stepDur;
-          const noteLenSteps = Math.max(
-            0.05,
-            ...notes.map((nt) =>
-              typeof nt.len === 'number' && nt.len > 0
-                ? Math.min(64, Math.max(0.05, nt.len))
-                : chordBase * Math.min(4, Math.max(0.1, nt.gate ?? 1)),
-            ),
-          );
-          const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
-            ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
-                notes: [e.note],
-                dt: e.dt,
-                durSec: e.len * stepDur,
-              }))
-            : [{ notes, dt: 0 }];
-          for (const ev of events) {
-            const at = clock.nextStepTime + ev.dt * stepDur;
-            if (track.mono) this.duckLastVoice(track.id, at);
-            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null, st, ev.notes, at, stepDur, ev.durSec, (id) => this.sampleCache.get(id) ?? null);
-            if (track.mono) this.lastVoices.set(track.id, voice);
-            // Дебаг-мост: что реально триггернулось (включая доли арпеджиатора).
-            this.noteSink?.(track.id, at, ev.notes);
-            // Сайдчейн: ноты этой дорожки качают приглушаемых.
-            for (const rt of patch.tracks) {
-              const sc = rt.sidechain;
-              if (!sc || sc.sourceId !== track.id) continue;
-              const rc = this.chains.get(rt.id);
-              if (rc) duckSidechain(rc.duck, at, sc);
+        if (audible.has(pattern.id)) {
+          const ordinal = clock.eventOrdinal ?? 0;
+          const events = planStepEvents(step, st, stepDur, randomFor(patch.performanceSeed, 'events', track.id, this.sceneOccurrence, ordinal));
+          for (const [eventIndex, ev] of events.entries()) {
+            const at = Math.max(clock.resetTime, clock.nextStepTime + ev.dt * stepDur + (ev.offsetSec ?? 0));
+            if (at >= (this.sceneAdvanceTime ?? Infinity)) continue;
+            if (!this.pendingNotes.push({ at, trackId: track.id, patternId: pattern.id,
+              notes: ev.notes, stepDur, durSec: ev.durSec, gain: ev.gain ?? 1, ordinal, eventIndex })) {
+              this.droppedEvents++;
             }
           }
         }
@@ -1151,142 +1152,101 @@ export class AudioEngine implements AudioBackend {
         }
         clock.nextStepTime += stepDur;
         clock.nextStepIndex = (clock.nextStepIndex + 1) % pattern.length;
+        clock.eventOrdinal = (clock.eventOrdinal ?? 0) + 1;
+      }
+    }
+    this.lastVoices.prune(ctx.currentTime);
+    this.voiceBudget.prune(ctx.currentTime);
+    for (const ev of this.pendingNotes.drain(horizon)) {
+      const track = patch.tracks.find(t => t.id === ev.trackId);
+      if (!track || !audible.has(ev.patternId) || patternInScene(track, scene)?.id !== ev.patternId) continue;
+      const chain = this.chains.get(track.id);
+      if (!chain) continue;
+      const st = stOf(patch, track);
+      if (!this.voiceBudget.allows(st, ev.notes.length)) { this.droppedEvents++; continue; }
+      if (ev.at < ctx.currentTime) this.lateEvents++;
+      const at = Math.max(ctx.currentTime + 0.001, ev.at);
+      const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null,
+        st, ev.notes, at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
+        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex));
+      voice.amp.gain.value *= ev.gain;
+      this.voiceBudget.add(voice, st, ev.notes.length);
+      if (track.mono) this.lastVoices.register(track.id, voice, at);
+      this.noteSink?.(track.id, at, ev.notes);
+      for (const rt of patch.tracks) {
+        const sc = rt.sidechain;
+        const rc = this.chains.get(rt.id);
+        if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, at, sc);
       }
     }
   }
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8): Promise<Blob> {
+    const plan = planRender(patch, fallbackSceneId, fallbackBars);
     await this.ensureSamples(patch);
-    const fixedItems = (
-      patch.followChain && patch.chain.length > 0
-        ? patch.chain
-        : [{ sceneId: fallbackSceneId, bars: fallbackBars }]
-    ).map((it) => ({ ...it, sceneId: validSceneId(patch, it.sceneId) }));
-
-    const duration =
-      fixedItems.reduce((s, it) => s + it.bars * BAR_TICKS * tickDuration(it.bpm ?? patch.bpm), 0) + 1.0;
+    const duration = plan.duration;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
     // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
     // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
-    await ensureScratchModule(ctx);
+    if (patch.instruments.some(i=>i.waveform==='sample' && i.sampleMode==='scratch')) await ensureScratchModule(ctx);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
-      connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03);
+      connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03, patch.performanceSeed);
     }
-    const noise = makeNoiseBuffer(ctx);
+    const noise = makeNoiseBuffer(ctx, patch.performanceSeed);
 
-    // Цепочки создаются заранее (ключ трек:сцена): сайдчейн-дак должен
-    // находить цепочки приёмников независимо от порядка обхода треков.
     const chainsByKey = new Map<string, TrackChain>();
-    for (const track of patch.tracks) {
-      const st = stOf(patch, track);
-      for (const item of fixedItems) {
-        const scene = patch.scenes.find((sc) => sc.id === item.sceneId);
-        const pattern = patternInScene(track, scene);
-        if (!pattern) continue;
-        const eff = effectiveParams(track, pattern);
-        chainsByKey.set(
-          `${track.id}:${item.sceneId}`,
-          makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input, item.bpm ?? patch.bpm),
-        );
+    for (const part of plan.parts) {
+      const { track, st, pattern, bpm, start, end } = part;
+      const eff = effectiveParams(track, pattern);
+      const chain = makeChain(ctx, { ...st, ...eff }, master.input, bpm, patch.performanceSeed, start);
+      chainsByKey.set(part.key, chain);
+      const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
+      const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
+      const gg = chain.gain.gain;
+      gg.setValueAtTime(0, start);
+      gg.linearRampToValueAtTime(eff.volume, start + fadeIn);
+      const exitFrom = Math.max(start + fadeIn, end - fadeOut);
+      if (exitFrom < end - 0.001) gg.setValueAtTime(eff.volume, exitFrom);
+      if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, end);
+      else gg.setValueAtTime(0, end);
+      for (const step of part.steps) {
+        for (const c of pattern.automation ?? []) {
+          const v = autoValue(c.points, step.index / pattern.length);
+          if (v === undefined) continue;
+          const at = step.at;
+          if (c.target === 'filterFreq') chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
+          else if (c.target === 'pan') chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
+          else if (c.target === 'volume') chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
+          else if (c.target === 'fxMix' && chain.fx[0]) chain.fx[0].wet.gain.setTargetAtTime(v, at, 0.03);
+          else if (c.target === 'fxTime' && chain.fx[0]?.delay) chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), at, 0.03);
+          else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), at, 0.03);
+        }
       }
     }
-
-    for (const track of patch.tracks) {
-      const st = stOf(patch, track);
-      let t = 0.05;
-      let prevVoice: Voice | null = null;
-      for (const item of fixedItems) {
-        const scene = patch.scenes.find((s) => s.id === item.sceneId);
-        const pattern = patternInScene(track, scene);
-        if (!pattern) continue;
-        const audible = audibleSet(patch, scene).has(pattern.id);
-        // Шаг — свой у каждого эскиза (override или шаг трека); темп —
-        // у пункта цепочки, если задан.
-        const itemBpm = item.bpm ?? patch.bpm;
-        const stepDur = stepDuration(track, itemBpm, pattern);
-        // Не dispose-им: запланированные ноты привязаны к узлам.
-        const chain = chainsByKey.get(`${track.id}:${item.sceneId}`)!;
-        effModTempo(chain, pattern.mods ?? track.mods, itemBpm, t);
-        const itemDur = item.bars * BAR_TICKS * tickDuration(item.bpm ?? patch.bpm);
-        // Переходная огибающая: вход партии от начала пункта цепочки,
-        // выход — к его концу. Те же правила, что и в live-планировщике
-        // (armSceneExit) — рендер и живой звук сходятся.
-        const vol = effectiveParams(track, pattern).volume;
-        const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
-        const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
-        const tEnd = t + itemDur;
-        const gg = chain.gain.gain;
-        gg.setValueAtTime(0, t);
-        gg.linearRampToValueAtTime(vol, t + fadeIn);
-        const exitFrom = Math.max(t + fadeIn, tEnd - fadeOut);
-        if (exitFrom < tEnd - 0.001) gg.setValueAtTime(vol, exitFrom);
-        if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, tEnd);
-        else gg.setValueAtTime(0, tEnd);
-        let idx = startStepIndex(track, pattern);
-        const sample = this.sampleCache.get(st.sampleId ?? '') ?? null;
-        for (let tt = t; tt < t + itemDur - 0.001; tt += stepDur) {
-          if (pattern.automation?.length) {
-            const pos = idx / pattern.length;
-            for (const c of pattern.automation) {
-              const v = autoValue(c.points, pos);
-              if (v === undefined) continue;
-              if (c.target === 'filterFreq') {
-                chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), tt, 0.03);
-              } else if (c.target === 'pan') {
-                chain.panner.pan.setTargetAtTime(v * 2 - 1, tt, 0.03);
-              } else if (c.target === 'volume') {
-                chain.gain.gain.setTargetAtTime(vol * v, tt, 0.03);
-              } else if (c.target === 'fxMix' && chain.fx[0]) {
-                chain.fx[0].wet.gain.setTargetAtTime(v, tt, 0.03);
-              } else if (c.target === 'fxTime' && chain.fx[0]?.delay) {
-                chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), tt, 0.03);
-              } else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) {
-                chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), tt, 0.03);
-              }
-            }
-          }
-          const step = pattern.steps[idx % pattern.steps.length];
-          const notes = step ? liveNotes(step) : [];
-          if (notes.length > 0 && audible) {
-            const noteLenSteps = Math.max(
-              0.05,
-              ...notes.map((nt) =>
-                typeof nt.len === 'number' && nt.len > 0
-                  ? Math.min(64, Math.max(0.05, nt.len))
-                  : (st.noteSteps && st.noteSteps > 0
-                      ? st.noteSteps
-                      : (Math.max(st.attack, 0.0005) + st.decay) / stepDur) *
-                    Math.min(4, Math.max(0.1, nt.gate ?? 1)),
-              ),
-            );
-            const events: { notes: Note[]; dt: number; durSec?: number }[] = track.arp
-              ? arpEvents(notes, track.arp, noteLenSteps).map((e) => ({
-                  notes: [e.note],
-                  dt: e.dt,
-                  durSec: e.len * stepDur,
-                }))
-              : [{ notes, dt: 0 }];
-            for (const ev of events) {
-              const at = tt + ev.dt * stepDur;
-              if (track.mono && prevVoice && prevVoice.stopAt > at) duckVoice(prevVoice, at);
-              const voice = triggerVoice(ctx, chain, noise, sample, st, ev.notes, at, stepDur, ev.durSec, (id) => this.sampleCache.get(id) ?? null);
-              if (track.mono) prevVoice = voice;
-              // Сайдчейн: ноты этой дорожки качают приглушаемых.
-              for (const rt of patch.tracks) {
-                const sc = rt.sidechain;
-                if (!sc || sc.sourceId !== track.id) continue;
-                const rc = chainsByKey.get(`${rt.id}:${item.sceneId}`);
-                if (rc) duckSidechain(rc.duck, at, sc);
-              }
-            }
-          }
-          idx = (idx + 1) % pattern.length;
-        }
-        t += itemDur;
+    // Globally ordered creation is required for mono/choke/voice budgets.
+    const monoVoices = new MonoVoices();
+    const voiceBudget = new VoiceBudget();
+    for (const ev of plan.events) {
+      const { track, st, itemIndex } = ev.part;
+      voiceBudget.prune(ev.at);
+      if (!voiceBudget.allows(st, ev.notes.length))
+        throw new Error('WAV: превышена полифония (128 нот / 8192 условных узла). Уменьши длину нот, унисон или плотность арпеджио.');
+      const chain = chainsByKey.get(ev.part.key)!;
+      const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
+        st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
+        randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex));
+      voice.amp.gain.value *= ev.gain ?? 1;
+      voiceBudget.add(voice, st, ev.notes.length);
+      monoVoices.prune(ev.at);
+      if (track.mono) monoVoices.register(track.id, voice, ev.at);
+      for (const rt of patch.tracks) {
+        const sc = rt.sidechain;
+        const rc = chainsByKey.get(`${itemIndex}:${rt.id}`);
+        if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, ev.at, sc);
       }
     }
     const rendered = await ctx.startRendering();

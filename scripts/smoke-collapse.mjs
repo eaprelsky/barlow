@@ -2,7 +2,7 @@
 // карточка должна быть развёрнута, а клик «развернуть» обязан пробивать
 // форс-свёрнутость режима редактора волны.
 //
-//   npm run smoke   (сам поднимает vite на :5211 и гасит его)
+//   npm run smoke   (сам поднимает vite на :5193 и гасит его)
 //
 // Сценарий бага: режим редактора форсит свёрнутость чужих дорожек; висячий
 // id редактора (после очистки/удаления/undo) держал все новые треки
@@ -16,7 +16,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BROWSER =
   process.env.BARLOW_BROWSER ??
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const PORT = 5211;
+const PORT = 5193;
 
 async function waitForServer(url, tries = 60) {
   for (let i = 0; i < tries; i++) {
@@ -31,15 +31,15 @@ async function waitForServer(url, tries = 60) {
   throw new Error('vite dev-сервер не поднялся на ' + url);
 }
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
+const vite = spawn(process.execPath, [ROOT + '/node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
   cwd: ROOT,
-  shell: true,
   stdio: 'ignore',
 });
 
+let browser;
 try {
-  await waitForServer(`http://localhost:${PORT}/`);
-  const browser = await chromium.launch({ executablePath: BROWSER, headless: true });
+  await waitForServer(`http://127.0.0.1:${PORT}/`);
+  browser = await chromium.launch({ executablePath: BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
   // Онбординг помечаем пройденным: тесты кликают по интерфейсу свободно,
   // гиды и их блокировщики кликов им не соперники.
@@ -51,7 +51,7 @@ try {
   });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
 
   const results = [];
@@ -95,7 +95,7 @@ try {
 
   // C: пробой кликом — редактор открыт, клик «развернуть» по чужой
   // свёрнутой дорожке закрывает редактор и разворачивает её.
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
   await addTrack(); // нужна вторая дорожка — будет форс-свёрнута
   await page.locator('[data-ob="mode-inst"]').first().click();
@@ -122,9 +122,10 @@ try {
   console.log(results.join('\n'));
   if (errors.length) {
     console.log('JS errors:\n' + errors.slice(0, 5).join('\n'));
-    process.exit(1);
+    process.exitCode = 1;
   }
-  process.exit(ok ? 0 : 1);
+  if (process.exitCode !== 1) process.exitCode = ok ? 0 : 1;
 } finally {
+  await browser?.close();
   vite.kill();
 }

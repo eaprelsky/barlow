@@ -6,7 +6,13 @@
 import type { Note, Patch, SoundingTrack, Track } from '../types';
 import type { TrackClock } from './timing';
 
+export interface AudioDiagnostics {
+  activeNotes: number; estimatedNodes: number; queuedEvents: number;
+  droppedEvents: number; lateEvents: number;
+}
+
 export interface AudioBackend {
+  readonly diagnostics: AudioDiagnostics;
   /** Транспорт играет (планировщик активен). */
   readonly playing: boolean;
   /** Сцена, которая звучит прямо сейчас (UI подсвечивает её). */

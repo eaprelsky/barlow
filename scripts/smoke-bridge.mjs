@@ -16,7 +16,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BROWSER =
   process.env.BARLOW_BROWSER ??
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const PORT = 5201;
+const PORT = 5192;
 const BRIDGE_PORT = 22856;
 
 const fail = (msg) => {
@@ -38,22 +38,21 @@ async function waitForServer(url, tries = 60) {
 }
 
 const bridge = makeBridgeHost(BRIDGE_PORT);
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
+const vite = spawn(process.execPath, [ROOT + '/node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
   cwd: ROOT,
-  shell: true,
   stdio: 'ignore',
 });
 let browser = null;
 
 try {
-  await waitForServer(`http://localhost:${PORT}/`);
+  await waitForServer(`http://127.0.0.1:${PORT}/`);
   browser = await chromium.launch({ executablePath: BROWSER, headless: true });
   const page = await browser.newPage();
   // Порт моста для страницы — до загрузки скриптов.
   await page.addInitScript((p) => {
     window.__BARLOW_BRIDGE_PORT = p;
   }, BRIDGE_PORT);
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
 
   // 1. Приложение подключилось и прислало hello с патчем.
   let ok = false;

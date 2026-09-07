@@ -8,6 +8,7 @@ import type { TrackChain } from './fx';
 import { prepareSampleRegion } from './sampleRegion';
 import { resolveMacros } from '../music/macros';
 import { sampleZoneAt } from '../music/sampleZones';
+import { randomFor } from './random';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -45,11 +46,12 @@ export function normalizeBuffer(buf: AudioBuffer): void {
   }
 }
 
-export function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
+export function makeNoiseBuffer(ctx: BaseAudioContext, seed?: number): AudioBuffer {
+  const random = randomFor(seed, 'source-noise');
   const len = Math.floor(ctx.sampleRate * 2);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  for (let i = 0; i < len; i++) data[i] = random() * 2 - 1;
   return buf;
 }
 
@@ -109,6 +111,7 @@ export interface Voice {
 
 /** Мягко заглушить голос (моно-retrigger): плавный релиз без обрыва. */
 export function duckVoice(v: Voice, t: number): void {
+  v.stopAt = Math.min(v.stopAt, t + 0.06);
   v.amp.gain.setTargetAtTime(0.00001, t, 0.004);
   for (const s of v.sources) {
     const sched = s as AudioScheduledSourceNode;
@@ -142,6 +145,7 @@ function scheduleGrainCloud(
   baseLenSec: number,
   regStart: number,
   regEnd: number,
+  random: () => number,
 ): number {
   const dur = Math.max(0.01, baseLenSec);
   const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
@@ -179,13 +183,13 @@ function scheduleGrainCloud(
     const t0 = time + g * stepT;
     // Небольшой джиттер стартов: чисто периодическая россыпь даёт слышимый
     // паразитный тон на частоте 1/шага.
-    const at = Math.max(time, t0 + (Math.random() - 0.5) * stepT * 0.4);
+    const at = Math.max(time, t0 + (random() - 0.5) * stepT * 0.4);
     for (const nt of notes) {
       const ratio = samplePitchRatio(track, (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt));
       // Голос унисона этого зерна: скорость с расстройкой k·детюн центов.
-      const k = uniN > 1 ? (Math.floor(Math.random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
+      const k = uniN > 1 ? (Math.floor(random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
       const rate = ratio * Math.pow(2, (k * uniDet) / 1200);
-      const center = clampNum(pos + (Math.random() * 2 - 1) * scatter * 0.5, 0, 1);
+      const center = clampNum(pos + (random() * 2 - 1) * scatter * 0.5, 0, 1);
       // Окно должно поместиться в обрезанный кусок с учётом скорости.
       const room = Math.max(0, regEnd - regStart - sizeSec * rate - 0.001);
       const offset = regStart + center * room;
@@ -247,6 +251,7 @@ export function triggerVoice(
   stepSec: number,
   durSec?: number,
   sampleById?: (id: string) => AudioBuffer | null,
+  random: () => number = Math.random,
 ): Voice {
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
@@ -259,7 +264,7 @@ export function triggerVoice(
     const zone = track.waveform === 'sample' ? sampleZoneAt(track.sampleZones, hz, nt.vel) : undefined;
     const selected = zone ? { ...track, sampleId: zone.sampleId, rootHz: zone.rootHz, keyTracking: true } : track;
     const buffer = zone ? sampleById?.(zone.sampleId) ?? (zone.sampleId === track.sampleId ? sample : null) : sample;
-    return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec);
+    return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec, random);
   });
   return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };
 }
@@ -276,6 +281,7 @@ function triggerNoteVoice(
   // Готовая длина голоса (арпеджиатор: доля ноты). Undefined — по треку:
   // сетка (noteSteps × шаг) или огибающая, гейт ноты умножает сверху.
   durSec?: number,
+  random: () => number = Math.random,
 ): Voice {
   if (notes.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
   const rows = scaleOf(track);
@@ -419,7 +425,7 @@ function triggerNoteVoice(
   }
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
-    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd);
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd, random);
     return { amp, sources, stopAt: lastEnd };
   }
   // Атака не бывает длиннее самой ноты: иначе план огибающей строится
@@ -655,7 +661,7 @@ function triggerNoteVoice(
               const src = ctx.createBufferSource();
               src.buffer = noise;
               src.loop = true;
-              const from = Math.random() * 1.5;
+              const from = random() * 1.5;
               src.loopStart = from;
               src.loopEnd = Math.min(from + grainSec, 1.99);
               const g = ctx.createGain();
@@ -717,7 +723,7 @@ function triggerNoteVoice(
           const src = ctx.createBufferSource();
           src.buffer = noise;
           src.loop = true;
-          const from = Math.random() * 1.5;
+          const from = random() * 1.5;
           noiseAt.push(from);
           src.loopStart = from;
           src.loopEnd = Math.min(from + grainSec, 1.99);

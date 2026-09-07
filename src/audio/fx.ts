@@ -6,6 +6,7 @@
 import type { Effect, Mod, SoundingTrack } from '../types';
 import { modRateHz } from '../types';
 import { resolveMacros } from '../music/macros';
+import { randomFor, seedOf } from './random';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -54,8 +55,9 @@ export const wetGain = (mix: number) => Math.sin((mix * Math.PI) / 2);
 // Процедурный impulse response для реверба: стереошумовое облако с
 // экспоненциальным затуханием. Кэш общий для live и offline контекстов.
 const irCache = new Map<string, AudioBuffer>();
-export function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer {
-  const key = `${ctx.sampleRate}:${seconds.toFixed(2)}`;
+export function getImpulse(ctx: BaseAudioContext, seconds: number, seed?: number): AudioBuffer {
+  const random = randomFor(seed, "impulse", seconds);
+  const key = `${ctx.sampleRate}:${seconds}:${seed ?? "legacy"}`;
   let ir = irCache.get(key);
   if (!ir) {
     const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
@@ -63,9 +65,10 @@ export function getImpulse(ctx: BaseAudioContext, seconds: number): AudioBuffer 
     for (let c = 0; c < 2; c++) {
       const d = ir.getChannelData(c);
       for (let i = 0; i < len; i++) {
-        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+        d[i] = (random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
       }
     }
+    if (irCache.size >= 16) irCache.delete(irCache.keys().next().value!);
     irCache.set(key, ir);
   }
   return ir;
@@ -129,8 +132,9 @@ export function lofiCurve(bits: number): Float32Array<ArrayBuffer> {
 // S&H: кусочно-постоянные случайные значения, шаг = 1/rate. Луп бесшовный:
 // периодов целое число, стык значений не важен (скачок и есть суть S&H).
 const sahCache = new Map<string, AudioBuffer>();
-function makeSahBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
-  const key = `${ctx.sampleRate}:${rate.toFixed(3)}`;
+function makeSahBuffer(ctx: BaseAudioContext, rate: number, seed?: number): AudioBuffer {
+  const random = randomFor(seed, "sah", rate);
+  const key = `${ctx.sampleRate}:${rate}:${seed ?? "legacy"}`;
   let buf = sahCache.get(key);
   if (buf) return buf;
   if (sahCache.size > 64) sahCache.clear();
@@ -140,7 +144,7 @@ function makeSahBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
   const d = buf.getChannelData(0);
   const period = len / steps;
   for (let i = 0; i < steps; i++) {
-    const v = Math.random() * 2 - 1;
+    const v = random() * 2 - 1;
     const from = Math.floor(i * period);
     const to = Math.floor((i + 1) * period);
     for (let j = from; j < to; j++) d[j] = v;
@@ -152,8 +156,9 @@ function makeSahBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
 // Перлин (1D value noise): плавные холмы между случайными точками,
 // косинусная интерполяция; последняя точка равна первой — луп бесшовный.
 const perlinCache = new Map<string, AudioBuffer>();
-function makePerlinBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
-  const key = `${ctx.sampleRate}:${rate.toFixed(3)}`;
+function makePerlinBuffer(ctx: BaseAudioContext, rate: number, seed?: number): AudioBuffer {
+  const random = randomFor(seed, "perlin", rate);
+  const key = `${ctx.sampleRate}:${rate}:${seed ?? "legacy"}`;
   let buf = perlinCache.get(key);
   if (buf) return buf;
   if (perlinCache.size > 64) perlinCache.clear();
@@ -161,7 +166,7 @@ function makePerlinBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
   const len = Math.floor((steps / rate) * ctx.sampleRate);
   buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = buf.getChannelData(0);
-  const points = Array.from({ length: steps + 1 }, () => Math.random() * 2 - 1);
+  const points = Array.from({ length: steps + 1 }, () => random() * 2 - 1);
   points[steps] = points[0];
   const period = len / steps;
   for (let i = 0; i < len; i++) {
@@ -178,11 +183,11 @@ function makePerlinBuffer(ctx: BaseAudioContext, rate: number): AudioBuffer {
 }
 
 /** Узел источника модуляции по её виду. */
-function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode {
+function makeModSource(ctx: BaseAudioContext, m: Mod, seed?: number): AudioScheduledSourceNode {
   const source = m.source ?? 'lfo';
   if (source === 'sah' || source === 'perlin') {
     const src = ctx.createBufferSource();
-    src.buffer = source === 'sah' ? makeSahBuffer(ctx, 1) : makePerlinBuffer(ctx, 1);
+    src.buffer = source === 'sah' ? makeSahBuffer(ctx, 1, seed) : makePerlinBuffer(ctx, 1, seed);
     src.loop = true;
     src.playbackRate.value = m.rate;
     return src;
@@ -195,20 +200,21 @@ function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode 
 
 // Мастер-шумы: длинные лупы, чтобы период не слушался.
 const masterNoiseCache = new Map<string, AudioBuffer>();
-function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink'): AudioBuffer {
-  const key = `${ctx.sampleRate}:${kind}`;
+function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink', seed?: number): AudioBuffer {
+  const random = randomFor(seed, 'master-noise', kind);
+  const key = `${ctx.sampleRate}:${kind}:${seed ?? "legacy"}`;
   let buf = masterNoiseCache.get(key);
   if (buf) return buf;
   const len = Math.floor(ctx.sampleRate * 10);
   buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = buf.getChannelData(0);
   if (kind === 'white') {
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    for (let i = 0; i < len; i++) d[i] = random() * 2 - 1;
   } else {
     // Розовый: фильтр Пола Келлета — равномерный спад -3 дБ/октаву.
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
     for (let i = 0; i < len; i++) {
-      const w = Math.random() * 2 - 1;
+      const w = random() * 2 - 1;
       b0 = 0.99886 * b0 + w * 0.0555179;
       b1 = 0.99332 * b1 + w * 0.0750759;
       b2 = 0.969 * b2 + w * 0.153852;
@@ -219,6 +225,7 @@ function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink'): Audio
       b6 = w * 0.115926;
     }
   }
+  if (masterNoiseCache.size >= 16) masterNoiseCache.delete(masterNoiseCache.keys().next().value!);
   masterNoiseCache.set(key, buf);
   return buf;
 }
@@ -232,7 +239,7 @@ export interface MasterNodes {
   setPan: (v: number, at: number) => void;
 }
 
-export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120): TrackChain {
+export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt = 0): TrackChain {
   track = resolveMacros(track);
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -301,11 +308,11 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
       sway.connect(delay.delayTime);
       wet.connect(delay);
       delay.connect(sum);
-      lfo.start(0);
+      lfo.start(startAt);
       fx.push({ dry, wet, delay, lfo });
     } else {
       const conv = ctx.createConvolver();
-      conv.buffer = getImpulse(ctx, e.sizeSec);
+      conv.buffer = getImpulse(ctx, e.sizeSec, seed);
       wet.connect(conv);
       conv.connect(sum);
       fx.push({ dry, wet, convolver: conv });
@@ -313,8 +320,8 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
     node = sum;
   }
   node.connect(panner);
-  const mods: ModNodes[] = track.mods.map((m) => {
-    const src = makeModSource(ctx, { ...m, rate: modRateHz(m, bpm) });
+  const mods: ModNodes[] = track.mods.map((m, index) => {
+    const src = makeModSource(ctx, { ...m, rate: modRateHz(m, bpm) }, seed === undefined ? undefined : seedOf(seed, track.id, index));
     const depth = ctx.createGain();
     depth.gain.value = modScale(m.target, m.depth, filter.frequency.value);
     src.connect(depth);
@@ -326,7 +333,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
     else if (m.target === 'fxTime') param = fx[0]?.delay?.delayTime ?? null;
     else if (m.target === 'fxFeedback') param = fx[0]?.feedback?.gain ?? null;
     if (param) depth.connect(param);
-    src.start(0);
+    src.start(startAt);
     return { src, depth };
   });
   return {
@@ -443,14 +450,16 @@ export function connectMasterNoise(
   ctx: BaseAudioContext,
   kind: 'white' | 'pink',
   level: number,
+  seed?: number,
+  startAt = 0,
 ): { src: AudioBufferSourceNode; gain: GainNode } {
   const src = ctx.createBufferSource();
-  src.buffer = masterNoiseBuffer(ctx, kind);
+  src.buffer = masterNoiseBuffer(ctx, kind, seed);
   src.loop = true;
   const gain = ctx.createGain();
   gain.gain.value = Math.max(0, level) * 0.12;
   src.connect(gain);
   gain.connect(ctx.destination);
-  src.start(0);
+  src.start(startAt);
   return { src, gain };
 }

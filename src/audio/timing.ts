@@ -43,6 +43,7 @@ export function stepIndexAt(
 /** Часы трека планировщика: следующий шаг, его время и время последнего
  *  сброса (границы сцены) — resetTime нужен playhead'у. */
 export interface TrackClock {
+  eventOrdinal?: number;
   nextStepIndex: number;
   nextStepTime: number;
   resetTime: number;
