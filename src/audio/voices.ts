@@ -7,6 +7,7 @@ import { normalizeWave, scaleOf } from '../types';
 import type { TrackChain } from './fx';
 import { prepareSampleRegion } from './sampleRegion';
 import { resolveMacros } from '../music/macros';
+import { sampleZoneAt } from '../music/sampleZones';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -245,14 +246,21 @@ export function triggerVoice(
   time: number,
   stepSec: number,
   durSec?: number,
+  sampleById?: (id: string) => AudioBuffer | null,
 ): Voice {
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
   amp.connect(chain.hp);
   track = resolveMacros(track);
   if (track.waveform === 'wave') track = { ...track, wave: normalizeWave(track.wave) };
-  const voices = notes.filter(nt => nt.vel > 0).map(nt =>
-    triggerNoteVoice(ctx, amp, noise, sample, track, [nt], time, stepSec, durSec));
+  const rows = scaleOf(track);
+  const voices = notes.filter(nt => nt.vel > 0).map(nt => {
+    const hz = track.freq * (rows[Math.min(rows.length - 1, Math.max(0, Math.round(nt.n)))] ?? 1) * octMulOf(nt);
+    const zone = track.waveform === 'sample' ? sampleZoneAt(track.sampleZones, hz, nt.vel) : undefined;
+    const selected = zone ? { ...track, sampleId: zone.sampleId, rootHz: zone.rootHz, keyTracking: true } : track;
+    const buffer = zone ? sampleById?.(zone.sampleId) ?? (zone.sampleId === track.sampleId ? sample : null) : sample;
+    return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec);
+  });
   return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };
 }
 

@@ -83,7 +83,7 @@ leads.forEach(([id,name,ratio,depth,decay])=>add(id,name,'тоны и лиды',
   `Сольный голос: ${ratio?`FM с отношением ${ratio}`:id==='game'?'нечётные гармоники':'расстроенные пилы'}; рассчитан на короткие фразы.`,220,
   { decay,sustain:0.45,filterFreq:7000,unisonVoices:id==='dual'?2:1,unisonDetune:7,unisonSpread:0.65,
     pitchDrop:id==='chirp'?3:1,pitchTime:0.08,
-    formants:id==='vowel'?[{freq:550,gain:10},{freq:950,gain:7},{freq:2400,gain:5}]:undefined,
+    formants:id==='vowel'?[{freq:550,gain:2},{freq:950,gain:2},{freq:2400,gain:2}]:undefined,
     wave:ratio?{partials:fm(ratio,depth,decay)}:recipe(id==='game'?'square':'saw').wave }));
 
 const keys: [string,string,number,number,number][] = [
@@ -101,14 +101,14 @@ keys.forEach(([id,name,ratio,depth,decay])=>add(id,name,'клавишные',['k
 const pads: [string,string,number,number,number][] = [
   ['warm','тёплая ткань',0,0.7,1700], ['ice','ледяная ткань',2.71,0.45,9500],
   ['hollow-pad','полый фон',2,0.9,3500], ['drone','низкий дрон',1.41,1,2200],
-  ['choir-pad','далёкая гласная',1,0.6,5000], ['dust-pad','пыльный фон',0,1.2,4200],
+  ['choir-pad','далёкая гласная',1,0.6,5000], ['dust-pad','пыльный фон',0,1,4200],
   ['fifth-pad','открытая квинта',1.5,0.5,6200], ['dark-pad','тёмный свелл',3,1,1200],
 ];
 pads.forEach(([id,name,ratio,attack,filterFreq])=>add(id,name,'фоны',['pad','фон','drone','texture'],
   `Длинная подложка, атака ${attack} с; ${id==='dust-pad'?'шумовая примесь':ratio?`негармоничная окраска ×${ratio}`:'мягкие гармоники'}.`,id==='drone'?55:110,
   { attack,decay:3.5,sustain:0.85,filterFreq,unisonVoices:3,unisonDetune:id==='ice'?17:8,unisonSpread:0.8,
     filterEnvAmount:id==='dark-pad'?-12:0,filterEnvTime:2,
-    formants:id==='choir-pad'?[{freq:350,gain:8},{freq:800,gain:6},{freq:2300,gain:5}]:undefined,
+    formants:id==='choir-pad'?[{freq:350,gain:2},{freq:800,gain:2},{freq:2300,gain:2}]:undefined,
     wave:{partials:[sine(),sine(2,0.3),sine(3,0.12),...(ratio?[sine(ratio,0.2)]:[]),...(id==='dust-pad'?[noise(0.15,3)]:[])]} }));
 
 add('data-rain','дождь данных','прочее',['FX','glitch','цифровой'],'Короткий негармоничный FM-сигнал; для редких россыпей на верхних рядах.',880,{decay:0.055,wave:{partials:fm(7.13,4,0.025)}});

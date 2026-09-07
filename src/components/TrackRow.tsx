@@ -166,6 +166,7 @@ interface Props {
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   onTransformSample: (trackId: string, prompt: string, strength: number, duration?: number) => void;
   genBusy: boolean;
+  onCancelSampleJob: () => void;
   // Редактор инструмента: раздвижной режим карточки — остальной
   // интерфейс трека съёживается, редактор занимает его место.
   editorOpen: boolean;
@@ -220,6 +221,7 @@ export const TrackRow = memo(function TrackRow({
   onGenerateSample,
   onTransformSample,
   genBusy,
+  onCancelSampleJob,
   editorOpen,
   editorTab,
   onEditorTab,
@@ -1300,6 +1302,7 @@ export const TrackRow = memo(function TrackRow({
           onTransformSample={onTransformSample}
           onGenerateSample={onGenerateSample}
           busy={genBusy}
+          onCancelSampleJob={onCancelSampleJob}
           onScratchBegin={onScratchBegin}
           onScratchMove={onScratchMove}
           onScratchEnd={onScratchEnd}

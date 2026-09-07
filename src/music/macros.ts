@@ -17,7 +17,10 @@ export function normalizeMacros(value: unknown): SoundMacro[] | undefined {
     ids.add(id);
     const bindings = Array.isArray(m.bindings) ? m.bindings.slice(0, 8).filter((b: SoundMacro['bindings'][number]) =>
       b && typeof b.target === 'string' && b.target.startsWith('instrument.') && Object.hasOwn(PARAMETERS, b.target) && Number.isFinite(b.depth))
-      .map((b: SoundMacro['bindings'][number]) => ({ target: b.target, depth: Math.max(-24000, Math.min(24000, b.depth)) })) : [];
+      .map((b: SoundMacro['bindings'][number]) => {
+        const p = PARAMETERS[b.target], limit = p.scale === 'log' ? 16 : p.max - p.min;
+        return { target: b.target, depth: Math.max(-limit, Math.min(limit, b.depth)) };
+      }) : [];
     return [{ id, name: String(m.name ?? 'макрос').slice(0, 48), value: Number.isFinite(m.value) ? Math.max(0, Math.min(1, m.value)) : 0.5, bindings }];
   });
 }

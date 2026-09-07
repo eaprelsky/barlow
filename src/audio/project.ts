@@ -8,6 +8,7 @@ import { strFromU8, strToU8, unzip, zipSync } from 'fflate';
 import type { Patch } from '../types';
 import { isPatch, normalizePatch } from '../types';
 import { getSampleBlob, putSamples } from './library';
+import { sampleAssets } from '../music/sampleZones';
 
 interface ProjectManifest {
   barlow: 1;
@@ -36,7 +37,7 @@ export async function exportProject(patch: Patch): Promise<Blob> {
   const files: Record<string, Uint8Array> = {};
   const manifest: ProjectManifest = { barlow: 1, exportedAt: Date.now(), samples: [] };
   const seen = new Set<string>();
-  for (const inst of patch.instruments) {
+  for (const inst of patch.instruments.flatMap(sampleAssets)) {
     if (!inst.sampleId || seen.has(inst.sampleId)) continue;
     seen.add(inst.sampleId);
     const blob = await getSampleBlob(inst.sampleId);
@@ -106,7 +107,7 @@ export async function importProject(file: File): Promise<Patch | null> {
     if (entries['manifest.json'] && !names.has(base)) throw new Error('Сэмпл отсутствует в манифесте');
     staged.push({ blob: new Blob([new Uint8Array(data)], { type }), name: names.get(base) ?? base });
   }
-  for (const inst of patch.instruments) {
+    for (const inst of patch.instruments.flatMap(sampleAssets)) {
     if (inst.sampleId && !ids.has(inst.sampleId)) throw new Error(`Архив не содержит сэмпл «${inst.sampleName ?? inst.sampleId}»`);
   }
   await putSamples(staged);

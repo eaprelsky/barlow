@@ -56,6 +56,10 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   }
   for (const inst of instruments) {
     if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;
+    if (inst.sampleZones !== undefined) {
+      if (!Array.isArray(inst.sampleZones) || !unique(inst.sampleZones, 64)) return false;
+      if (inst.sampleZones.some(z => typeof z.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(z.sampleId))) return false;
+    }
   }
   for (const scene of scenes) {
     if (scene.slots !== undefined && !record(scene.slots)) return false;

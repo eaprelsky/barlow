@@ -14,6 +14,7 @@
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
 import { resolveMacros } from '../music/macros';
+import { sampleAssets } from '../music/sampleZones';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
@@ -138,12 +139,14 @@ export class AudioEngine implements AudioBackend {
     if (st.waveform !== 'sample') return;
     const ctx = this.ensureCtx();
     if (st.sampleMode === 'scratch') await ensureScratchModule(ctx);
-    if (!st.sampleId || this.sampleCache.has(st.sampleId)) return;
-    const blob = await getSampleBlob(st.sampleId);
-    if (!blob) throw new Error(`Нет записи «${st.sampleName ?? st.sampleId}» в библиотеке`);
-    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
-    normalizeBuffer(buf);
-    this.sampleCache.set(st.sampleId, buf);
+    for (const asset of sampleAssets(st)) {
+      if (this.sampleCache.has(asset.sampleId)) continue;
+      const blob = await getSampleBlob(asset.sampleId);
+      if (!blob) throw new Error(`Нет записи «${asset.sampleName ?? asset.sampleId}» в библиотеке`);
+      const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+      normalizeBuffer(buf);
+      this.sampleCache.set(asset.sampleId, buf);
+    }
   }
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new Map<string, Voice>();
@@ -890,7 +893,7 @@ export class AudioEngine implements AudioBackend {
       if (!this.master || !this.noiseBuffer) return;
       // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
       // без объяснений; говорим.
-      if (st.waveform === 'sample' && !this.sampleCache.get(st.sampleId ?? '')) {
+      if (st.waveform === 'sample' && !sampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
         this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
         return;
       }
@@ -910,6 +913,8 @@ export class AudioEngine implements AudioBackend {
           notes,
           ctx.currentTime + 0.02,
           stepSec,
+          undefined,
+          (id) => this.sampleCache.get(id) ?? null,
         );
         let cleaned = false;
         const cleanup = () => {
@@ -1109,7 +1114,7 @@ export class AudioEngine implements AudioBackend {
           for (const ev of events) {
             const at = clock.nextStepTime + ev.dt * stepDur;
             if (track.mono) this.duckLastVoice(track.id, at);
-            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null, st, ev.notes, at, stepDur, ev.durSec);
+            const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null, st, ev.notes, at, stepDur, ev.durSec, (id) => this.sampleCache.get(id) ?? null);
             if (track.mono) this.lastVoices.set(track.id, voice);
             // Дебаг-мост: что реально триггернулось (включая доли арпеджиатора).
             this.noteSink?.(track.id, at, ev.notes);
@@ -1268,7 +1273,7 @@ export class AudioEngine implements AudioBackend {
             for (const ev of events) {
               const at = tt + ev.dt * stepDur;
               if (track.mono && prevVoice && prevVoice.stopAt > at) duckVoice(prevVoice, at);
-              const voice = triggerVoice(ctx, chain, noise, sample, st, ev.notes, at, stepDur, ev.durSec);
+              const voice = triggerVoice(ctx, chain, noise, sample, st, ev.notes, at, stepDur, ev.durSec, (id) => this.sampleCache.get(id) ?? null);
               if (track.mono) prevVoice = voice;
               // Сайдчейн: ноты этой дорожки качают приглушаемых.
               for (const rt of patch.tracks) {

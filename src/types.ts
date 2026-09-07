@@ -12,6 +12,7 @@ import { recipeForLegacy } from './music/waveRecipes';
 import { validPatchInput } from './patchValidation';
 import { PARAMETERS, normalizeParameter, type ParameterId } from './parameters';
 import { normalizeMacros, type SoundMacro } from './music/macros';
+import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -421,6 +422,7 @@ export interface Instrument {
   sampleEnd?: number;
   // Режим сэмплера: прямой, гранулярный (облако осколков) или скрэтч.
   sampleMode?: SampleMode;
+  sampleZones?: SampleZone[];
   macros?: SoundMacro[];
   /** Direct sampler: reverse the selected region, sustain by looping it. */
   sampleReverse?: boolean;
@@ -482,7 +484,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'macros', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
+  'waveform', 'wave', 'macros', 'sampleZones', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -549,7 +551,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 42;
+export const PATCH_VERSION = 43;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -599,6 +601,7 @@ export function makeInstrument(
     vibratoRate: partial.vibratoRate,
     vibratoDepth: partial.vibratoDepth,
     sampleMode: partial.sampleMode,
+    sampleZones: normalizeSampleZones(partial.sampleZones),
     macros: normalizeMacros(partial.macros),
     sampleReverse: partial.sampleReverse,
     sampleLoop: partial.sampleLoop,
@@ -631,7 +634,7 @@ export function instrumentOfFields(
   const picked = Object.fromEntries(
     INSTRUMENT_FIELDS.filter((f) => fields[f] !== undefined).map((f) => [f, fields[f]]),
   );
-  return makeInstrument({ ...(picked as Partial<Instrument>), id, name });
+  return normalizeInstrument(picked, id, name);
 }
 
 export function makeTrackWithInstrument(
@@ -924,6 +927,7 @@ function normalizeInstrument(
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
     rootHz: typeof t.rootHz === 'number' ? clamp(t.rootHz, 1, 24000, 440) : 440,
     keyTracking: t.keyTracking === true,
+    sampleZones: normalizeSampleZones(t.sampleZones),
     macros: normalizeMacros(t.macros),
     sampleReverse: t.sampleReverse === true,
     sampleLoop: t.sampleLoop === true,

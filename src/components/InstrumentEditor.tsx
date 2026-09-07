@@ -29,6 +29,7 @@ import {
 } from '../music/instrumentPresets';
 import { Knob } from './Knob';
 import { MacroEditor } from './MacroEditor';
+import { SampleZoneEditor } from './SampleZoneEditor';
 import { NumField } from './NumField';
 import { WaveCanvas } from './WaveCanvas';
 import { NoteGraph } from './EnvGraph';
@@ -76,6 +77,7 @@ interface Props {
   onTransformSample: (trackId: string, prompt: string, strength: number, duration?: number) => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   busy: boolean;
+  onCancelSampleJob: () => void;
   onScratchBegin: (pos: number) => void;
   onScratchMove: (pos: number) => void;
   onScratchEnd: () => void;
@@ -118,6 +120,7 @@ export function InstrumentEditor({
   onTransformSample,
   onGenerateSample,
   busy,
+  onCancelSampleJob,
   onScratchBegin,
   onScratchMove,
   onScratchEnd,
@@ -428,6 +431,8 @@ export function InstrumentEditor({
       </div>
 
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
+      {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}
+        title="Остановить загрузку и применение результата. Уже отправленное задание провайдер может выполнить и списать оплату">прекратить ожидание</button></div>}
       {tab === 'snd' && (
         <div className="we-body">
           <div className="group" data-ob="inst-group">
@@ -913,7 +918,7 @@ export function InstrumentEditor({
           ))}
 
           {isSample && (
-            <div className="inline">
+            <div className="inline sampler-tuning">
               <label title="Высота = тоника дорожки × отношение шкалы. Выключено — прежнее воспроизведение по отношениям шкалы">
                 <input type="checkbox" checked={inst.keyTracking ?? false}
                   onChange={(e) => onChangeInst({ keyTracking: e.target.checked })} />
@@ -939,8 +944,9 @@ export function InstrumentEditor({
               </select>
             </label>
           )}
+          {isSample && <SampleZoneEditor key={inst.sampleId ?? 'empty'} zones={inst.sampleZones} onChange={(sampleZones) => onChangeInst({sampleZones})} />}
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
-            <div className="inline">
+            <div className="inline sampler-tuning">
               <label><input type="checkbox" checked={inst.sampleReverse ?? false}
                 onChange={(e) => onChangeInst({ sampleReverse: e.target.checked })} />реверс фрагмента</label>
               <label><input type="checkbox" checked={inst.sampleLoop ?? false}

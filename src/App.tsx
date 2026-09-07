@@ -30,6 +30,7 @@ import { SliderField } from './components/SliderField';
 import { DialogHost } from './components/Dialog';
 import { alertDialog, confirmDialog } from './components/dialogs';
 import { DEFAULT_PROVIDER, PROVIDERS } from './ai/providers';
+import { SampleJobs } from './ai/jobs';
 import { putSample, getSampleBlob } from './audio/library';
 import type { SampleMeta } from './audio/library';
 import type { InstrumentPreset } from './music/instrumentPresets';
@@ -39,6 +40,7 @@ import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave, autosaveStatus, subscribeAutosave, flushAutosave, loadRecovery, resumeAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { createBridge, setByPointer } from './bridge';
+import { sampleAssets } from './music/sampleZones';
 import { slugify } from './utils/slug';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
@@ -319,6 +321,9 @@ export default function App() {
   const [fileOpen, setFileOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
+  const [sampleJobs] = useState(() => new SampleJobs());
+  useEffect(() => () => sampleJobs.cancelAll(), [sampleJobs]);
+  const cancelSampleJob = useCallback((id: string) => { sampleJobs.cancel(id); setGenBusy(b => ({ ...b, [id]: false })); }, [sampleJobs]);
   // Редактор инструмента: id дорожки в раздвижном режиме (остальные
   // съёживаются) + вкладка, на которой его открыли.
   const [editorTrack, setEditorTrack] = useState<string | null>(null);
@@ -481,17 +486,29 @@ export default function App() {
     return counts;
   }, [patch.scenes]);
 
-  const togglePlay = useCallback(() => {
-    if (engine.playing) {
-      engine.stop();
-      setPlaying(false);
-      return;
-    }
-    void engine.ensureSamples(patch).then(() => {
-      engine.play(patch, sceneId);
-      setPlaying(true);
+  const playRequest = useRef(0), pendingPlay = useRef(false);
+  const [preparingPlay, setPreparingPlay] = useState(false);
+  const stopTransport = useCallback(() => {
+    ++playRequest.current; pendingPlay.current = false; setPreparingPlay(false);
+    engine.stop(); setPlaying(false);
+  }, [engine]);
+  const startTransport = useCallback((snapshot: Patch, sid: string) => {
+    if (engine.playing || pendingPlay.current) return;
+    const request = ++playRequest.current;
+    pendingPlay.current = true; setPreparingPlay(true);
+    void engine.ensureSamples(snapshot).then(() => {
+      if (request !== playRequest.current || history.snapshot().present !== snapshot || liveRef.current.sceneId !== sid) return;
+      engine.play(snapshot, sid); setPlaying(true);
+    }).catch(error => {
+      if (request === playRequest.current) void alertDialog(errText(error), 'не удалось начать воспроизведение');
+    }).finally(() => {
+      if (request === playRequest.current) { pendingPlay.current = false; setPreparingPlay(false); }
     });
-  }, [engine, patch, sceneId]);
+  }, [engine, history]);
+  const togglePlay = useCallback(() => {
+    if (engine.playing || pendingPlay.current) stopTransport();
+    else startTransport(history.snapshot().present, sceneId);
+  }, [engine, history, sceneId, startTransport, stopTransport]);
 
   const [libraryFocus, setLibraryFocus] = useState(0);
   useEffect(() => {
@@ -515,7 +532,7 @@ export default function App() {
 
   // Пока играем — прогреваем кэш сэмплов (загрузил новый — заиграл без рестарта).
   useEffect(() => {
-    if (playing) void engine.ensureSamples(patch);
+    if (playing) void engine.ensureSamples(patch).catch(error => engine.warnSink?.(errText(error)));
   }, [playing, patch, engine]);
 
   // ---- Сцены ----
@@ -578,14 +595,9 @@ export default function App() {
       onTransport(cmd) {
         const live = liveRef.current;
         if (cmd.action === 'play') {
-          if (engine.playing) return;
-          void engine.ensureSamples(live.patch).then(() => {
-            engine.play(live.patch, live.sceneId);
-            setPlaying(true);
-          });
+          startTransport(live.patch, live.sceneId);
         } else if (cmd.action === 'stop') {
-          engine.stop();
-          setPlaying(false);
+          stopTransport();
         } else if (cmd.action === 'scene' && cmd.sceneId) {
           if (!live.patch.scenes.some((s) => s.id === cmd.sceneId)) {
             throw new Error(`сцены «${cmd.sceneId}» нет в патче`);
@@ -608,7 +620,7 @@ export default function App() {
       bridge.dispose();
       bridgeRef.current = null;
     };
-  }, [engine, setPatch, setPatchStep]);
+  }, [engine, setPatch, setPatchStep, startTransport, stopTransport]);
 
   // Патч и транспорт — стрим в мост (коалесценция внутри моста).
   useEffect(() => {
@@ -1197,88 +1209,57 @@ export default function App() {
     });
   }, []);
 
-  /** Сгенерировать сэмпл по описанию и положить в слот трека. */
-  const generateSample = useCallback(
-    async (trackId: string, prompt: string, seconds: number) => {
-      const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
-      if (!ai.keys[provider.id]) {
-        void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-генерация');
-        return;
+  /** One application job for both providers and both entry points. */
+  const runSampleJob = useCallback(async (trackId: string, prompt: string, seconds: number, strength?: number) => {
+    const provider = PROVIDERS.find(p => p.id === ai.providerId) ?? PROVIDERS[0];
+    if (!ai.keys[provider.id]) { void alertDialog('Сначала укажи API-ключ в настройках', 'ИИ'); return; }
+    if (strength !== undefined && !provider.transform) { void alertDialog('Провайдер не поддерживает преобразование записи', 'ИИ'); return; }
+    if (!prompt.trim() || !Number.isFinite(seconds) || seconds <= 0) return;
+    const before = history.snapshot().present;
+    const target = before.tracks.find(t => t.id === trackId);
+    const baseline = target && before.instruments.find(i => i.id === target.instrumentId);
+    if (!target || !baseline) return;
+    const job = sampleJobs.begin(trackId);
+    if (!job) return;
+    setGenBusy(b => ({ ...b, [trackId]: true }));
+    try {
+      const params = { apiKey: ai.keys[provider.id], prompt: prompt.trim(), signal: job.signal };
+      let result: Blob;
+      if (strength !== undefined) {
+        const audio = baseline.sampleId ? await getSampleBlob(baseline.sampleId) : null;
+        if (!audio) throw new Error('В основном слоте нет записи для преобразования');
+        job.signal.throwIfAborted();
+        result = await provider.transform!({ ...params, audio, strength, duration: seconds });
+      } else result = await provider.generate({ ...params, seconds });
+      if (!sampleJobs.current(trackId, job)) return;
+      const meta = await putSample(result, prompt.slice(0, 40));
+      if (!sampleJobs.current(trackId, job)) return;
+      const latest = history.snapshot().present;
+      const currentTrack = latest.tracks.find(t => t.id === trackId);
+      const approved = currentTrack && latest.instruments.find(i => i.id === currentTrack.instrumentId);
+      if (!approved) { void alertDialog(`«${meta.name}» сохранён в библиотеке. Исходная дорожка удалена.`, 'ИИ'); return; }
+      if (approved !== baseline) {
+        const replace = await confirmDialog({ title: 'инструмент изменился', text: `«${meta.name}» уже в библиотеке. Применить результат к текущему инструменту дорожки «${currentTrack.name}»?`, okLabel: 'применить', cancelLabel: 'оставить в библиотеке' });
+        if (!replace || !sampleJobs.current(trackId, job)) return;
       }
-      setGenBusy((b) => ({ ...b, [trackId]: true }));
-      try {
-        const blob = await provider.generate({ apiKey: ai.keys[provider.id], prompt, seconds });
-        const meta = await putSample(blob, prompt.slice(0, 40));
-        setPatch((p) => ({
-          ...p,
-          instruments: p.instruments.map((i) =>
-            i.id === p.tracks.find((t) => t.id === trackId)?.instrumentId
-              ? { ...i, sampleId: meta.id, sampleName: meta.name }
-              : i,
-          ),
-        }));
-      } catch (e) {
-        void alertDialog(
-          `Генерация не удалась: ${e instanceof Error ? e.message : String(e)}`,
-          'ИИ-генерация',
-        );
-      } finally {
-        setGenBusy((b) => ({ ...b, [trackId]: false }));
-      }
-    },
-    [ai],
-  );
-
-  /** ИИ-морфинг сэмпла в слоте по описанию (audio-to-audio, fal.ai):
-   *  результат ложится в слот новым сэмпла — исходник остаётся
-   *  в библиотеке. */
-  const transformSample = useCallback(
-    async (trackId: string, prompt: string, strength: number, duration?: number) => {
-      const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
-      if (!ai.keys[provider.id]) {
-        void alertDialog('Сначала укажи API-ключ: кнопка «настройки» в шапке', 'ИИ-преобразование');
-        return;
-      }
-      if (!provider.transform || !provider.supportsTransform) {
-        void alertDialog(
-          `«${provider.title}» не умеет audio-to-audio — только текст→звук. Переключись на fal.ai в настройках (шестерёнка в шапке)`,
-          'ИИ-преобразование',
-        );
-        return;
-      }
-      const track = patch.tracks.find((t) => t.id === trackId);
-      const inst = track && instOf(patch, track);
-      const blob = inst?.sampleId ? await getSampleBlob(inst.sampleId) : null;
-      if (!blob) return;
-      setGenBusy((b) => ({ ...b, [trackId]: true }));
-      try {
-        const out = await provider.transform({
-          apiKey: ai.keys[provider.id],
-          prompt,
-          audio: blob,
-          strength,
-          duration,
-        });
-        const meta = await putSample(out, prompt.slice(0, 40));
-        setPatch((p) => ({
-          ...p,
-          instruments: p.instruments.map((i) =>
-            i.id === p.tracks.find((t) => t.id === trackId)?.instrumentId
-              ? { ...i, sampleId: meta.id, sampleName: meta.name }
-              : i,
-          ),
-        }));
-      } catch (e) {
-        void alertDialog(
-          `Преобразование не удалось: ${e instanceof Error ? e.message : String(e)}`,
-          'ИИ-преобразование',
-        );
-      } finally {
-        setGenBusy((b) => ({ ...b, [trackId]: false }));
-      }
-    },
-    [ai, patch.tracks, instOf],
-  );
+      setPatchStep(p => {
+        const track = p.tracks.find(t => t.id === trackId);
+        if (!track || p.instruments.find(i => i.id === track.instrumentId) !== approved) return p;
+        const shared = p.tracks.some(t => t.id !== trackId && t.instrumentId === track.instrumentId);
+        const id = shared ? uid('i') : approved.id;
+        const instrument: Instrument = { ...approved, id, waveform: 'sample', sampleId: meta.id, sampleName: meta.name,
+          sampleStart: undefined, sampleEnd: undefined, sampleZones: undefined, keyTracking: false };
+        return { ...p, tracks: p.tracks.map(t => t.id === trackId ? { ...t, instrumentId: id } : t),
+          instruments: shared ? [...p.instruments, instrument] : p.instruments.map(i => i.id === id ? instrument : i) };
+      });
+    } catch (error) {
+      if (!job.signal.aborted) void alertDialog(`Задание не выполнено: ${errText(error)}`, 'ИИ');
+    } finally {
+      if (sampleJobs.finish(trackId, job)) setGenBusy(b => ({ ...b, [trackId]: false }));
+    }
+  }, [ai, history, sampleJobs, setPatchStep]);
+  const generateSample = useCallback((trackId: string, prompt: string, seconds: number) => runSampleJob(trackId, prompt, seconds), [runSampleJob]);
+  const transformSample = useCallback((trackId: string, prompt: string, strength: number, duration = 5) => runSampleJob(trackId, prompt, duration, strength), [runSampleJob]);
 
   /** Заморозить жест скрэтча сэмпла: оффлайн-рендер ноты жеста → WAV
    *  в библиотеку (десктоп положит файлом в папку сэмплов). */
@@ -1437,7 +1418,7 @@ export default function App() {
           onAudition={auditionPreset}
           onAssignSample={assignSample}
           usedSampleIds={
-            new Set(patch.instruments.map((i) => i.sampleId).filter((v): v is string => !!v))
+            new Set(patch.instruments.flatMap(sampleAssets).map((a) => a.sampleId))
           }
           onAddTrack={addTrack}
           onClose={() => setShowLib(false)}
@@ -1452,10 +1433,10 @@ export default function App() {
           className={playing ? 'play-btn stop' : 'play-btn'}
           data-ob="play"
           onClick={togglePlay}
-          title={playing ? 'Стоп — пробел' : 'Играть — пробел'}
-          aria-label={playing ? 'Стоп' : 'Играть'}
+          title={preparingPlay ? 'Отменить подготовку — пробел' : playing ? 'Стоп — пробел' : 'Играть — пробел'}
+          aria-label={preparingPlay ? 'Отменить подготовку' : playing ? 'Стоп' : 'Играть'}
         >
-          {playing ? '■' : '▶'}
+          {preparingPlay ? '…' : playing ? '■' : '▶'}
         </button>
         <label data-ob="bpm" title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
           темп
@@ -2068,6 +2049,7 @@ export default function App() {
             onGenerateSample={generateSample}
             onTransformSample={transformSample}
             genBusy={!!genBusy[t.id]}
+            onCancelSampleJob={() => cancelSampleJob(t.id)}
             editorOpen={editorActive === t.id}
             editorTab={editorTab}
             onEditorTab={setEditorTab}

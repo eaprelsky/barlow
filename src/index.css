@@ -3536,3 +3536,11 @@ svg.auto-lane {
 .macro-item { min-width: 90px; padding: 6px; }
 .macro-item details { max-width: 420px; }
 .macro-item input, .macro-item select { max-width: 180px; }
+.sampler-tuning { gap: 20px; flex-wrap: wrap; }
+.sampler-tuning label { display: inline-flex; align-items: center; gap: 6px; }
+.sample-zones { padding: 8px 0; }
+.sample-zones summary { cursor: pointer; }
+.sample-zones fieldset { border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; padding: 10px; }
+.sample-zones fieldset > label { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.sample-zones fieldset select { min-width: 160px; max-width: 320px; }
+.sample-zones .inline { gap: 14px; flex-wrap: wrap; }

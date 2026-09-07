@@ -25,6 +25,7 @@ import {
 } from '../music/instrumentPresets';
 import type { Track } from '../types';
 import { WAVEFORM_LABELS } from '../types';
+import { sampleAssets } from '../music/sampleZones';
 import { isDesktop } from '../platform';
 import { alertDialog, confirmDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
@@ -124,6 +125,7 @@ export function SoundBrowser({
   );
 
   const q = query.trim().toLowerCase();
+  const reservedSamples = new Set([...usedSampleIds, ...all.flatMap(p => sampleAssets(p.track).map(a => a.sampleId))]);
   // Фокус текущего пресета дорожки: его категория раскрывается, карточка
   // подсвечивается классом .current и приезжает в поле зрения — видно,
   // от чего отталкиваешься при переборе тембров.
@@ -210,7 +212,7 @@ export function SoundBrowser({
     const user = p.category === USER_CATEGORY;
     // Сэмпл-пресет без сэмпла не звучит: ▶ неактуален, а применение
     // перебрасывает на вкладку «сэмплы» — сэмпл выбрать сразу.
-    const needsSample = p.track.waveform === 'sample' && !p.track.sampleId;
+    const needsSample = p.track.waveform === 'sample' && sampleAssets(p.track).length === 0;
     const current = p.name === targetPresetName;
     const card = (
       <>
@@ -411,7 +413,7 @@ export function SoundBrowser({
               </p>
             )}
             {samplesShown.map((meta) => {
-              const used = usedSampleIds.has(meta.id);
+              const used = reservedSamples.has(meta.id);
               return (
                 <div className="lib-item" key={meta.id}>
                   <button
@@ -424,8 +426,8 @@ export function SoundBrowser({
                   </button>
                   <span className="mini-info">{fmtSize(meta.size)}</span>
                   {used && (
-                    <span className="lib-used" title="Используется хотя бы одним треком — удалить нельзя">
-                      в треке
+                    <span className="lib-used" title="Используется проектом или сохранённым пресетом — удалить нельзя">
+                      используется
                     </span>
                   )}
                   <button

@@ -40,7 +40,7 @@ try {
       const saved = Math.random; let seed = 9876;
       Math.random = () => ((seed = (1664525 * seed + 1013904223) >>> 0) / 4294967296);
       let v;
-      try { v = triggerVoice(ctx, { hp }, noise, sample, { ...base, ...over }, notes, 0.05, 0.125); }
+      try { v = triggerVoice(ctx, { hp }, noise, sample, { ...base, ...over }, notes, 0.05, 0.125, undefined, () => sample); }
       finally { Math.random = saved; }
       if (duckAt !== undefined) duckVoice(v, duckAt);
       const buf = await ctx.startRendering();
@@ -70,6 +70,15 @@ try {
     const loopedShort = await render({waveform:'sample',sampleEnd:.08,sampleLoop:true,loopCrossfadeMs:10});
     check('loop sustains beyond source region', loopedShort.d.slice(10000,15000).some(x=>Math.abs(x)>.01) && plainShort.d.slice(10000,15000).every(x=>Math.abs(x)<1e-6));
     const diff = (a, b) => a.d.reduce((m, x, i) => Math.max(m, Math.abs(x - b.d[i])), 0);
+    const { sampleZoneAt, sampleAssets } = await import('/src/music/sampleZones.ts');
+    const zoneId='a'.repeat(64);
+    const zones=[{id:'soft',sampleId:zoneId,rootHz:440,lowHz:20,highHz:24000,lowVelocity:0,highVelocity:.5},
+      {id:'hard',sampleId:zoneId,rootHz:220,lowHz:20,highHz:24000,lowVelocity:.5,highVelocity:1}];
+    check('zone boundaries choose one velocity layer including velocity 1',sampleZoneAt(zones,220,.49).id==='soft' && sampleZoneAt(zones,220,.5).id==='hard' && sampleZoneAt(zones,220,1).id==='hard');
+    check('asset discovery deduplicates main and zone samples',sampleAssets({sampleId:zoneId,sampleZones:zones}).length===1);
+    const zoned = await render({waveform:'sample',sampleZones:zones},[nt(0,.4)]);
+    const explicitRoot = await render({waveform:'sample',keyTracking:true,rootHz:440},[nt(0,.4)]);
+    check('zone rootHz is applied in actual PCM',diff(zoned,explicitRoot)<1e-6);
     for (const [name, over] of [
       ['wave', {}], ['tail', { wave: { partials: [{ type: 'sine', ratio: 1, amp: 1, decay: 1 }] } }],
       ['sample', { waveform: 'sample' }], ['grain', { waveform: 'sample', sampleMode: 'grain' }],
@@ -150,6 +159,10 @@ try {
     check('validated project imports sample and patch', valid?.instruments[0].sampleId === id);
     const roundtrip = await importProject(new File([await exportProject(valid)], 'roundtrip.zip'));
     check('project roundtrip retains asset IDs', roundtrip?.instruments[0].sampleId === id);
+    const zoneProject={...valid,instruments:valid.instruments.map(i=>({...i,sampleId:undefined,sampleZones:[{...zones[0],sampleId:id}]}))};
+    const zoneRoundtrip=await importProject(new File([await exportProject(zoneProject)],'zone.zip'));
+    check('zone-only asset survives portable project roundtrip',zoneRoundtrip.instruments[0].sampleZones[0].sampleId===id);
+    check('invalid zone hash rejected at input boundary',!isPatch({...zoneProject,instruments:[{...zoneProject.instruments[0],sampleZones:[{...zones[0],sampleId:'bad'}]}]}));
     const before = JSON.stringify(await listSamples());
     for (const [name, bad] of [
       ['path escape', { ...files, '../outside.bin': bytes }],

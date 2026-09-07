@@ -3,13 +3,16 @@
 // barlow локальный личный инструмент; для публикации ключи должны уйти
 // за прокси (Tauri решит это нативно).
 
+import { abortableDelay } from './jobs';
 export interface GenerateParams {
+  signal?: AbortSignal;
   apiKey: string;
   prompt: string;
   seconds: number;
 }
 
 export interface TransformParams {
+  signal?: AbortSignal;
   apiKey: string;
   prompt: string;
   audio: Blob;
@@ -38,8 +41,9 @@ export interface SampleProvider {
  *  запрещённых регионов) или упавший прокси. */
 async function netFetch(url: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, init);
-  } catch {
+    return await fetch(url, { ...init, signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(180000)]) });
+  } catch (error) {
+    if (init.signal?.aborted || error instanceof DOMException && ['AbortError','TimeoutError'].includes(error.name)) throw error;
     const host = new URL(url).host;
     throw new Error(
       `нет соединения с ${host} — сеть, прокси или гео-блок (ElevenLabs недоступен в этом регионе). ` +
@@ -53,9 +57,10 @@ const elevenlabs: SampleProvider = {
   title: 'ElevenLabs (звуковые эффекты)',
   keyHint: 'Взять: elevenlabs.io → Profile → API Keys',
   supportsTransform: false,
-  async generate({ apiKey, prompt, seconds }) {
+  async generate({ apiKey, prompt, seconds, signal }) {
     const res = await netFetch('https://api.elevenlabs.io/v1/sound-generation', {
       method: 'POST',
+      signal,
       headers: {
         'xi-api-key': apiKey,
         'Content-Type': 'application/json',
@@ -90,9 +95,12 @@ async function falRun(
   model: string,
   input: Record<string, unknown>,
   timeoutMs = 180_000,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  signal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(timeoutMs)]);
   const auth = { Authorization: `Key ${apiKey}` };
   const sub = await netFetch(`https://queue.fal.run/${model}`, {
+    signal,
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -105,19 +113,23 @@ async function falRun(
   if (!queued.status_url || !queued.response_url) {
     throw new Error('fal.ai: очередь не вернула адреса результата');
   }
+  for (const url of [queued.status_url, queued.response_url]) {
+    if (new URL(url).origin !== 'https://queue.fal.run') throw new Error('fal.ai: неожиданный адрес очереди');
+  }
   const deadline = Date.now() + timeoutMs;
   for (let i = 0; ; i++) {
     if (Date.now() > deadline) throw new Error('fal.ai: не дождались результата (таймаут)');
-    await new Promise((r) => setTimeout(r, i === 0 ? 400 : 800));
+    await abortableDelay(i === 0 ? 400 : 800, signal);
     let j: { status?: string } | null = null;
     try {
-      const st = await fetch(queued.status_url, { headers: auth });
+      const st = await fetch(queued.status_url, { headers: auth, signal });
       if (st.ok) j = (await st.json()) as { status?: string };
     } catch {
+      signal.throwIfAborted();
       continue; // моргнула сеть — попробуем ещё
     }
     if (j?.status === 'COMPLETED') {
-      const res = await netFetch(queued.response_url, { headers: auth });
+      const res = await netFetch(queued.response_url, { headers: auth, signal });
       if (!res.ok) throw new Error(`fal.ai ${res.status}: результат не отдаётся`);
       return (await res.json()) as Record<string, unknown>;
     }
@@ -138,10 +150,10 @@ function toDataUri(blob: Blob): Promise<string> {
 }
 
 /** Достать аудио из ответа fal и скачать блобом. */
-async function falAudioOf(out: Record<string, unknown>): Promise<Blob> {
+async function falAudioOf(out: Record<string, unknown>, signal?: AbortSignal): Promise<Blob> {
   const url = (out.audio as { url?: string } | undefined)?.url;
   if (!url) throw new Error('fal.ai: в ответе нет аудио');
-  const res = await netFetch(url, {});
+  const res = await netFetch(url, { signal });
   if (!res.ok) throw new Error(`fal.ai ${res.status}: аудио не скачивается`);
   return res.blob();
 }
@@ -151,16 +163,17 @@ const fal: SampleProvider = {
   title: 'fal.ai (генерация и морфинг)',
   keyHint: 'Взять: fal.ai → Keys. Формат «id:secret» целиком',
   supportsTransform: true,
-  async generate({ apiKey, prompt, seconds }) {
+  async generate({ apiKey, prompt, seconds, signal }) {
     const out = await falRun(apiKey, FAL_T2S, {
       prompt,
       duration: seconds,
       output_format: 'wav',
       enable_prompt_expansion: false,
-    });
-    return falAudioOf(out);
+    }, 180000, signal);
+    return falAudioOf(out, signal);
   },
-  async transform({ apiKey, prompt, audio, strength, duration }) {
+  async transform({ apiKey, prompt, audio, strength, duration, signal }) {
+    signal?.throwIfAborted();
     // Сила → init_noise_level модели: 0.1 держится исходник, 1.0 —
     // полная переделка (сколько шума подмешивается в источник).
     const input: Record<string, unknown> = {
@@ -171,8 +184,9 @@ const fal: SampleProvider = {
       enable_prompt_expansion: false,
     };
     if (duration && duration > 0.2 && duration <= 47) input.duration = duration;
-    const out = await falRun(apiKey, FAL_A2A, input);
-    return falAudioOf(out);
+    signal?.throwIfAborted();
+    const out = await falRun(apiKey, FAL_A2A, input, 180000, signal);
+    return falAudioOf(out, signal);
   },
 };
 
