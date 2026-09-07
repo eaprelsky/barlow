@@ -69,7 +69,12 @@ try {
   const target = before === 140 ? 141 : 140;
   const r = await bridge.request({ type: 'set_param', pointer: '/bpm', value: target });
   if (!r.ok) fail('set_param не подтверждён: ' + r.error);
-  await delay(400);
+  // Autosave is deliberately debounced by 400 ms; wait for observable
+  // persistence, not an equal-duration timer racing the React effect.
+  await page.waitForFunction((bpm) => {
+    try { return JSON.parse(localStorage.getItem('barlow.patch.v12') ?? '{}').bpm === bpm; }
+    catch { return false; }
+  }, target, { timeout: 3000 });
   const stored = await page.evaluate(() => {
     for (let i = 0; i < 30; i++) {
       const raw = localStorage.getItem('barlow.patch.v12');

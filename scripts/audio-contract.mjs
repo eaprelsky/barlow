@@ -50,6 +50,25 @@ try {
       return { d, rms: Math.sqrt(sum / d.length), peak, stopAt: v.stopAt };
     }
     const ratioNear = (a, b, want, tol = 0.01) => Math.abs(b.rms / a.rms - want) < tol;
+    const { prepareSampleRegion } = await import('/src/audio/sampleRegion.ts');
+    const regionCtx = new OfflineAudioContext(2, 100, 8000);
+    const ramp = regionCtx.createBuffer(2, 20, 8000);
+    ramp.getChannelData(0).set(Array.from({length:20}, (_,i)=>i/20));
+    ramp.getChannelData(1).set(Array.from({length:20}, (_,i)=>-i/20));
+    const reversed = prepareSampleRegion(regionCtx,ramp,0.0005,0.00175,true,0);
+    check('reverse uses selected region and preserves stereo', Math.abs(reversed.buffer.getChannelData(0)[0]-.65)<1e-6 && Math.abs(reversed.buffer.getChannelData(1)[9]+.2)<1e-6);
+    const loop = prepareSampleRegion(regionCtx,ramp,0,0.0025,false,0.5);
+    check('loop keeps attack and joins after crossfade', loop.buffer.getChannelData(0)[0]===0 && loop.loopStart===.0005 && Math.abs(loop.buffer.getChannelData(0)[19]-.15)<1e-6);
+    check('region cache reuses prepared PCM', reversed===prepareSampleRegion(regionCtx,ramp,.0005,.00175,true,0));
+    const { resolveMacros, DEFAULT_MACROS } = await import('/src/music/macros.ts');
+    const macroBase = {...base, filterFreq:1000, macros:structuredClone(DEFAULT_MACROS)};
+    check('neutral macros preserve base parameters', resolveMacros(macroBase).filterFreq===1000 && macroBase.macros.length===3);
+    macroBase.macros[0].value=1;
+    const resolved = resolveMacros(macroBase);
+    check('macro logarithmic depth is applied once', resolved.filterFreq===4000 && resolveMacros(resolved).filterFreq===4000 && macroBase.filterFreq===1000);
+    const plainShort = await render({waveform:'sample',sampleEnd:.08});
+    const loopedShort = await render({waveform:'sample',sampleEnd:.08,sampleLoop:true,loopCrossfadeMs:10});
+    check('loop sustains beyond source region', loopedShort.d.slice(10000,15000).some(x=>Math.abs(x)>.01) && plainShort.d.slice(10000,15000).every(x=>Math.abs(x)<1e-6));
     const diff = (a, b) => a.d.reduce((m, x, i) => Math.max(m, Math.abs(x - b.d[i])), 0);
     for (const [name, over] of [
       ['wave', {}], ['tail', { wave: { partials: [{ type: 'sine', ratio: 1, amp: 1, decay: 1 }] } }],
@@ -117,6 +136,12 @@ try {
     const bytes = new Uint8Array([1, 2, 3, 4]);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     const id = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+    const { saveUserPreset, loadUserPresets } = await import('/src/music/instrumentPresets.ts');
+    saveUserPreset('sampler roundtrip', {waveform:'sample',sampleId:id,sampleStart:.2,sampleEnd:.8,rootHz:220,keyTracking:true,sampleReverse:true,sampleLoop:true,loopCrossfadeMs:25,macros:structuredClone(DEFAULT_MACROS)});
+    const savedPreset = loadUserPresets().find(p=>p.name==='sampler roundtrip');
+    check('user preset retains sampler mapping region loop and macros', savedPreset.track.sampleId===id && savedPreset.track.sampleStart===.2 && savedPreset.track.rootHz===220 && savedPreset.track.sampleReverse && savedPreset.track.sampleLoop && savedPreset.track.macros.length===3);
+    const stableId=savedPreset.id; saveUserPreset('sampler roundtrip',savedPreset.track);
+    check('user preset overwrite retains stable ID',loadUserPresets().find(p=>p.name==='sampler roundtrip').id===stableId);
     const p = { ...normalized, instruments: [{ id: 'sample-test', name: 'test', waveform: 'sample', sampleId: id }] };
     const files = { 'patch.json': strToU8(JSON.stringify(p)), [`samples/${id}.bin`]: bytes,
       'manifest.json': strToU8(JSON.stringify({ barlow: 1, samples: [{ id, name: 'test', file: `${id}.bin` }] })) };

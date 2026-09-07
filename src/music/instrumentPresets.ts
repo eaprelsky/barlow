@@ -2,9 +2,15 @@
 // пользователю остаётся накидать ноты в нотном стане.
 
 import type { Instrument, Track } from '../types';
+import { INSTRUMENT_FIELDS } from '../types';
 import { recipeForLegacy } from './waveRecipes';
+import { IDM_BANK } from './idmBank';
+const SOUND_FIELDS = INSTRUMENT_FIELDS.filter((f): f is Exclude<typeof f, 'fmRatio' | 'fmIndex' | 'voiceMorph' | 'ksLife'> =>
+  !['fmRatio', 'fmIndex', 'voiceMorph', 'ksLife'].includes(f));
 
 export interface InstrumentPreset {
+  id?: string;
+  tags?: string[];
   name: string;
   // Группа в браузере инструментов (порядок категорий — CATEGORY_ORDER).
   category: string;
@@ -30,6 +36,7 @@ export const CATEGORY_ORDER = [
 // только пустому треку (регистр — часть тембра); шкала — интервальный
 // строй — всегда пользователя и на совпадение не влияет.
 const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
+  ...SOUND_FIELDS,
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay',
@@ -82,7 +89,7 @@ const RAW_PRESETS: {
   {
     name: 'щипок',
     category: 'стартовые',
-    hint: 'Рецепт щипка: Karplus-Strong сам гаснет как струна, спад короткий. ksLife дольше — тянется; фильтр ниже — глухой палец',
+    hint: 'Аддитивный щипок: гармоники с независимым затуханием. Хвосты строк дольше — звук тянется; фильтр ниже — глухой палец',
     track: {
       name: 'щипок', waveform: 'karplus', freq: 220,
       ksLife: 2, length: 8, rate: 2, attack: 0.002, decay: 0.35, filterFreq: 6000,
@@ -248,7 +255,7 @@ const RAW_PRESETS: {
   {
     name: 'струна',
     category: 'тоны и лиды',
-    hint: 'Karplus-Strong: щипок струны, выросший из шума — живой и пластинчатый',
+    hint: 'Синтетическая струна: сумма гармоник с затухающими хвостами — щипковая окраска',
     track: {
       name: 'струна', waveform: 'karplus', freq: 110,
       ksLife: 3,
@@ -473,7 +480,7 @@ const RAW_PRESETS: {
   {
     name: 'плюк-бас',
     category: 'бас',
-    hint: 'Щипковый бас: Karplus короткой жизни — быстро гаснущая струна, удобно под глухой качающий рисунок',
+    hint: 'Щипковый бас: быстро гаснущие гармоники — глухой качающий рисунок',
     track: {
       name: 'плюк', waveform: 'karplus', freq: 65.4,
       ksLife: 1.2,
@@ -795,7 +802,10 @@ const convertPresetV39 = (p: {
   return { ...p, track: track as unknown as InstrumentPreset['track'] };
 };
 
-export const INSTRUMENT_PRESETS: InstrumentPreset[] = RAW_PRESETS.map(convertPresetV39);
+export const INSTRUMENT_PRESETS: InstrumentPreset[] = [...RAW_PRESETS.map((p, index) => ({
+  ...convertPresetV39(p), id: `factory-v39-${String(index + 1).padStart(3, '0')}`,
+  tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'],
+})), ...IDM_BANK];
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр
 // с несущей под своим именем, в браузере инструментов категорией «мои».
@@ -812,6 +822,7 @@ export const USER_CATEGORY = 'мои';
 export const USER_PRESETS_EVENT = 'barlow:user-presets';
 
 const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
+  ...SOUND_FIELDS,
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
@@ -837,7 +848,11 @@ export function loadUserPresets(): InstrumentPreset[] {
           (p as { track?: unknown }).track !== null,
       )
       // Сохранённые до v39 модели пересобираются в строки рецептами.
-      .map((p) => convertPresetV39({ name: p.name, category: USER_CATEGORY, track: p.track }));
+      .map((p) => ({ ...convertPresetV39({ name: p.name, category: USER_CATEGORY, track: p.track }),
+        id: typeof (p as InstrumentPreset).id === 'string' ? (p as InstrumentPreset).id : `user:${p.name}`,
+        tags: Array.isArray((p as InstrumentPreset).tags)
+          ? (p as InstrumentPreset).tags!.filter((t) => typeof t === 'string').slice(0, 16) : ['user'],
+      }));
   } catch {
     /* повреждённое хранилище — своих пресетов просто нет */
     return [];
@@ -852,22 +867,16 @@ export function saveUserPreset(
   const sound = Object.fromEntries(
     SAVE_FIELDS.filter((f) => track[f] !== undefined).map((f) => [f, track[f]]),
   ) as Partial<Track & Instrument>;
-  const list = loadUserPresets().filter((p) => p.name !== name);
-  list.push({ name, category: USER_CATEGORY, track: sound });
-  try {
-    localStorage.setItem(USER_KEY, JSON.stringify(list));
-    window.dispatchEvent(new Event(USER_PRESETS_EVENT));
-  } catch {
-    /* переполнение квоты — молча */
-  }
+  const existing = loadUserPresets();
+  const list = existing.filter((p) => p.name !== name);
+  list.push({ id: existing.find((p) => p.name === name)?.id ?? `user:${crypto.randomUUID()}`,
+    name, category: USER_CATEGORY, tags: ['user'], track: sound });
+  localStorage.setItem(USER_KEY, JSON.stringify(list));
+  window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }
 
 export function deleteUserPreset(name: string): void {
   const list = loadUserPresets().filter((p) => p.name !== name);
-  try {
-    localStorage.setItem(USER_KEY, JSON.stringify(list));
-    window.dispatchEvent(new Event(USER_PRESETS_EVENT));
-  } catch {
-    /* ignore */
-  }
+  localStorage.setItem(USER_KEY, JSON.stringify(list));
+  window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }

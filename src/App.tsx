@@ -11,7 +11,6 @@ import { defaultPatch } from './music/defaultPatch';
 import { SCALE_PRESETS } from './music/scales';
 import { mutatePattern, scatterHeights, spreadHeights, type MutateModes } from './music/mutate';
 import {
-  INSTRUMENT_FIELDS,
   instrumentOfFields,
   isPatch,
   makeNote,
@@ -734,45 +733,14 @@ export default function App() {
         const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
         if (!track || !inst) return p;
         const t = preset.track;
-        // Легаси-имена в INSTRUMENT_FIELDS (fmRatio…) в пресетах v39 пусты,
-        // но индексируем сырой записью — списком полей владеет types.ts.
-        const src = t as unknown as Record<string, unknown>;
-        const instUpd: Record<string, unknown> = {};
-        for (const f of INSTRUMENT_FIELDS) {
-          if (src[f] !== undefined) instUpd[f] = src[f];
-        }
-        // Поля, у которых пресет задаёт базу, а не «пусто»:
-        const instDefaults: Partial<Instrument> = {
-          sustain: t.sustain ?? 0,
-          pitchDrop: t.pitchDrop ?? 1,
-          pitchTime: t.pitchTime ?? 0.08,
-          filterLow: t.filterLow ?? 20,
-          filterFreq: t.filterFreq ?? 8000,
-          filterQ: t.filterQ ?? 0.8,
-          sampleMode: t.sampleMode ?? 'plain',
-          grainSizeMs: t.grainSizeMs ?? 120,
-          grainCount: t.grainCount ?? 10,
-          grainPos: t.grainPos ?? 0.3,
-          grainScatter: t.grainScatter ?? 0.15,
-          vibratoRate: t.vibratoRate ?? 5,
-          vibratoDepth: t.vibratoDepth ?? 0,
-          unisonVoices: t.unisonVoices ?? 1,
-          unisonDetune: t.unisonDetune ?? 12,
-          unisonSpread: t.unisonSpread ?? 0,
-          vibratoDelay: t.vibratoDelay ?? 0,
-          filterEnvAmount: t.filterEnvAmount ?? 0,
-          filterEnvTime: t.filterEnvTime ?? 0.3,
-          // Формантный слой пресета или «нет» — прежний не тянется.
-          formants: t.formants,
-        };
-        const merged: Instrument = { ...inst, ...instDefaults, ...instUpd, name: preset.name } as Instrument;
+        const merged = instrumentOfFields(t, inst.id, preset.name);
         const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
         const updTrack: Track = {
           ...track,
           ...(empty && t.freq !== undefined ? { freq: t.freq } : {}),
           effects: t.effects ?? [],
           mono: t.mono,
-          mods: t.mods ? t.mods.map((m) => ({ ...m })) : track.mods,
+          mods: t.mods ? t.mods.map((m) => ({ ...m })) : [],
         };
         // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
         const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);
@@ -801,7 +769,7 @@ export default function App() {
       const inst = instrumentOfFields(preset.track, uid('i'), preset.name);
       const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
       const freq = empty ? preset.track.freq ?? track.freq : track.freq;
-      engine.previewSounding({ ...track, ...inst, freq });
+      engine.previewSounding({ ...track, ...inst, freq, effects: preset.track.effects ?? [], mods: preset.track.mods ?? [], mono: preset.track.mono });
     },
     [patch.tracks, engine],
   );

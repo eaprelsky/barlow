@@ -3530,3 +3530,9 @@ svg.auto-lane {
   user-select: none;
   -webkit-user-select: none;
 }
+
+.macro-editor { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.macro-editor summary { cursor: pointer; }
+.macro-item { min-width: 90px; padding: 6px; }
+.macro-item details { max-width: 420px; }
+.macro-item input, .macro-item select { max-width: 180px; }

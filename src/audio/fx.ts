@@ -5,6 +5,7 @@
 
 import type { Effect, Mod, SoundingTrack } from '../types';
 import { modRateHz } from '../types';
+import { resolveMacros } from '../music/macros';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -232,6 +233,7 @@ export interface MasterNodes {
 }
 
 export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120): TrackChain {
+  track = resolveMacros(track);
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
   hp.frequency.value = track.filterLow;

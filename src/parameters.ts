@@ -34,6 +34,7 @@ export const PARAMETERS = {
   'instrument.unisonDetune': spec('instrument', 'расстройка унисона', 0, 50, 0.5, 12, 'центов'),
   'instrument.unisonSpread': spec('instrument', 'ширина унисона', 0, 1, 0.01, 0, '%'),
   'instrument.rootHz': spec('instrument', 'тоника записи', 1, 24000, 1, 440, 'Гц', 'log'),
+  'instrument.loopCrossfadeMs': spec('instrument', 'стык петли', 0, 500, 1, 10, 'мс'),
   'instrument.sampleStart': spec('instrument', 'начало сэмпла', 0, 3600, 0.001, 0, 'с'),
   'instrument.sampleEnd': spec('instrument', 'конец сэмпла', 0.001, 3600, 0.001, 3600, 'с'),
   'instrument.grainSizeMs': spec('instrument', 'размер зерна', 10, 1000, 1, 120, 'мс', 'log'),

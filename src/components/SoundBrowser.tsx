@@ -26,7 +26,7 @@ import {
 import type { Track } from '../types';
 import { WAVEFORM_LABELS } from '../types';
 import { isDesktop } from '../platform';
-import { confirmDialog } from './dialogs';
+import { alertDialog, confirmDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
 
 interface Props {
@@ -148,7 +148,7 @@ export function SoundBrowser({
     // Поиск смотрит и в пояснение встроенных — «дабстеп» находит воббл.
     const filtered = q
       ? all.filter((p) =>
-          [p.name, p.hint ?? '', p.category, WAVEFORM_LABELS[p.track.waveform ?? 'wave']]
+          [p.name, p.hint ?? '', p.category, ...(p.tags ?? []), WAVEFORM_LABELS[p.track.waveform ?? 'wave']]
             .join(' ')
             .toLowerCase()
             .includes(q),
@@ -172,8 +172,10 @@ export function SoundBrowser({
       danger: true,
     });
     if (!ok) return;
-    deleteUserPreset(name);
-    setListVersion((v) => v + 1);
+    try {
+      deleteUserPreset(name);
+      setListVersion((v) => v + 1);
+    } catch (error) { await alertDialog(String(error), 'не удалось удалить пресет'); }
   };
 
   const playSample = (meta: SampleMeta, blobUrl: string) => {
@@ -258,7 +260,7 @@ export function SoundBrowser({
     );
     return (
       <div
-        key={p.name}
+        key={p.id ?? p.name}
         className={'inst-card' + (user ? ' user' : '') + (current ? ' current' : '')}
         role="group"
         aria-label={p.name}

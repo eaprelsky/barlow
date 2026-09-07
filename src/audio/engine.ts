@@ -13,6 +13,7 @@
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
+import { resolveMacros } from '../music/macros';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
@@ -88,7 +89,7 @@ export function effectiveParams(track: Track, pattern: import('../types').Patter
 /** Дорожка со слитым инструментом: синтез видит только слитый вид. */
 function stOf(patch: Patch | null, track: Track): SoundingTrack {
   const inst = patch?.instruments?.find((i) => i.id === track.instrumentId);
-  return inst ? { ...track, ...inst } : (track as unknown as SoundingTrack);
+  return resolveMacros(inst ? { ...track, ...inst } : (track as unknown as SoundingTrack));
 }
 
 function validSceneId(patch: Patch | null, want: string): string {
@@ -131,6 +132,19 @@ export class AudioEngine implements AudioBackend {
   private startAt = 0;
   // Декодированные сэмплы библиотеки, id → AudioBuffer.
   private sampleCache = new Map<string, AudioBuffer>();
+  private previewRequest = 0;
+  private previewCleanup: (() => void) | null = null;
+  private async loadSoundSample(st: SoundingTrack): Promise<void> {
+    if (st.waveform !== 'sample') return;
+    const ctx = this.ensureCtx();
+    if (st.sampleMode === 'scratch') await ensureScratchModule(ctx);
+    if (!st.sampleId || this.sampleCache.has(st.sampleId)) return;
+    const blob = await getSampleBlob(st.sampleId);
+    if (!blob) throw new Error(`Нет записи «${st.sampleName ?? st.sampleId}» в библиотеке`);
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    normalizeBuffer(buf);
+    this.sampleCache.set(st.sampleId, buf);
+  }
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new Map<string, Voice>();
   private sceneId = '';
@@ -233,21 +247,8 @@ export class AudioEngine implements AudioBackend {
 
   /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
   async ensureSamples(patch: Patch): Promise<void> {
-    const ctx = this.ensureCtx();
-    await ensureScratchModule(ctx);
     for (const track of patch.tracks) {
-      const st = stOf(patch, track);
-      if (st.waveform !== 'sample' || !st.sampleId) continue;
-      if (this.sampleCache.has(st.sampleId)) continue;
-      const blob = await getSampleBlob(st.sampleId);
-      if (!blob) continue;
-      try {
-        const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
-        normalizeBuffer(buf);
-        this.sampleCache.set(st.sampleId, buf);
-      } catch {
-        // Битый формат — молча пропускаем, трек будет просто молчать.
-      }
+      await this.loadSoundSample(stOf(patch, track));
     }
   }
 
@@ -578,6 +579,9 @@ export class AudioEngine implements AudioBackend {
   }
 
   stop(): void {
+    ++this.previewRequest;
+    this.previewCleanup?.();
+    this.previewCleanup = null;
     if (this.timer !== null) {
       window.clearInterval(this.timer);
       this.timer = null;
@@ -864,6 +868,9 @@ export class AudioEngine implements AudioBackend {
    *  для трека из текущего патча. Тот же triggerVoice, что и в
    *  планировщике — слышим ровно то, что будет в паттерне. */
   previewSounding(st: SoundingTrack, noteRow = 0): void {
+    st = resolveMacros(st);
+    const request = ++this.previewRequest;
+    this.previewCleanup?.();
     // Контекст и resume — синхронно, в стеке клика (см. previewScratch).
     const ctx0 = this.ensureCtx();
     if (ctx0.state === 'suspended') void ctx0.resume();
@@ -873,12 +880,13 @@ export class AudioEngine implements AudioBackend {
       const patch = this.patch;
       if (!patch) return;
       try {
-        await this.ensureSamples(patch);
+        await this.loadSoundSample(st);
       } catch {
         this.warnSink?.('Сэмпл не загрузился — «▶ нота» молчит (битый файл в библиотеке?)');
         return;
       }
       const ctx = this.ensureCtx();
+      if (request !== this.previewRequest) return;
       if (!this.master || !this.noiseBuffer) return;
       // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
       // без объяснений; говорим.
@@ -886,13 +894,10 @@ export class AudioEngine implements AudioBackend {
         this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
         return;
       }
-      const chain = this.chains.get(st.id);
       try {
-        // Минимальная «цепочка» для triggerVoice: ему нужен только вход hp.
-        const pseudo: TrackChain = chain
-          ? chain
-          : ({ hp: ctx.createGain() } as unknown as TrackChain);
-        if (!chain) (pseudo.hp as GainNode).connect(this.master.input);
+        // Audition has its own complete chain: it must not inherit the old
+        // track's filters/FX or alter its running notes.
+        const pseudo = makeChain(ctx, st, this.master.input, patch.bpm);
         const pattern = patternInScene(st, this.scene());
         const stepSec = stepDuration(st, patch.bpm, pattern);
         const notes = [makeNote(noteRow, 0.9, 1)];
@@ -906,6 +911,21 @@ export class AudioEngine implements AudioBackend {
           ctx.currentTime + 0.02,
           stepSec,
         );
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          voice.amp.gain.cancelScheduledValues(ctx.currentTime);
+          voice.amp.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
+          window.setTimeout(() => {
+            for (const source of voice.sources) { try { (source as AudioScheduledSourceNode).stop?.(); } catch { /* ended */ } source.disconnect(); }
+            voice.amp.disconnect();
+            disposeChain(pseudo);
+          }, 30);
+        };
+        const tail = Math.max(0.1, ...(st.effects ?? []).map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
+        const timeout = window.setTimeout(cleanup, Math.max(0, voice.stopAt - ctx.currentTime + tail) * 1000);
+        this.previewCleanup = () => { window.clearTimeout(timeout); cleanup(); };
         // Голос живёт своей огибающей; хвост подчищаем по stopAt.
         const src = voice.sources[0];
         try {

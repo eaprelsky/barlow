@@ -28,6 +28,7 @@ import {
   saveUserPreset,
 } from '../music/instrumentPresets';
 import { Knob } from './Knob';
+import { MacroEditor } from './MacroEditor';
 import { NumField } from './NumField';
 import { WaveCanvas } from './WaveCanvas';
 import { NoteGraph } from './EnvGraph';
@@ -295,8 +296,12 @@ export function InstrumentEditor({
       });
       if (!ok) return;
     }
-    saveUserPreset(n, st);
-    bumpInstruments((v) => v + 1);
+    try {
+      saveUserPreset(n, st);
+      bumpInstruments((v) => v + 1);
+    } catch (error) {
+      await confirmDialog({ title: 'не удалось сохранить инструмент', text: String(error), okLabel: 'понятно', onlyOk: true });
+    }
   };
 
   // ---- Скрэтч ----
@@ -422,6 +427,7 @@ export function InstrumentEditor({
         </button>
       </div>
 
+      <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
       {tab === 'snd' && (
         <div className="we-body">
           <div className="group" data-ob="inst-group">
@@ -932,6 +938,18 @@ export function InstrumentEditor({
                 <option value="scratch">скрэтч</option>
               </select>
             </label>
+          )}
+          {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
+            <div className="inline">
+              <label><input type="checkbox" checked={inst.sampleReverse ?? false}
+                onChange={(e) => onChangeInst({ sampleReverse: e.target.checked })} />реверс фрагмента</label>
+              <label><input type="checkbox" checked={inst.sampleLoop ?? false}
+                onChange={(e) => onChangeInst({ sampleLoop: e.target.checked })} />петля на длину ноты</label>
+              {inst.sampleLoop && <label title="Сглаживание стыка; ограничено половиной фрагмента. Первая атака сохраняется">
+                стык, мс <NumField value={inst.loopCrossfadeMs ?? 10} {...parameterRange('instrument.loopCrossfadeMs')}
+                  onChange={(loopCrossfadeMs) => onChangeInst({ loopCrossfadeMs })} />
+              </label>}
+            </div>
           )}
           {isSample && (st.sampleMode ?? 'plain') === 'grain' && (
             <>

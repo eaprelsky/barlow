@@ -5,6 +5,8 @@
 import type { Note, SoundingTrack, WavePartial } from '../types';
 import { normalizeWave, scaleOf } from '../types';
 import type { TrackChain } from './fx';
+import { prepareSampleRegion } from './sampleRegion';
+import { resolveMacros } from '../music/macros';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -247,6 +249,7 @@ export function triggerVoice(
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
   amp.connect(chain.hp);
+  track = resolveMacros(track);
   if (track.waveform === 'wave') track = { ...track, wave: normalizeWave(track.wave) };
   const voices = notes.filter(nt => nt.vel > 0).map(nt =>
     triggerNoteVoice(ctx, amp, noise, sample, track, [nt], time, stepSec, durSec));
@@ -509,7 +512,16 @@ function triggerNoteVoice(
         // Детюн центами → множитель скорости (полутон = 2^(1/12)).
         const mul = Math.pow(2, (k * uniDet) / 1200);
         const src = ctx.createBufferSource();
-        src.buffer = sample;
+        const prepared = track.sampleReverse || track.sampleLoop
+          ? prepareSampleRegion(ctx, sample, regStart, regEnd, track.sampleReverse === true,
+            track.sampleLoop ? track.loopCrossfadeMs ?? 10 : 0)
+          : null;
+        src.buffer = prepared?.buffer ?? sample;
+        src.loop = track.sampleLoop === true;
+        if (prepared && src.loop) {
+          src.loopStart = prepared.loopStart;
+          src.loopEnd = prepared.buffer.duration;
+        }
         // Падение тона на сэмпле — рампой скорости воспроизведения:
         // «бочка из сэмпла» собирается прямо в слоте.
         if (track.pitchDrop > 1 && track.pitchTime > 0) {
@@ -535,7 +547,8 @@ function triggerNoteVoice(
         }
         out.connect(noteDest(ni));
         // Играем обрезанный кусок: offset и длительность — в секундах буфера.
-        src.start(time, regStart, Math.max(0.001, regEnd - regStart));
+        if (src.loop) src.start(time, 0);
+        else src.start(time, prepared ? 0 : regStart, Math.max(0.001, regEnd - regStart));
         src.stop(stopAt);
         sources.push(src);
       }

@@ -11,6 +11,7 @@
 import { recipeForLegacy } from './music/waveRecipes';
 import { validPatchInput } from './patchValidation';
 import { PARAMETERS, normalizeParameter, type ParameterId } from './parameters';
+import { normalizeMacros, type SoundMacro } from './music/macros';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -420,6 +421,11 @@ export interface Instrument {
   sampleEnd?: number;
   // Режим сэмплера: прямой, гранулярный (облако осколков) или скрэтч.
   sampleMode?: SampleMode;
+  macros?: SoundMacro[];
+  /** Direct sampler: reverse the selected region, sustain by looping it. */
+  sampleReverse?: boolean;
+  sampleLoop?: boolean;
+  loopCrossfadeMs?: number;
   // Гранулярный режим: длина зерна, мс.
   grainSizeMs?: number;
   // Гранулярный режим: сколько зёрен выпускает одна нота.
@@ -476,8 +482,8 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
-  'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
+  'waveform', 'wave', 'macros', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
+  'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'vibratoRate', 'vibratoDepth',
@@ -543,7 +549,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 41;
+export const PATCH_VERSION = 42;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -593,6 +599,10 @@ export function makeInstrument(
     vibratoRate: partial.vibratoRate,
     vibratoDepth: partial.vibratoDepth,
     sampleMode: partial.sampleMode,
+    macros: normalizeMacros(partial.macros),
+    sampleReverse: partial.sampleReverse,
+    sampleLoop: partial.sampleLoop,
+    loopCrossfadeMs: partial.loopCrossfadeMs,
     grainSizeMs: partial.grainSizeMs,
     grainCount: partial.grainCount,
     grainPos: partial.grainPos,
@@ -914,6 +924,10 @@ function normalizeInstrument(
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
     rootHz: typeof t.rootHz === 'number' ? clamp(t.rootHz, 1, 24000, 440) : 440,
     keyTracking: t.keyTracking === true,
+    macros: normalizeMacros(t.macros),
+    sampleReverse: t.sampleReverse === true,
+    sampleLoop: t.sampleLoop === true,
+    loopCrossfadeMs: clamp(t.loopCrossfadeMs ?? 10, 0, 500, 10),
     // Обрезка сэмпла: конец должен быть дальше начала.
     sampleStart:
       typeof t.sampleStart === 'number' ? clamp(t.sampleStart, 0, 3600, 0) : undefined,
