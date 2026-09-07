@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NumField } from './NumField';
 
 type Variant =
@@ -50,16 +50,26 @@ export function SliderField({
   onChange,
 }: Props) {
   const [field, setField] = useState(false);
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => { if (!field && returnFocus.current) { rangeRef.current?.focus(); returnFocus.current = false; } }, [field]);
   const toggle = () => setField((v) => !v);
   const num = (narrow: boolean) => (
     <NumField
       value={value} min={min} max={max} step={step} narrow={narrow}
       disabled={disabled} onChange={onChange}
+      ariaLabel={label ?? title ?? 'значение'} autoFocus
+      onBlur={() => setField(false)}
+      onFocus={e => e.currentTarget.select()}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') returnFocus.current = true; }}
     />
   );
   const range = (
     <input
+      ref={rangeRef}
+      aria-label={label ?? title ?? 'значение'}
       type="range" min={min} max={max} step={step} value={value} disabled={disabled}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setField(true); } }}
       onChange={(e) => onChange(Number(e.target.value))}
     />
   );

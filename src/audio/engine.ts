@@ -79,7 +79,7 @@ function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
 /** Эскиз может переопределять ручки трека (громкость/панорама/модуляции). */
 export function effectiveParams(track: Track, pattern: import('../types').Pattern | undefined) {
   return {
-    volume: pattern?.volume ?? track.volume,
+    volume: track.volume * (pattern?.volume ?? 1),
     pan: pattern?.pan ?? track.pan,
     mods: pattern?.mods ?? track.mods,
   };

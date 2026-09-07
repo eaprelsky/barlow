@@ -4,7 +4,7 @@
   --panel-2: #191d23;
   --border: #262b33;
   --text: #a8b0ba;
-  --text-dim: #5c6470;
+  --text-dim: #8993a1;
   --accent: #ffb454;
   --accent-2: #7ec8ff;
   --cell-bg: #20242c;
@@ -16,6 +16,22 @@
 * {
   box-sizing: border-box;
 }
+
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+.native-dialog { color: var(--text); margin: auto; max-height: calc(100dvh - 48px); overflow: auto; }
+.native-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.native-dialog:not([open]) { display: none; }
+.autosave-status { font-size: 11px; color: var(--text-dim); }
+.autosave-status.error { color: #ff9999; }
+.recovery-button { font-size: 11px; }
+.sb-apply { flex: 1; min-width: 0; border: 0; background: transparent; padding: 2px 0; text-align: left; display: flex; align-items: center; gap: 6px; }
+.autosave-strip { display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; padding-bottom: 10px; }
+.custom-rate { width: 72px; }
+.we-layers .knob-wrap { min-width: 52px; }
+.we-layers .knob-row { gap: 8px; }
+.we-layers .knob-value { font-size: 11px; }
+.cell:focus-visible { outline-offset: -2px; z-index: 4; }
+input[aria-invalid="true"] { border-color: #ff9999; }
 
 body {
   margin: 0;

@@ -184,6 +184,7 @@ export function Onboarding({
     };
 
     const onMouseDown = (e: MouseEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
       if (step.expect === 'contextmenu' && e.button === 2 && inTarget(e)) return; // само завершит contextmenu
       if (step.expect === 'click' && e.button === 0 && inTarget(e)) {
@@ -195,6 +196,7 @@ export function Onboarding({
       setShakeN((v) => v + 1);
     };
     const onContextMenu = (e: MouseEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
       if (step.expect === 'contextmenu' && inTarget(e)) {
         finishStep();
@@ -205,11 +207,13 @@ export function Onboarding({
       if (!inTarget(e)) setShakeN((v) => v + 1);
     };
     const onAux = (e: MouseEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (inCard(e) || inTarget(e)) return;
       e.preventDefault();
       e.stopPropagation();
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') return; // уйдёт в обычный обработчик — выход
       e.preventDefault();
       e.stopPropagation();
@@ -230,6 +234,7 @@ export function Onboarding({
   // стрелки глушит блокировщик выше).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       const el = e.target as HTMLElement | null;
       const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       if (e.key === 'Escape') {

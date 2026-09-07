@@ -1,10 +1,13 @@
 // Regression tests assert musical invariants against actual offline PCM.
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const port = 5197;
+mkdirSync(root + '/tmp', { recursive: true });
+writeFileSync(root + '/tmp/audio-contract.html', '<!doctype html><meta charset="utf-8"><title>Audio contract fixture</title>');
 const vite = spawn(process.execPath, [root + '/node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: root, stdio: 'ignore' });
 let browser;
 try {
@@ -17,7 +20,7 @@ try {
   if (!ready) throw new Error('Vite readiness timeout');
   browser = await chromium.launch({ executablePath: process.env.BARLOW_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
   const page = await browser.newPage();
-  await page.goto(`http://127.0.0.1:${port}`);
+  await page.goto(`http://127.0.0.1:${port}/tmp/audio-contract.html`);
   const result = await page.evaluate(async () => {
     const { triggerVoice, ensureScratchModule, duckVoice } = await import('/src/audio/voices.ts');
     const { normalizeWave, modRateHz, normalizePatch, isPatch, PATCH_VERSION } = await import('/src/types.ts');
@@ -28,7 +31,7 @@ try {
     const nt = (n = 0, vel = 1, len = 4) => ({ n, vel, len, prob: 1 });
     async function render(over = {}, notes = [nt()], duckAt) {
       const ctx = new OfflineAudioContext(2, 132300, 44100);
-      await ensureScratchModule(ctx);
+      if (over.sampleMode === 'scratch') await ensureScratchModule(ctx);
       const hp = ctx.createGain(); hp.connect(ctx.destination);
       const sample = ctx.createBuffer(1, 88200, 44100);
       const data = sample.getChannelData(0);
@@ -95,9 +98,19 @@ try {
       const src = chain.mods[0].src;
       check(`${source}: node starts tempo-synchronized`, (src.frequency ?? src.playbackRate).value === 8);
     }
-    check('schema bumped for persisted fields', PATCH_VERSION === 40);
+    check('schema bumped for persisted fields', PATCH_VERSION >= 40);
     const normalized = normalizePatch({ version: 39, bpm: 120, tracks: [], instruments: [], scenes: [], chain: [] });
-    check('previous version normalizes', normalized.version === 40);
+    check('previous version normalizes', normalized.version === PATCH_VERSION);
+    const { defaultPatch } = await import('/src/music/defaultPatch.ts');
+    const { effectiveParams } = await import('/src/audio/engine.ts');
+    const old = defaultPatch(); old.version = 40;
+    old.tracks[0].volume = 0.2;
+    old.tracks[0].patterns[0].volume = 0.8;
+    const migrated = normalizePatch(old);
+    const migratedTrack = migrated.tracks[0];
+    check('v40 absolute party gain migration retains audio level', Math.abs(effectiveParams(migratedTrack, migratedTrack.patterns[0]).volume - 0.8) < 1e-9);
+    check('track fader always scales party', Math.abs(effectiveParams({ ...migratedTrack, volume: migratedTrack.volume / 2 }, migratedTrack.patterns[0]).volume - 0.4) < 1e-9);
+    check('zero track gain mutes overridden party', effectiveParams({ ...migratedTrack, volume: 0 }, migratedTrack.patterns[0]).volume === 0);
     const { importProject, exportProject } = await import('/src/audio/project.ts');
     const { listSamples } = await import('/src/audio/library.ts');
     const { zipSync, strToU8 } = await import('/node_modules/fflate/esm/browser.js');

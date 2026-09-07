@@ -61,6 +61,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     const inCard = (e: Event) => !!cardRef.current && e.composedPath().includes(cardRef.current);
     const onPointerDown = (e: PointerEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -73,6 +74,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
       }
     };
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -87,6 +89,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
       }
     };
     const swallow = (e: Event) => {
+      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
       e.preventDefault();
       e.stopPropagation();

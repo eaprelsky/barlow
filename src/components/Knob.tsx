@@ -4,9 +4,10 @@
 // Биполярный режим (детюн, пан) рисует дугу от центра. Фильтры — лог:
 // позиция крутилки равномерна по слуху, не по герцам.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { NumField } from './NumField';
+import { useEditGesture } from './editGesture';
 
 interface Props {
   value: number;
@@ -55,7 +56,29 @@ export function Knob({
   onChange,
 }: Props) {
   const [editing, setEditing] = useState(false);
-  const drag = useRef<{ y0: number; p0: number } | null>(null);
+  const gesture = useEditGesture();
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (!editing && returnFocus.current) { svgRef.current?.focus(); returnFocus.current = false; }
+  }, [editing]);
+  const drag = useRef<{ y0: number; p0: number; v0: number } | null>(null);
+  const latest = useRef({ value, min, max, step, onChange, gesture });
+  latest.current = { value, min, max, step, onChange, gesture };
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (document.activeElement !== el) return;
+      e.preventDefault();
+      const c = latest.current;
+      c.gesture.begin();
+      c.onChange(Number(Math.min(c.max, Math.max(c.min, c.value + Math.sign(-e.deltaY) * c.step * (e.shiftKey ? 0.1 : 1))).toFixed(4)));
+      c.gesture.commit();
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [editing]);
 
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
   const toPos = (v: number) => {
@@ -79,8 +102,10 @@ export function Knob({
   const down = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.currentTarget.focus();
+    gesture.begin();
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { y0: e.clientY, p0: pos };
+    drag.current = { y0: e.clientY, p0: pos, v0: value };
   };
   const move = (e: ReactPointerEvent<SVGSVGElement>) => {
     const d = drag.current;
@@ -94,6 +119,7 @@ export function Knob({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
     drag.current = null;
+    gesture.commit();
   };
 
   if (editing) {
@@ -104,12 +130,13 @@ export function Knob({
           min={min}
           max={max}
           step={step}
+          ariaLabel={label ?? title ?? 'значение'}
           w={54}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
           onBlur={() => setEditing(false)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Enter' || e.key === 'Escape') { returnFocus.current = true; (e.target as HTMLInputElement).blur(); }
           }}
           onChange={(v) => onChange(snap(v))}
         />
@@ -121,15 +148,36 @@ export function Knob({
   return (
     <span className="knob-wrap" title={title}>
       <svg
+        ref={svgRef}
         className="knob"
+        role="slider"
+        tabIndex={0}
+        aria-label={label ?? title ?? 'значение'}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={String(Math.round(value * 10000) / 10000)}
+        aria-orientation="vertical"
         width={size}
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
-        onPointerCancel={up}
+        onPointerCancel={(e) => { if (drag.current) onChange(drag.current.v0); gesture.cancel(); drag.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}
         onDoubleClick={() => setEditing(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); return; }
+          const direction = ['ArrowUp', 'ArrowRight', 'PageUp'].includes(e.key) ? 1
+            : ['ArrowDown', 'ArrowLeft', 'PageDown'].includes(e.key) ? -1 : 0;
+          if (e.key === 'Escape' && drag.current) { onChange(drag.current.v0); gesture.cancel(); drag.current = null; e.stopPropagation(); return; }
+          if (!direction && e.key !== 'Home' && e.key !== 'End') return;
+          e.preventDefault();
+          gesture.begin();
+          const increment = step * (e.key.startsWith('Page') ? 10 : e.shiftKey ? 0.1 : 1);
+          onChange(e.key === 'Home' ? min : e.key === 'End' ? max : snap(value + direction * increment));
+          gesture.commit();
+        }}
       >
         {/* шкала-риски */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useEditGesture } from './editGesture';
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
   max: number;
   step?: number;
   title?: string;
+  ariaLabel?: string;
   disabled?: boolean;
   /** «узкий» — короткие поля (длина цикла, проценты): 2–4 символа */
   narrow?: boolean;
@@ -30,7 +32,10 @@ const PX_PER_STEP = 4; // пикселей на один шаг
 // стереть, поставить '.'), нормализация при blur/Enter — и крутилка:
 // потяни поле вертикально, Shift — мелкий шаг. Порог отделяет клик-в-поле
 // от начала драга, поэтому набор текста не ломается.
-export function NumField({ value, min, max, step = 1, title, disabled, narrow, w, wheel, autoFocus, onFocus, onBlur, onKeyDown, onChange }: Props) {
+export function NumField({ value, min, max, step = 1, title, ariaLabel, disabled, narrow, w, wheel, autoFocus, onFocus, onBlur, onKeyDown, onChange }: Props) {
+  const gesture = useEditGesture();
+  const initial = useRef(value);
+  const cancelled = useRef(false);
   const [draft, setDraft] = useState<string | null>(null);
   const drag = useRef<{ y0: number; v0: number } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -67,9 +72,10 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, w
   };
 
   const settle = () => {
+    if (cancelled.current) { cancelled.current = false; return; }
     if (draft === null) return;
-    const n = Number(draft.replace(',', '.'));
-    onChange(Number.isFinite(n) ? clamp(n) : value);
+    const n = draft.trim() === '' ? NaN : Number(draft.replace(',', '.'));
+    onChange(Number.isFinite(n) ? clamp(n) : initial.current);
     setDraft(null);
   };
 
@@ -111,13 +117,15 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, w
       max={max}
       step={step}
       title={title}
+      aria-label={ariaLabel ?? title}
       disabled={disabled}
       autoFocus={autoFocus}
       value={shown}
       onChange={(e) => commit(e.target.value)}
-      onFocus={onFocus}
+      onFocus={(e) => { initial.current = value; cancelled.current = false; gesture.begin(); onFocus?.(e); }}
       onBlur={() => {
         settle();
+        gesture.commit();
         onBlur?.();
       }}
       onPointerDown={down}
@@ -125,8 +133,17 @@ export function NumField({ value, min, max, step = 1, title, disabled, narrow, w
       onPointerUp={up}
       onPointerCancel={up}
       onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) setDraft(null);
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        if (e.key === 'Escape') setDraft(null);
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          cancelled.current = true;
+          onChange(initial.current);
+          gesture.cancel();
+          setDraft(null);
+          (e.target as HTMLInputElement).blur();
+        }
         onKeyDown?.(e);
       }}
     />

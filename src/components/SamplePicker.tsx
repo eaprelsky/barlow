@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SampleMeta } from '../audio/library';
 import { getSampleBlob, listSamples, putSample } from '../audio/library';
+import { Modal } from './Modal';
 
 interface Props {
   currentId?: string;
@@ -23,23 +24,24 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const previewRequest = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listSamples().then(setSamples).catch(() => setSamples([]));
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      previewRequest.current++;
       audioRef.current?.pause();
       audioRef.current = null;
-      setPlayingId(null);
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
-  }, [onClose]);
+  }, []);
 
   function togglePlay(meta: SampleMeta) {
+    const request = ++previewRequest.current;
+    audioRef.current?.pause();
+    if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
     if (playingId === meta.id) {
       audioRef.current?.pause();
       setPlayingId(null);
@@ -47,14 +49,15 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
     }
     void (async () => {
       const blob = await getSampleBlob(meta.id);
-      if (!blob) return;
+      if (!blob || request !== previewRequest.current) return;
       audioRef.current?.pause();
-      const audio = new Audio(URL.createObjectURL(blob));
+      urlRef.current = URL.createObjectURL(blob);
+      const audio = new Audio(urlRef.current);
       audioRef.current = audio;
       audio.onended = () => setPlayingId(null);
       setPlayingId(meta.id);
-      void audio.play();
-    })();
+      await audio.play();
+    })().catch(() => { if (request === previewRequest.current) { setPlayingId(null); setErr('Не удалось прослушать сэмпл'); } });
   }
 
   const loadFile = (f: File) => {
@@ -65,13 +68,7 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
   };
 
   return (
-    <div
-      className="modal-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal picker" role="dialog" aria-modal="true">
+    <Modal label="сэмпл в слот" className="picker" onClose={onClose}>
         <h3>сэмпл в слот</h3>
         {samples === null ? (
           <p className="empty">загружаю сэмплы…</p>
@@ -96,9 +93,9 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
                 >
                   {playingId === meta.id ? '■' : '▶'}
                 </button>
-                <span className="sample-name" title={meta.name}>
+                <button className="sample-name sb-apply" title={meta.name} onClick={e => { e.stopPropagation(); onPick(meta); }}>
                   {meta.name}
-                </span>
+                </button>
                 <span className="mini-info">{fmtSize(meta.size)}</span>
                 <span className="mini-info">
                   {new Date(meta.createdAt).toLocaleDateString()}
@@ -132,7 +129,6 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
             }}
           />
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

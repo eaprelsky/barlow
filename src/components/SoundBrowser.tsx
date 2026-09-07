@@ -212,6 +212,11 @@ export function SoundBrowser({
     const current = p.name === targetPresetName;
     const card = (
       <>
+        <button className="sb-apply" disabled={!applyTo} onClick={() => {
+          if (!applyTo) return;
+          onApply(applyTo, p);
+          if (needsSample) onTab('smp');
+        }}>
         <span className="inst-name">{p.name}</span>
         {current && (
           <span className="sb-current" title="Текущий инструмент целевой дорожки">
@@ -219,9 +224,10 @@ export function SoundBrowser({
           </span>
         )}
         <span className="sb-wave">{waveOf(p)}</span>
-        <span className="spacer" />
+        </button>
         <button
           className="sb-audition"
+          aria-label={`прослушать ${p.name}`}
           title={
             needsSample
               ? 'Слушать нечего: сэмпл ещё не выбран — примени пресет и выбери сэмпл на вкладке «сэмплы»'
@@ -238,6 +244,7 @@ export function SoundBrowser({
         {user && (
           <button
             className="inst-del"
+            aria-label={`удалить пресет ${p.name}`}
             title="Удалить пресет"
             onClick={(e) => {
               e.stopPropagation();
@@ -249,42 +256,16 @@ export function SoundBrowser({
         )}
       </>
     );
-    return user ? (
-      // div: внутри кнопки удаления, button в button нельзя
+    return (
       <div
         key={p.name}
-        className={'inst-card user' + (current ? ' current' : '')}
-        role="button"
-        tabIndex={0}
+        className={'inst-card' + (user ? ' user' : '') + (current ? ' current' : '')}
+        role="group"
+        aria-label={p.name}
         title={p.hint ?? `волна: ${waveOf(p)}`}
-        onClick={() => {
-          if (!applyTo) return;
-          onApply(applyTo, p);
-          if (needsSample) onTab('smp');
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && applyTo) {
-            onApply(applyTo, p);
-            if (needsSample) onTab('smp');
-          }
-        }}
       >
         {card}
       </div>
-    ) : (
-      <button
-        key={p.name}
-        className={'inst-card' + (current ? ' current' : '')}
-        title={p.hint ?? `волна: ${waveOf(p)}`}
-        disabled={!applyTo}
-        onClick={() => {
-          if (!applyTo) return;
-          onApply(applyTo, p);
-          if (needsSample) onTab('smp');
-        }}
-      >
-        {card}
-      </button>
     );
   };
 
@@ -320,6 +301,7 @@ export function SoundBrowser({
       <div className="browser-search-wrap">
         <input
           className="browser-search"
+          aria-label="поиск звука"
           data-ob="inst-search"
           placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
           value={query}
@@ -363,9 +345,10 @@ export function SoundBrowser({
                   className="sb-cat-label"
                   role="button"
                   tabIndex={0}
+                  aria-expanded={!closed.has(g.cat)}
                   onClick={() => toggleCat(g.cat)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') toggleCat(g.cat);
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCat(g.cat); }
                   }}
                 >
                   <span className={'sb-caret' + (closed.has(g.cat) ? '' : ' open')}>▸</span>

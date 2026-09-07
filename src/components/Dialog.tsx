@@ -1,7 +1,8 @@
 // Хост глобальных диалогов в эстетике приложения — рендерится один раз
 // в App. Логика очереди живёт в dialog.ts (там же confirmDialog/alertDialog).
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
+import { trapModalTab } from './modalFocus';
 import {
   closeDialog,
   currentDialog,
@@ -10,34 +11,46 @@ import {
 } from './dialogs';
 
 export function DialogHost() {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const textId = useId();
   useSyncExternalStore(subscribeDialogs, dialogsVersion, dialogsVersion);
   const first = currentDialog();
 
   useEffect(() => {
-    if (!first) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Escape = главный ответ: отмена для вопроса, «ок» для сообщения.
-      if (e.key === 'Escape') closeDialog(first, !!first.req.onlyOk);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const dialog = dialogRef.current;
+    if (!first || !dialog) return;
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    // The first action is cancellation; dangerous actions never take default focus.
+    (dialog.querySelector('input') ?? dialog.querySelector('button'))?.focus();
+    return () => { if (dialog.open) dialog.close(); if (previous?.isConnected) previous.focus(); };
   }, [first]);
 
   if (!first) return null;
   const { req } = first;
   return (
-    <div
-      className="modal-overlay"
+    <dialog
+      ref={dialogRef}
+      className="modal native-dialog"
+      aria-labelledby={titleId}
+      onKeyDown={e => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeDialog(first, !!req.onlyOk); }
+        else trapModalTab(e);
+      }}
+      aria-describedby={req.text ? textId : undefined}
+      onCancel={(e) => { e.preventDefault(); closeDialog(first, !!req.onlyOk); }}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) closeDialog(first, !!req.onlyOk);
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) closeDialog(first, !!req.onlyOk);
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true">
-        <h3>{req.title}</h3>
-        {req.text && <p>{req.text}</p>}
+        <h3 id={titleId}>{req.title}</h3>
+        {req.text && <p id={textId}>{req.text}</p>}
         {req.input && (
           <input
             className="modal-input"
+            aria-labelledby={titleId}
             autoFocus
             defaultValue={first.inputValue}
             placeholder={req.input.placeholder}
@@ -54,14 +67,10 @@ export function DialogHost() {
           <button
             className={req.danger ? 'danger' : ''}
             onClick={() => closeDialog(first, true)}
-            // фокус на главном действии: Enter подтверждает без таба
-            // (в prompt фокус в поле — Enter там тоже подтверждает)
-            ref={req.input ? undefined : (b) => b?.focus()}
           >
             {req.okLabel ?? 'ок'}
           </button>
         </div>
-      </div>
-    </div>
+    </dialog>
   );
 }

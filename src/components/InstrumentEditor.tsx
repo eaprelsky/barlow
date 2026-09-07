@@ -21,6 +21,7 @@ import type {
   WavePartial,
 } from '../types';
 import { ARP_MODE_LABELS, PARTIAL_TYPE_LABELS, canRouteWave, normalizeWave } from '../types';
+import { parameterRange } from '../parameters';
 import {
   instrumentNameOf,
   loadUserPresets,
@@ -914,7 +915,7 @@ export function InstrumentEditor({
               </label>
               <label title="Частота исходной записи; используется только для тонального сэмпла">
                 тоника записи, Гц
-                <NumField value={inst.rootHz ?? 440} min={1} max={24000} step={1}
+                <NumField value={inst.rootHz ?? 440} {...parameterRange('instrument.rootHz')}
                   onChange={(rootHz) => onChangeInst({ rootHz })} />
               </label>
             </div>

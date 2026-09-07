@@ -10,6 +10,7 @@
 // цикла в рантайме нет.
 import { recipeForLegacy } from './music/waveRecipes';
 import { validPatchInput } from './patchValidation';
+import { PARAMETERS, normalizeParameter, type ParameterId } from './parameters';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -214,8 +215,9 @@ export interface Pattern {
   rate: number;
   // Паттерн-родитель для форков (навигация «вариация от…»).
   forkedFrom?: string;
-  // Партия = ноты + свои ручки. Undefined — берётся с трека.
+  // v41: уровень партии × фейдер трека. Undefined = 1 (100%).
   volume?: number;
+  // Пан/модуляции при Undefined берутся с дорожки.
   pan?: number;
   mods?: Mod[];
   // Огибающая перехода сцен, сек. fadeIn — как партия входит в сцену
@@ -541,7 +543,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 40;
+export const PATCH_VERSION = 41;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -895,7 +897,7 @@ function normalizeInstrument(
           gain: clamp(typeof b.gain === 'number' ? b.gain : 1, 0, 2, 1),
         }))
     : undefined;
-  return {
+  const normalized: Instrument = {
     id,
     name,
     waveform: waveforms.includes(t.waveform as Waveform) ? (t.waveform as Waveform) : 'wave',
@@ -945,6 +947,13 @@ function normalizeInstrument(
     filterEnvTime: clamp(t.filterEnvTime ?? 0.3, 0.01, 4, 0.3),
     formants: formants && formants.length > 0 ? formants : undefined,
   };
+  const values = normalized as unknown as Record<string, unknown>;
+  for (const [id, spec] of Object.entries(PARAMETERS)) {
+    if (spec.owner !== 'instrument') continue;
+    const field = id.slice('instrument.'.length);
+    if (values[field] !== undefined) values[field] = normalizeParameter(id as ParameterId, values[field]);
+  }
+  return normalized;
 }
 
 export function normalizePatch(p: Patch): Patch {
@@ -1005,6 +1014,14 @@ export function normalizePatch(p: Patch): Patch {
           : [{ id: uid('p'), name: 'A', length: 16 }];
       }
 
+      // v41: один master gain дорожки × относительный уровень эскиза.
+      // Старые абсолютные overrides сохраняют слышимый уровень: поднимаем
+      // базу до максимума старых уровней и делим каждый эскиз на эту базу.
+      const oldVolume = clamp(t.volume, 0, 1, 0.8);
+      const trackVolume = p.version < 41
+        ? Math.max(oldVolume, ...rawPatterns.map(pt => typeof pt?.volume === 'number' ? clamp(pt.volume, 0, 1, oldVolume) : oldVolume))
+        : oldVolume;
+
       // Шкала: из патча, либо из уникальных mul старых шагов.
       let scale: number[];
       if (Array.isArray(t.scale) && t.scale.length > 0) {
@@ -1039,7 +1056,9 @@ export function normalizePatch(p: Patch): Patch {
             rate: clamp(typeof pt.rate === 'number' ? pt.rate : t.rate, 0.25, 32, 1),
             steps: normalizeSteps(pt.steps, length, rowsLen, scale),
             forkedFrom: pt.forkedFrom,
-            volume: typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 0.8) : undefined,
+            volume: p.version < 41
+              ? trackVolume > 0 ? clamp(pt.volume ?? oldVolume, 0, 1, oldVolume) / trackVolume : 1
+              : typeof pt.volume === 'number' ? clamp(pt.volume, 0, 1, 1) : undefined,
             pan: typeof pt.pan === 'number' ? clamp(pt.pan, 0, 1, 0.5) : undefined,
             mods: mods.length > 0 ? mods : undefined,
             // Огибающая перехода сцен (v30): старые патчи получают
@@ -1115,7 +1134,7 @@ export function normalizePatch(p: Patch): Patch {
           typeof t.noteSteps === 'number' && t.noteSteps > 0
             ? clamp(t.noteSteps, 0.1, 16, 1)
             : undefined,
-        volume: clamp(t.volume, 0, 1, 0.8),
+        volume: trackVolume,
         pan: clamp((t as { pan?: number }).pan ?? 0.5, 0, 1, 0.5),
         mods: normalizeMods((t as { mods?: unknown }).mods),
         arp: normalizeArp((t as { arp?: unknown }).arp),

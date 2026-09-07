@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createHistory } from './history';
+import { EditGestureContext } from './components/editGesture';
+import { Modal } from './components/Modal';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine } from './audio/engine';
 import { stepIndexAt } from './audio/timing';
@@ -34,7 +37,7 @@ import type { InstrumentPreset } from './music/instrumentPresets';
 import { instrumentNameOf } from './music/instrumentPresets';
 import { clip } from './music/clip';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
-import { loadAutosave, saveAutosave } from './storage';
+import { loadAutosave, saveAutosave, autosaveStatus, subscribeAutosave, flushAutosave, loadRecovery, resumeAutosave } from './storage';
 import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { createBridge, setByPointer } from './bridge';
 import { slugify } from './utils/slug';
@@ -151,19 +154,19 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
-  const [patch, setPatchRaw] = useState<Patch>(loadPatch);
-  const undoStack = useRef<Patch[]>([]);
-  const redoStack = useRef<Patch[]>([]);
-  const lastPush = useRef(0);
+  const [history] = useState(() => createHistory(loadPatch()));
+  const historyState = useSyncExternalStore(history.subscribe, history.snapshot);
+  const patch = historyState.present;
+  const saveStatus = useSyncExternalStore(subscribeAutosave, autosaveStatus);
   // Последний трек, у которого правили строй (шкала/тоника/октавы): новый
   // трек наследует шкалу от него — «от прошлого трека», а не от верхнего
   // в списке. Запись идемпотентна, двойной прогон апдейтера безвреден.
   const lastScaleRef = useRef<string | null>(null);
 
   // Все правки патча идут через этот сеттер: он пишет историю.
-  // Быстрые изменения (движение ползунка) коалесцируются в один шаг (< 700 мс).
+  // Границы жестов задаются явно; вычисление апдейтера происходит вне React.
   const setPatch: Dispatch<SetStateAction<Patch>> = useCallback((updater) => {
-    setPatchRaw((prev) => {
+    history.set((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (next === prev) return prev;
       const prevTracks = new Map(prev.tracks.map((t) => [t.id, t]));
@@ -179,48 +182,43 @@ export default function App() {
           lastScaleRef.current = t.id;
         }
       }
-      const now = Date.now();
-      if (now - lastPush.current > 700) {
-        undoStack.current.push(prev);
-        if (undoStack.current.length > 100) undoStack.current.shift();
-        redoStack.current = [];
-        lastPush.current = now;
-      }
       return next;
     });
-  }, []);
+  }, [history]);
 
   // Дискретная команда (перенос/вставка/удаление нот, структурные правки) —
   // всегда отдельный шаг истории: не склеивается с соседней правкой по
   // времени, Ctrl+Z откатывает ровно одно действие.
   const setPatchStep: Dispatch<SetStateAction<Patch>> = useCallback((updater) => {
-    lastPush.current = 0;
+    history.commit();
     setPatch(updater);
-  }, [setPatch]);
+  }, [setPatch, history]);
 
-  const undo = useCallback(() => {
-    setPatchRaw((prev) => {
-      const p = undoStack.current.pop();
-      if (!p) return prev;
-      redoStack.current.push(prev);
-      lastPush.current = 0;
-      return p;
-    });
-  }, []);
+  const undo = history.undo;
+  const redo = history.redo;
 
-  const redo = useCallback(() => {
-    setPatchRaw((prev) => {
-      const p = redoStack.current.pop();
-      if (!p) return prev;
-      undoStack.current.push(prev);
-      lastPush.current = 0;
-      return p;
-    });
-  }, []);
+  useEffect(() => {
+    // Native ranges and graphical editors share a pointer transaction.
+    // Knob/NumField use their own owner IDs and may replace this empty one.
+    const down = (e: PointerEvent) => {
+      if (e.button === 0 && e.target instanceof Element && e.target.closest('input[type="range"], canvas, svg')) history.begin('pointer');
+    };
+    const up = () => history.commit('pointer');
+    const cancel = () => history.cancel('pointer');
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  }, [history]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (document.querySelector('dialog[open]') || (e.target instanceof Element && e.target.closest('textarea, input[type="text"], [contenteditable="true"]'))) return;
       // e.code — физическая клавиша, раскладка не важна (Ctrl+Z на русской
       // раскладке даёт e.key «я»).
       if (e.code === 'KeyZ') {
@@ -495,6 +493,26 @@ export default function App() {
       setPlaying(true);
     });
   }, [engine, patch, sceneId]);
+
+  const [libraryFocus, setLibraryFocus] = useState(0);
+  useEffect(() => {
+    if (libraryFocus) document.querySelector<HTMLInputElement>('.browser-search')?.focus();
+  }, [libraryFocus]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) return;
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+        e.preventDefault(); setShowLib(true); setLibraryFocus(v => v + 1); return;
+      }
+      const target = e.target instanceof Element ? e.target : null;
+      if (e.code === 'Space' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey
+        && !target?.closest('input, textarea, select, button, [contenteditable="true"], [role="slider"], [role="button"]')) {
+        e.preventDefault(); togglePlay();
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [togglePlay]);
 
   // Пока играем — прогреваем кэш сэмплов (загрузил новый — заиграл без рестарта).
   useEffect(() => {
@@ -1437,6 +1455,7 @@ export default function App() {
   }, [patch, libTargetId, instOf]);
 
   return (
+    <EditGestureContext.Provider value={history}>
     <div className="app-shell">
       {showLib && (
         <SoundBrowser
@@ -1459,12 +1478,14 @@ export default function App() {
     <div className="app">
       <div className="topbar">
       <header>
+
         <span className="logo">barlow</span>
         <button
           className={playing ? 'play-btn stop' : 'play-btn'}
           data-ob="play"
           onClick={togglePlay}
-          title={playing ? 'Стоп (пробел тоже работает — в будущих версиях)' : 'Играть'}
+          title={playing ? 'Стоп — пробел' : 'Играть — пробел'}
+          aria-label={playing ? 'Стоп' : 'Играть'}
         >
           {playing ? '■' : '▶'}
         </button>
@@ -1670,13 +1691,13 @@ export default function App() {
         <span className="tb-sep" />
         <button
           className="undo-btn"
-          disabled={undoStack.current.length === 0}
+          disabled={historyState.past.length === 0 && (!historyState.gesture || historyState.gesture.base === patch)}
           onClick={undo}
           title="Отменить (Ctrl+Z)"
         >↶</button>
         <button
           className="undo-btn"
-          disabled={redoStack.current.length === 0}
+          disabled={historyState.future.length === 0}
           onClick={redo}
           title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
         >↷</button>
@@ -1689,6 +1710,22 @@ export default function App() {
           }}
         />
       </header>
+      <div className="autosave-strip">
+        <span className={`autosave-status ${saveStatus.phase}`} role="status" title={saveStatus.message}>
+          {saveStatus.phase === 'error' ? 'ошибка сохранения' : saveStatus.message}
+        </span>
+        {saveStatus.phase === 'error' && <button onClick={() => { flushAutosave(); void alertDialog(autosaveStatus().message, 'автосохранение'); }}>подробнее / повторить</button>}
+        <button className="recovery-button" title="Восстановить предыдущую успешно сохранённую версию; текущую можно вернуть через undo" onClick={async () => {
+          const recovered = loadRecovery();
+          if (!recovered) { void alertDialog('Резервной копии пока нет', 'восстановление'); return; }
+          if (await confirmDialog({ title: 'Восстановить резервную копию?', text: 'Текущий проект останется в истории undo.', okLabel: 'восстановить' })) {
+            const normalized = normalizePatch(recovered);
+            resumeAutosave();
+            setPatchStep(normalized);
+            setSceneId(normalized.scenes[0].id);
+          }
+        }}>резервная копия</button>
+      </div>
 
       {showMix && (
         <div className="mix-panel" data-ob="mix-panel">
@@ -2078,13 +2115,7 @@ export default function App() {
       </main>
 
       {showHelp && (
-        <div
-          className="modal-overlay"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowHelp(false);
-          }}
-        >
-          <div className="modal help-modal">
+        <Modal label="шпаргалка" className="help-modal" onClose={() => setShowHelp(false)}>
             <h3>шпаргалка</h3>
             <div className="help-cols">
               <div className="help-col">
@@ -2127,8 +2158,7 @@ export default function App() {
               <span className="spacer" />
               <button onClick={() => setShowHelp(false)}>закрыть</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       <DialogHost />
@@ -2138,5 +2168,6 @@ export default function App() {
       )}
     </div>
     </div>
+    </EditGestureContext.Provider>
   );
 }

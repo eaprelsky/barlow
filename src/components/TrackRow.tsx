@@ -22,6 +22,7 @@ import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import { bakeModToPoints } from '../music/modCurve';
 import { modRateHz } from '../types';
+import { parseRatio } from '../parameters';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
@@ -247,6 +248,9 @@ export const TrackRow = memo(function TrackRow({
     setView(v);
   };
   const [showPicker, setShowPicker] = useState(false);
+  const [customRate, setCustomRate] = useState(false);
+  const [rateDraft, setRateDraft] = useState<string | null>(null);
+  const [focusCell, setFocusCell] = useState({ col: 0, row: 0 });
   // Перетаскивание трека за ручку слева: линия вставки сверху/снизу карточки.
   const [dropSide, setDropSide] = useState<'above' | 'below' | null>(null);
   const dragProps = {
@@ -302,6 +306,8 @@ export const TrackRow = memo(function TrackRow({
   const viewLo = Math.max(0, Math.min(rollWin.lo, scaleRows.length - 1));
   const viewHi = Math.max(viewLo + 1, Math.min(rollWin.lo + rollWin.rows, scaleRows.length));
   const rows = scaleRows.map((ratio, i) => ({ ratio, i })).slice(viewLo, viewHi).reverse();
+  const focusedRow = rows.some(r => r.i === focusCell.row) ? focusCell.row : rows[rows.length - 1]?.i;
+  const focusedCol = Math.min(focusCell.col, pattern.length - 1);
 
   // Мир сжался (undo, правки снаружи) — окно могло выйти за диапазон.
   useEffect(() => {
@@ -594,6 +600,7 @@ export const TrackRow = memo(function TrackRow({
 
   const cellDown = (e: ReactPointerEvent<HTMLButtonElement>, col: number, row: number, onNote: boolean) => {
     if (e.button !== 0) return;
+    e.currentTarget.focus();
     clip.activeTrackId = track.id;
     if (e.shiftKey) {
       // Shift-клик: по ноте — toggle её, по пустой клетке — toggle колонки.
@@ -1476,7 +1483,7 @@ export const TrackRow = memo(function TrackRow({
           {!slotMuted ? (
             <>
           <div className="sketch-bar">
-            <label title="Сколько шагов в цикле эскиза. Разные длины у треков = полиритмия: узоры сдвигаются друг относительно друга и никогда не повторяются" data-ob="length">
+            <label title="Сколько шагов в цикле эскиза. Разные длины образуют полиритмию; рациональные отношения дают общий период повторения" data-ob="length">
               длина
               <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
             </label>
@@ -1485,11 +1492,13 @@ export const TrackRow = memo(function TrackRow({
               <select
                 className="rate-sel"
                 value={
-                  RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
+                  !customRate && RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate))
                     ? String(pattern.rate ?? track.rate)
                     : 'custom'
                 }
                 onChange={(e) => {
+                  setCustomRate(e.target.value === 'custom');
+                  setRateDraft(null);
                   if (e.target.value !== 'custom')
                     onPatternChange(track.id, pattern.id, { rate: Number(e.target.value) });
                 }}
@@ -1497,18 +1506,30 @@ export const TrackRow = memo(function TrackRow({
                 {RATE_OPTIONS.map((o) => (
                   <option key={o.v} value={String(o.v)}>{o.label}</option>
                 ))}
-                {!RATE_OPTIONS.some((o) => o.v === (pattern.rate ?? track.rate)) && (
-                  <option value="custom">своя ×{(pattern.rate ?? track.rate).toFixed(2)}</option>
-                )}
+                <option value="custom">своё отношение…</option>
               </select>
             </label>
+            {(customRate || !RATE_OPTIONS.some(o => o.v === (pattern.rate ?? track.rate))) && <label title="Множитель базовой 1/16: число или дробь, например 7/5. Допустимо 0.25…32">
+              ×<input className="custom-rate" aria-label="своё отношение шага" type="text"
+                value={rateDraft ?? String(pattern.rate ?? track.rate)}
+                aria-invalid={rateDraft !== null && parseRatio(rateDraft) === null}
+                onChange={e => setRateDraft(e.target.value)}
+                onBlur={() => {
+                  if (rateDraft !== null) { const rate = parseRatio(rateDraft); if (rate !== null) onPatternCommand(track.id, pattern.id, { rate }); }
+                  setRateDraft(null);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') { e.preventDefault(); setRateDraft(null); }
+                }} />
+            </label>}
             <SliderField
               variant="inline"
               label="громкость"
-              title="Громкость этой партии — пока играет эскиз, в любой сцене с ним. База — громкость трека; здесь задаётся своя. Двойной клик по подписи — точное число"
-              value={Math.round((pattern.volume ?? track.volume) * 100)}
+              title="Уровень партии относительно громкости дорожки: 100% сохраняет её уровень, 50% вдвое тише. Фейдер дорожки действует на все партии. Двойной клик — точное число"
+              value={Math.round((pattern.volume ?? 1) * 100)}
               min={0} max={100} step={5}
-              display={`${Math.round((pattern.volume ?? track.volume) * 100)}%`}
+              display={`${Math.round((pattern.volume ?? 1) * 100)}%`}
               unit="%"
               onChange={(volume) => onPatternChange(track.id, pattern.id, { volume: volume / 100 })}
             />
@@ -1610,11 +1631,13 @@ export const TrackRow = memo(function TrackRow({
           </div>
         </div>
         <div className="roll-body">
-        <div className="roll-cols">
+        <div className="roll-cols" role="group" aria-label={`Ноты дорожки ${track.name}`}>
           {pattern.steps.map((s, col) => (
             <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
               <button
                 className={'col-num' + (col === selectedCol ? ' sel' : '')}
+                tabIndex={-1}
+                aria-label={`Настройки шага ${col + 1}; F2 на клетке`}
                 title="Настройки нот шага: громкость и вероятность каждой"
                 onClick={() => setSelectedCol(col === selectedCol ? null : col)}
               >
@@ -1630,6 +1653,33 @@ export const TrackRow = memo(function TrackRow({
                       key={i}
                       data-col={col}
                       data-row={i}
+                      tabIndex={col === focusedCol && i === focusedRow ? 0 : -1}
+                      aria-label={`Шаг ${col + 1}, ${(track.freq * ratio).toFixed(1)} Гц${on ? ', нота' : ', пусто'}. Enter — переключить, стрелки — переместить фокус, F2 — параметры`}
+                      aria-pressed={on}
+                      onFocus={() => { setFocusCell({ col, row: i }); clip.activeTrackId = track.id; }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault(); e.stopPropagation();
+                          if (e.shiftKey && on) setSel(prev => { const next = new Set(prev); const key = `${col}:${i}`; if (next.has(key)) next.delete(key); else next.add(key); return next; });
+                          else clickCell(col, i);
+                          return;
+                        }
+                        if (e.key === 'F2') { e.preventDefault(); setSelectedCol(col); return; }
+                        if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size === 0) { e.preventDefault(); e.stopPropagation(); if (on) removeNoteAt(col, i); return; }
+                        const rowIndex = rows.findIndex(r => r.i === i);
+                        let nextCol = col, nextRow = rowIndex;
+                        if (e.key === 'ArrowLeft') nextCol--;
+                        else if (e.key === 'ArrowRight') nextCol++;
+                        else if (e.key === 'ArrowUp') nextRow--;
+                        else if (e.key === 'ArrowDown') nextRow++;
+                        else if (e.key === 'Home') { nextCol = 0; if (e.ctrlKey) nextRow = 0; }
+                        else if (e.key === 'End') { nextCol = pattern.length - 1; if (e.ctrlKey) nextRow = rows.length - 1; }
+                        else return;
+                        e.preventDefault(); e.stopPropagation();
+                        nextCol = Math.max(0, Math.min(pattern.length - 1, nextCol));
+                        const row = rows[Math.max(0, Math.min(rows.length - 1, nextRow))].i;
+                        e.currentTarget.closest('.roll-cols')?.querySelector<HTMLButtonElement>(`.cell[data-col="${nextCol}"][data-row="${row}"]`)?.focus();
+                      }}
                       className={[
                         'cell',
                         on ? 'on' : '',
