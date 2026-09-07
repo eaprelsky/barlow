@@ -136,4 +136,11 @@ Desktop/web опубликованы (b042022).
 с общим инструментом теперь независим. Контракт — note-locks.md.
 Новые PCM/данные/UI проверки и большая группа из 131072 нот проходят.
 Build, DSP 91/91, банк 120/120, прежний golden, palette/export/UI/stress,
-smoke, bridge security/UI/smoke проходят. Публикация — после коммита волны.
+smoke, bridge security/UI/smoke проходят; lint без ошибок.
+Desktop/web опубликованы (648f437).
+
+Волна A09b: новое поколение цепочек при быстром Stop/Play, адресная очистка
+старых графов и отмена pending/active region и scratch previews. Проверка
+restart проходит; build, assets/stress/locks, DSP 91/91, прежний golden,
+UI/smoke/bridge проходят, lint без ошибок. Лимиты и границы — performance.md.
+Публикация — после коммита этой волны.

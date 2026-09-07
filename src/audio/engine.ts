@@ -153,6 +153,7 @@ export class AudioEngine implements AudioBackend {
   private meters = new Map<string, { buf: Float32Array<ArrayBuffer>; level: number }>();
   private clocks = new Map<string, TrackClock>();
   private timer: number | null = null;
+  private stopRevision = 0;
   private patch: Patch | null = null;
   private startAt = 0;
   private sceneOccurrence = 0;
@@ -663,6 +664,8 @@ export class AudioEngine implements AudioBackend {
 
   stop(): void {
     this.blockedTracks.clear();
+    this.scratchEnd();
+    ++this.regionRequest; this.regionCleanup?.(); this.regionCleanup = null;
     this.pendingNotes.clear();
     this.voiceBudget.stop(this.ctx?.currentTime ?? 0);
     ++this.previewRequest;
@@ -677,37 +680,26 @@ export class AudioEngine implements AudioBackend {
     this.lastVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
-    // Запланированные переходные рампы больше не актуальны: снимаем,
-    // иначе они стреляли бы в новом запуске по старым временам.
+    // Detach this generation immediately: the next Play builds fresh LFO/FX.
+    // Each timer owns a snapshot, so an earlier Stop cannot dispose a later Play.
+    const stopped = [...this.chains.values(), ...this.retiring.map(r => r.chain)];
+    this.chains.clear(); this.retiring = []; this.meters.clear();
+    const revision = ++this.stopRevision;
     if (this.ctx) {
       const now = this.ctx.currentTime;
-      for (const chain of this.chains.values()) {
-        if (!chain.fadePlan) continue;
+      for (const chain of stopped) {
+        chain.duck.gain.cancelScheduledValues(now);
+        chain.duck.gain.setTargetAtTime(0, now, .004);
         chain.gain.gain.cancelScheduledValues(now);
-        chain.gain.gain.setValueAtTime(chain.gain.gain.value, now);
-        chain.fadePlan = null;
-        chain.fadeHold = undefined;
+        chain.gain.gain.setTargetAtTime(0, now, .004);
       }
-    }
-    // Хвосты (эхо, реверб) не доигрывают в тишине после стопа: мастер
-    // плавно гасится, цепочки разбираются — на следующем play scheduler
-    // соберёт их заново.
-    if (this.ctx && this.master) {
-      const t = this.ctx.currentTime;
-      this.master.setVolume(0, t);
+      this.master?.setVolume(0, now);
       window.setTimeout(() => {
-        if (this.playing) return; // успели нажать play — не трогаем
-        for (const chain of this.chains.values()) disposeChain(chain);
-        for (const r of this.retiring) disposeChain(r.chain);
-        this.retiring = [];
-        this.chains.clear();
-        this.meters.clear();
-        // Мастер глушился только чтобы доели хвосты; источники хвостов
-        // разобраны — возвращаем громкость, иначе превью («▶ нота»,
-        // сэмпл, скрэтч) молчит до следующего play или правки патча.
-        if (this.master) this.master.setVolume(this.patch?.masterVolume ?? 1, this.ctx!.currentTime);
+        for (const chain of stopped) disposeChain(chain);
+        if (revision === this.stopRevision && !this.playing && this.master && this.ctx)
+          this.master.setVolume(this.patch?.masterVolume ?? 1, this.ctx.currentTime);
       }, 120);
-    }
+    } else for (const chain of stopped) disposeChain(chain);
   }
 
   // ---- Ручной скрэтч-пэд: игла под мышью, вне планировщика ----
@@ -764,6 +756,8 @@ export class AudioEngine implements AudioBackend {
    *  сэмпл догружается, при отсутствии цепочки трека звук идёт в мастер.
    *  Возвращает null, если сыграло, или причину тишины (покажет UI). */
   async previewScratch(track: Track): Promise<string | null> {
+    const request = ++this.previewRequest;
+    this.previewCleanup?.(); this.previewCleanup = null;
     const patch = this.patch;
     if (!patch) return 'патч ещё не загружен';
     // Контекст и resume — синхронно, в стеке клика: после первого await
@@ -775,7 +769,8 @@ export class AudioEngine implements AudioBackend {
     const st = stOf(patch, track);
     let sample: AudioBuffer | null;
     try { sample = await this.loadMainSample(st, true); }
-    catch (e) { return `Сэмпл не загрузился: ${String(e)}`; }
+    catch (e) { return request === this.previewRequest ? `Сэмпл не загрузился: ${String(e)}` : null; }
+    if (request !== this.previewRequest) return null;
     if (!sample) return 'в слоте дорожки нет сэмпла';
     const chain = this.chains.get(track.id);
     if (!chain && !this.master) return 'звуковой граф не поднят';
@@ -813,6 +808,19 @@ export class AudioEngine implements AudioBackend {
       amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
       node.connect(amp);
       amp.connect(dest);
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return; cleaned = true;
+        window.clearTimeout(timeout);
+        off.cancelScheduledValues(ctx.currentTime);
+        off.setValueAtTime(1, ctx.currentTime + .03);
+        amp.gain.cancelScheduledValues(ctx.currentTime);
+        amp.gain.setTargetAtTime(0, ctx.currentTime, .004);
+        window.setTimeout(() => { node.disconnect(); amp.disconnect(); }, 40);
+        if (this.previewCleanup === cleanup) this.previewCleanup = null;
+      };
+      const timeout = window.setTimeout(cleanup, Math.max(0, t0 + len + .15 - ctx.currentTime) * 1000);
+      this.previewCleanup = cleanup;
       return null;
     } catch (e) {
       return `ошибка звука: ${e instanceof Error ? e.message : String(e)}`;
@@ -825,7 +833,9 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ctx;
     this.scratchMap = null;
     if (!ctx || !this.scratchNode) return;
-    this.scratchNode.parameters.get('off')!.setValueAtTime(1, ctx.currentTime + 0.05);
+    const node = this.scratchNode;
+    node.parameters.get('off')!.setValueAtTime(1, ctx.currentTime + 0.05);
+    window.setTimeout(() => node.disconnect(), 70);
     this.scratchNode = null;
   }
 
@@ -922,12 +932,17 @@ export class AudioEngine implements AudioBackend {
 
   /** Прослушать кусок сэмпла (редактор: проверка обрезки). Играет через
    *  цепочку трека, если транспорт стоит — прямо в мастер. */
+  private regionRequest = 0;
+  private regionCleanup: (() => void) | null = null;
   previewSampleRegion(track: Track, fromSec: number, toSec: number): void {
+    const request = ++this.regionRequest;
+    this.regionCleanup?.(); this.regionCleanup = null;
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
       const st = stOf(patch, track);
       const sample = await this.loadMainSample(st);
+      if (request !== this.regionRequest) return;
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
       if (!this.playing) this.applyMasterVolume(patch.masterVolume);
@@ -949,8 +964,18 @@ export class AudioEngine implements AudioBackend {
       g.connect(dest);
       src.start(t0, from, dur);
       src.stop(t0 + dur + 0.02);
-      src.onended = () => { src.disconnect(); g.disconnect(); };
-    })().catch(e => this.warnSink?.(`Прослушивание сэмпла: ${String(e)}`));
+      const release = () => { src.onended = null; src.disconnect(); g.disconnect();
+        if (this.regionCleanup === cleanup) this.regionCleanup = null;
+      };
+      const cleanup = () => {
+        g.gain.cancelScheduledValues(ctx.currentTime);
+        g.gain.setTargetAtTime(0, ctx.currentTime, .004);
+        try { src.stop(ctx.currentTime + .03); } catch { release(); }
+        if (this.regionCleanup === cleanup) this.regionCleanup = null;
+      };
+      this.regionCleanup = cleanup;
+      src.onended = release;
+    })().catch(e => { if (request === this.regionRequest) this.warnSink?.(`Прослушивание сэмпла: ${String(e)}`); });
   }
 
   /** Прослушать одну ноту слитого трека (SoundingTrack). Так браузер
