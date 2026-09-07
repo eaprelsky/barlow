@@ -19,6 +19,7 @@
     "test:jobs": "node scripts/jobs-contract.mjs",
     "test:bridge-security": "node scripts/bridge-security.mjs",
     "test:bridge-ui": "node scripts/bridge-ui.mjs",
+    "test:fx-ui": "node scripts/fx-ui.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },

@@ -17,10 +17,12 @@ import {
   makeNote,
   makeStep,
   scaleOf,
+  uid,
 } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import { bakeModToPoints } from '../music/modCurve';
+import { effectId, effectIndex, sameAddress } from '../music/effectAddress';
 import { modRateHz } from '../types';
 import { parseRatio } from '../parameters';
 import { PatternChips } from './PatternChips';
@@ -291,6 +293,7 @@ export const TrackRow = memo(function TrackRow({
   // Вкладки внутри «трека»; модуляции — раздел автоматизации эскиза.
   // Кривые партии: какая цель рисуется.
   const [autoTarget, setAutoTarget] = useState<AutoTarget>('volume');
+  const [autoFxId, setAutoFxId] = useState<string>();
   // Дорожка автоматизации под станом — открыта/закрыта (UI-состояние).
   const [autoLane, setAutoLane] = useState(false);
   const rollRef = useRef<HTMLDivElement>(null);
@@ -884,15 +887,24 @@ export const TrackRow = memo(function TrackRow({
 
   // Эффекты — на треке: фильтр → эффекты → панорама.
   const effects = track.effects ?? [];
+  const fxOptions = effects.map((e, i) => ({ id: effectId(e, i), label: `${i + 1}. ${EFFECT_LABELS[e.type]}` }));
+  for (const m of [...(pattern.automation ?? []), ...(pattern.mods ?? track.mods)]) {
+    if (m.target.startsWith('fx') && m.fxId && !fxOptions.some(o => o.id === m.fxId)) fxOptions.push({ id: m.fxId, label: 'Удалённый эффект' });
+  }
+  const laneFxId = fxOptions.some(o => o.id === autoFxId) ? autoFxId : fxOptions[0]?.id;
+  const laneFx = effects[effectIndex(effects, laneFxId)];
 
   // Вкладка автоматизации = цель: кривая на дорожке и модуляции одной
   // цели живут вместе, цель задаётся здесь и только здесь. Цели fx*
-  // появляются при наличии эффектов (действуют на первый в списке).
+  // появляются при наличии эффектов (адресуются по стабильному ID).
   const autoTargets: AutoTarget[] = ['volume', 'filterFreq', 'pan'];
-  if (effects.length > 0) autoTargets.push('fxMix');
-  if (effects.some((e) => e.type === 'delay')) autoTargets.push('fxTime', 'fxFeedback');
+  if (fxOptions.length > 0) autoTargets.push('fxMix');
+  if (laneFx?.type === 'delay' || (!laneFx && fxOptions.length)
+    || [...(pattern.automation ?? []), ...(pattern.mods ?? track.mods)].some(m => (m.target === 'fxTime' || m.target === 'fxFeedback') && sameAddress(m, m.target, laneFxId, effects))) autoTargets.push('fxTime', 'fxFeedback');
   // Активная fx-вкладка пропала (эффекты сняли) — рисуем громкость.
   const laneTarget: AutoTarget = autoTargets.includes(autoTarget) ? autoTarget : 'volume';
+  const laneMatches = (m: { target: string; fxId?: string }) => sameAddress(m, laneTarget, laneFxId, effects);
+  const laneSupported = !laneTarget.startsWith('fx') || !!laneFx && (laneTarget === 'fxMix' || laneFx.type === 'delay');
 
   // Модуляции живут на эскизе: первая правка переносит наследованный
   // с трека список в этот эскиз (правки дальше — только здесь).
@@ -905,7 +917,8 @@ export const TrackRow = memo(function TrackRow({
 
   const addMod = () => {
     const base = pattern.mods ?? track.mods;
-    changePatternMods([...base, { target: laneTarget, shape: 'sine', rate: 0.2, depth: 0.5 }]);
+    if (base.length >= 16 || !laneSupported) return;
+    changePatternMods([...base, { target: laneTarget, fxId: laneTarget.startsWith('fx') ? laneFxId : undefined, shape: 'sine', rate: 0.2, depth: 0.5 }]);
   };
 
   const removeMod = (i: number) =>
@@ -924,20 +937,22 @@ export const TrackRow = memo(function TrackRow({
       effects: effects.map((e, j) => {
         if (j !== i) return e;
         const mix = e.mix;
-        if (type === 'delay') return { type: 'delay', timeSec: 0.28, feedback: 0.35, mix };
-        if (type === 'reverb') return { type: 'reverb', sizeSec: 1.8, mix };
-        if (type === 'dist') return { type: 'dist', drive: 6, mix };
-        if (type === 'chorus') return { type: 'chorus', rate: 0.6, mix };
-        return { type: 'lofi', bits: 6, mix };
+        const id = effectId(e, j);
+        if (type === 'delay') return { id, type: 'delay', timeSec: 0.28, feedback: 0.35, mix };
+        if (type === 'reverb') return { id, type: 'reverb', sizeSec: 1.8, mix };
+        if (type === 'dist') return { id, type: 'dist', drive: 6, mix };
+        if (type === 'chorus') return { id, type: 'chorus', rate: 0.6, mix };
+        return { id, type: 'lofi', bits: 6, mix };
       }),
     });
   const removeEffect = (i: number) => change({ effects: effects.filter((_, j) => j !== i) });
   const addEffect = () =>
-    change({ effects: [...effects, { type: 'delay', timeSec: 0.28, feedback: 0.35, mix: 0.3 }] });
+    effects.length < 16 && change({ effects: [...effects, { id: uid('fx'), type: 'delay', timeSec: 0.28, feedback: 0.35, mix: 0.3 }] });
 
   // Перенос эффектов и модуляций драг-н-дропом: порядок эффектов — это
   // порядок цепочки, порядок модуляций — просто удобство.
   const moveEffect = (from: number, to: number) => {
+    if (from < 0 || to < 0 || from >= effects.length || to >= effects.length) return;
     const list = [...effects];
     const [item] = list.splice(from, 1);
     list.splice(to, 0, item);
@@ -951,20 +966,23 @@ export const TrackRow = memo(function TrackRow({
   };
 
   /** База цели автоматизации: фильтр — частота «верха» инструмента,
-   *  fx* — текущее значение первого эффекта. Вокруг базы рисуется штрих
+   *  fx* — текущее значение выбранного эффекта. Вокруг базы рисуется штрих
    *  модуляции и запекается кривая (modCurve). */
-  const autoBaseOf = (target: AutoTarget): number =>
+  const autoBaseOf = (target: AutoTarget, fxId = laneFxId): number => {
+    const fx = effects[effectIndex(effects, fxId)];
+    return (
     target === 'fxMix'
-      ? effects[0]?.mix ?? 0.3
+      ? fx?.mix ?? 0.3
       : target === 'fxTime'
-        ? effects[0]?.type === 'delay'
-          ? effects[0].timeSec
+        ? fx?.type === 'delay'
+          ? fx.timeSec
           : 0.25
         : target === 'fxFeedback'
-          ? effects[0]?.type === 'delay'
-            ? effects[0].feedback
+          ? fx?.type === 'delay'
+            ? fx.feedback
             : 0.3
-          : st.filterFreq;
+          : st.filterFreq);
+  };
 
   /** Запечь модуляцию в кривую партии: ход станет точками по границам
    *  шагов (перестанет плыть — правится вручную, как нарисованная),
@@ -975,11 +993,11 @@ export const TrackRow = memo(function TrackRow({
     if (!m) return;
     const target = m.target as AutoTarget;
     const cycleSec = stepDuration(st, bpm, pattern) * pattern.length;
-    const points = bakeModToPoints({ ...m, rate: modRateHz(m, bpm) }, target, pattern.length, cycleSec, autoBaseOf(target), i);
+    const points = bakeModToPoints({ ...m, rate: modRateHz(m, bpm) }, target, pattern.length, cycleSec, autoBaseOf(target, m.fxId), i);
     onPatternCommand(track.id, pattern.id, {
       automation: [
-        ...(pattern.automation ?? []).filter((c) => c.target !== m.target),
-        { target, points },
+        ...(pattern.automation ?? []).filter(c => !sameAddress(c, m.target, m.fxId, effects)),
+        { target, fxId: m.fxId, points },
       ],
       mods: base.filter((_, j) => j !== i),
     });
@@ -1022,7 +1040,7 @@ export const TrackRow = memo(function TrackRow({
   // (правки/удаление/запечка адресуются по нему).
   const laneMods = (pattern.mods ?? track.mods)
     .map((m, i) => ({ m, i }))
-    .filter(({ m }) => m.target === laneTarget);
+    .filter(({ m }) => laneMatches(m));
 
   const patternChips = (
     <PatternChips
@@ -1343,14 +1361,16 @@ export const TrackRow = memo(function TrackRow({
           <div className="panel-row">
             <div className="sub-head">
               <span className="sub-cap">комната — эффекты, одни для всех эскизов</span>
-              <button data-ob="fx-add" onClick={addEffect} title="Добавить эффект в цепочку">+ эффект</button>
+              <button data-ob="fx-add" onClick={addEffect} disabled={effects.length >= 16} title="Добавить эффект в цепочку (до 16)">+ эффект</button>
               <span className="spacer" />
               <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
             </div>
             <div className="group mods-group" data-ob="fx-list">
                           {effects.map((fx, i) => (
-              <div className="mod-row" key={i} {...rowDropProps('fx', i, moveEffect)}>
+              <div className="mod-row" key={effectId(fx, i)} data-fx-id={effectId(fx, i)} {...rowDropProps('fx', i, moveEffect)}>
                 {rowGrip('fx', i)}
+                <button aria-label={`Эффект ${i + 1} вверх`} disabled={i === 0} onClick={() => moveEffect(i, i - 1)}>↑</button>
+                <button aria-label={`Эффект ${i + 1} вниз`} disabled={i === effects.length - 1} onClick={() => moveEffect(i, i + 1)}>↓</button>
                 {/* Удаление — первым слева: крестики строк в одну колонку,
                     ряды не выглядят лесенкой */}
                 <button className="remove" title="Убрать эффект" onClick={() => removeEffect(i)}>×</button>
@@ -1359,6 +1379,8 @@ export const TrackRow = memo(function TrackRow({
                     <option key={t} value={t}>{EFFECT_LABELS[t]}</option>
                   ))}
                 </select>
+                {pattern.automation?.some(c => c.target.startsWith('fx') && sameAddress(c, c.target, effectId(fx, i), effects)) &&
+                  <span className="auto-hint" title="Кривые активного эскиза управляют параметрами во время игры; ручки задают базу для остальных эскизов">автоматизация</span>}
                 {fx.type === 'delay' ? (
                   <>
                     <Knob
@@ -1780,6 +1802,8 @@ export const TrackRow = memo(function TrackRow({
           <AutoLane
             curves={pattern.automation ?? []}
             target={laneTarget}
+            fxId={laneFxId}
+            effects={effects}
             length={pattern.length}
             activeStep={activeStep}
             fadeIn={pattern.fadeIn ?? 0.005}
@@ -1891,18 +1915,23 @@ export const TrackRow = memo(function TrackRow({
                         key={t}
                         className={laneTarget === t ? 'on' : ''}
                         onClick={() => setAutoTarget(t)}
-                        title="Параметр этой вкладки: кривая на дорожке и «+ модуляция» — всё про него. Цели эффектов действуют на первый эффект в списке"
+                        title="Кривая и модуляции выбранного параметра; эффект выбирается отдельно"
                       >
                         {AUTO_TARGET_LABELS[t]}
                       </button>
                     ))}
                   </div>
-                  {(pattern.automation?.some((c) => c.target === laneTarget)) && (
+                  {laneTarget.startsWith('fx') && <label>эффект <select aria-label="Эффект автоматизации" value={laneFxId ?? ''} onChange={e => setAutoFxId(e.target.value)}>
+                    {fxOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select></label>}
+                  {laneTarget.startsWith('fx') && !laneFx && <span role="status">Цель удалена — назначения не звучат.</span>}
+                  {laneTarget.startsWith('fx') && laneFx && !laneSupported && <span role="status">Этот эффект не поддерживает параметр — назначения не звучат.</span>}
+                  {(pattern.automation?.some(laneMatches)) && (
                     <button
                       title="Убрать кривую: параметр вернётся к своей ручке"
                       onClick={() =>
                         onPatternChange(track.id, pattern.id, {
-                          automation: (pattern.automation ?? []).filter((c) => c.target !== laneTarget),
+                          automation: (pattern.automation ?? []).filter(c => !laneMatches(c)),
                         })
                       }
                     >
@@ -1911,6 +1940,7 @@ export const TrackRow = memo(function TrackRow({
                   )}
                   <button
                     data-ob="mods-add"
+                    disabled={(pattern.mods ?? track.mods).length >= 16 || !laneSupported}
                     onClick={addMod}
                     title="Новая модуляция выбранного параметра: источник (LFO, ступени, перлин) качает его сам"
                   >

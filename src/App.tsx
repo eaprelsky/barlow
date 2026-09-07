@@ -5,6 +5,7 @@ import { Modal } from './components/Modal';
 import type { Dispatch, SetStateAction } from 'react';
 import { AudioEngine } from './audio/engine';
 import { AudioStatus } from './components/AudioStatus';
+import { instantiateEffects } from './music/effectAddress';
 import { BridgeSettings } from './components/BridgeSettings';
 import { loadBridgeSession, saveBridgeSession, type BridgeSession, type BridgeStatus } from './bridgeSession';
 import { stepIndexAt } from './audio/timing';
@@ -758,9 +759,8 @@ export default function App() {
         const updTrack: Track = {
           ...track,
           ...(empty && t.freq !== undefined ? { freq: t.freq } : {}),
-          effects: t.effects ?? [],
+          ...instantiateEffects(t.effects, t.mods),
           mono: t.mono,
-          mods: t.mods ? t.mods.map((m) => ({ ...m })) : [],
         };
         // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
         const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);

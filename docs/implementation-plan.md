@@ -79,4 +79,10 @@ smoke/bridge проходят. Golden обновлён после изолиро
 challenge/HMAC, session code, origin allowlist, read/write/transport,
 bounded frames/handshake/commands, защита JSON pointer и валидация
 получившегося патча. WebSocket и браузерные негативные тесты, build,
-lint (без ошибок), UI, smoke/bridge и golden проходят. Desktop/web — публикация.
+lint (без ошибок), UI, smoke/bridge и golden проходят. Desktop/web опубликованы (288b49c).
+
+Волна A17 реализована: schema v45, стабильные FX ID и адресные кривые/моды,
+единый dry/wet, ограничение модулированного feedback/time, владелец параметра
+в live, выбор эффекта/клавиатурная перестановка, доступность кривой и undo
+целого жеста. DSP 91/91, банк 120/120, прежний golden, build, lint без ошибок,
+UI/FX UI и smoke/bridge проходят; эффекты — effects.md. Публикация — следующий шаг.

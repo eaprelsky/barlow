@@ -7,6 +7,7 @@ import type { Effect, Mod, SoundingTrack } from '../types';
 import { modRateHz } from '../types';
 import { resolveMacros } from '../music/macros';
 import { randomFor, seedOf } from './random';
+import { effectId } from '../music/effectAddress';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -14,10 +15,17 @@ export interface ModNodes {
 }
 
 export interface FxNodes {
+  id: string;
+  type: Effect['type'];
+  mix: ConstantSourceNode;
+  mixDry: WaveShaperNode;
+  mixWet: WaveShaperNode;
   dry: GainNode;
   wet: GainNode;
   delay?: DelayNode;
   feedback?: GainNode;
+  timeControl?: BoundedParam;
+  feedbackControl?: BoundedParam;
   convolver?: ConvolverNode;
   shaper?: WaveShaperNode;
   lfo?: OscillatorNode;
@@ -46,11 +54,42 @@ export interface TrackChain {
 }
 
 export const modsSigOf = (mods: Mod[]) =>
-  mods.map((m) => `${m.target}:${m.source ?? 'lfo'}:${m.shape}`).join(',');
-export const fxSigOf = (fx: Effect[]) => fx.map((e) => e.type).join(',');
+  mods.map((m) => `${m.target}:${m.fxId ?? 'first'}:${m.source ?? 'lfo'}:${m.shape}`).join(',');
+export const fxSigOf = (fx: Effect[]) => fx.map((e, i) => `${effectId(e, i)}:${e.type}`).join(',');
 // equal-power кроссфейд dry/wet — без провала громкости посередине.
 export const dryGain = (mix: number) => Math.cos((mix * Math.PI) / 2);
 export const wetGain = (mix: number) => Math.sin((mix * Math.PI) / 2);
+
+const mixCurve = (gain: (v: number) => number) => Float32Array.from({ length: 2049 }, (_, i) => gain(Math.min(1, Math.max(0, i / 1024 - 1))));
+const dryCurve = mixCurve(dryGain), wetCurve = mixCurve(wetGain);
+interface BoundedParam { source: ConstantSourceNode; scale: GainNode; clamp: WaveShaperNode }
+/** Bounds the sum of base + automation + audio-rate modulation, not just
+ * the stored value. Feedback above unity otherwise creates a runaway loop. */
+export function makeBoundedParam(ctx: BaseAudioContext, param: AudioParam, value: number, min: number, max: number, startAt: number): BoundedParam {
+  const source = ctx.createConstantSource(), scale = ctx.createGain(), clamp = ctx.createWaveShaper();
+  source.offset.value = Math.min(max, Math.max(min, value)); scale.gain.value = 1 / max;
+  clamp.curve = Float32Array.from({ length: 2049 }, (_, i) => Math.min(max, Math.max(min, (i / 1024 - 1) * max)));
+  param.value = 0; source.connect(scale); scale.connect(clamp); clamp.connect(param); source.start(startAt);
+  return { source, scale, clamp };
+}
+/** One normalized control signal drives both equal-power branches. Manual,
+ * automation and audio-rate modulation all meet at the same AudioParam. */
+export function makeMixControl(ctx: BaseAudioContext, dry: GainNode, wet: GainNode, value: number, startAt: number) {
+  const mix = ctx.createConstantSource(); mix.offset.value = Math.min(1, Math.max(0, value));
+  const mixDry = ctx.createWaveShaper(), mixWet = ctx.createWaveShaper();
+  mixDry.curve = dryCurve; mixWet.curve = wetCurve;
+  dry.gain.value = 0; wet.gain.value = 0;
+  mix.connect(mixDry); mix.connect(mixWet);
+  mixDry.connect(dry.gain); mixWet.connect(wet.gain); mix.start(startAt);
+  return { mix, mixDry, mixWet };
+}
+export function fxParamOf(fx: FxNodes[], target: string, id?: string): AudioParam | null {
+  const node = id === undefined ? fx[0] : fx.find(f => f.id === id);
+  if (!node) return null;
+  if (target === 'fxMix') return node.mix.offset;
+  if (node.type !== 'delay') return null;
+  return target === 'fxTime' ? node.timeControl?.source.offset ?? null : target === 'fxFeedback' ? node.feedbackControl?.source.offset ?? null : null;
+}
 
 // Процедурный impulse response для реверба: стереошумовое облако с
 // экспоненциальным затуханием. Кэш общий для live и offline контекстов.
@@ -270,32 +309,33 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
   // в sum напрямую — сухой сигнал смешивался дважды.
   const fx: FxNodes[] = [];
   let node: AudioNode = filter;
-  for (const e of track.effects ?? []) {
+  for (const [index, e] of (track.effects ?? []).entries()) {
     const sum = ctx.createGain();
     const dry = ctx.createGain();
     const wet = ctx.createGain();
-    dry.gain.value = dryGain(e.mix);
-    wet.gain.value = wetGain(e.mix);
+    const control = { ...makeMixControl(ctx, dry, wet, e.mix, startAt), id: effectId(e, index), type: e.type };
     node.connect(dry);
     dry.connect(sum);
-    node.connect(wet);
+    wet.connect(sum);
     if (e.type === 'delay') {
       const delay = ctx.createDelay(2.5);
       delay.delayTime.value = e.timeSec;
       const feedback = ctx.createGain();
       feedback.gain.value = e.feedback;
-      wet.connect(delay);
-      delay.connect(sum);
+      const timeControl = makeBoundedParam(ctx, delay.delayTime, e.timeSec, 0.01, 2, startAt);
+      const feedbackControl = makeBoundedParam(ctx, feedback.gain, e.feedback, 0, 0.9, startAt);
+      node.connect(delay);
+      delay.connect(wet);
       delay.connect(feedback);
       feedback.connect(delay);
-      fx.push({ dry, wet, delay, feedback });
+      fx.push({ ...control, dry, wet, delay, feedback, timeControl, feedbackControl });
     } else if (e.type === 'dist' || e.type === 'lofi') {
       const shaper = ctx.createWaveShaper();
       shaper.oversample = '2x';
       shaper.curve = e.type === 'dist' ? distCurve(e.drive) : lofiCurve(e.bits);
-      wet.connect(shaper);
-      shaper.connect(sum);
-      fx.push({ dry, wet, shaper });
+      node.connect(shaper);
+      shaper.connect(wet);
+      fx.push({ ...control, dry, wet, shaper });
     } else if (e.type === 'chorus') {
       // Короткая задержка, качаемая LFO: размножение тембра в разжижение.
       const delay = ctx.createDelay(0.1);
@@ -306,16 +346,16 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
       sway.gain.value = 0.005; // ±5 мс
       lfo.connect(sway);
       sway.connect(delay.delayTime);
-      wet.connect(delay);
-      delay.connect(sum);
+      node.connect(delay);
+      delay.connect(wet);
       lfo.start(startAt);
-      fx.push({ dry, wet, delay, lfo });
+      fx.push({ ...control, dry, wet, delay, lfo });
     } else {
       const conv = ctx.createConvolver();
       conv.buffer = getImpulse(ctx, e.sizeSec, seed);
-      wet.connect(conv);
-      conv.connect(sum);
-      fx.push({ dry, wet, convolver: conv });
+      node.connect(conv);
+      conv.connect(wet);
+      fx.push({ ...control, dry, wet, convolver: conv });
     }
     node = sum;
   }
@@ -329,9 +369,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
     if (m.target === 'pan') param = panner.pan;
     else if (m.target === 'volume') param = gain.gain;
     else if (m.target === 'filterFreq') param = filter.frequency;
-    else if (m.target === 'fxMix') param = fx[0]?.wet.gain ?? null;
-    else if (m.target === 'fxTime') param = fx[0]?.delay?.delayTime ?? null;
-    else if (m.target === 'fxFeedback') param = fx[0]?.feedback?.gain ?? null;
+    else if (m.target.startsWith('fx')) param = fxParamOf(fx, m.target, m.fxId);
     if (param) depth.connect(param);
     src.start(startAt);
     return { src, depth };
@@ -360,6 +398,12 @@ export function disposeChain(chain: TrackChain): void {
     m.depth.disconnect();
   }
   for (const f of chain.fx) {
+    try { f.mix.stop(); } catch { /* stopped */ }
+    f.mix.disconnect(); f.mixDry.disconnect(); f.mixWet.disconnect();
+    for (const c of [f.timeControl, f.feedbackControl]) if (c) {
+      try { c.source.stop(); } catch { /* stopped */ }
+      c.source.disconnect(); c.scale.disconnect(); c.clamp.disconnect();
+    }
     f.dry.disconnect();
     f.wet.disconnect();
     f.delay?.disconnect();

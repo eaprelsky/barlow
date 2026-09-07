@@ -22,6 +22,7 @@ import { randomFor } from './random';
 import { EventQueue } from './eventQueue';
 import { planRender } from './renderPlan';
 import { VoiceBudget } from './voiceBudget';
+import { sameAddress, effectId } from '../music/effectAddress';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
 import type { AudioBackend } from './backend';
@@ -41,7 +42,7 @@ import {
   connectMasterNoise,
   disposeChain,
   distCurve,
-  dryGain,
+  fxParamOf,
   duckSidechain,
   fxSigOf,
   getImpulse,
@@ -49,7 +50,6 @@ import {
   makeChain,
   modScale,
   modsSigOf,
-  wetGain,
 } from './fx';
 import {
   ensureScratchModule,
@@ -348,7 +348,7 @@ export class AudioEngine implements AudioBackend {
       this.chains.set(trackId, fresh);
       return fresh;
     }
-    const autoOf = (target: string) => pattern?.automation?.some((c) => c.target === target);
+    const autoOf = (target: string, fxId?: string) => pattern?.automation?.some(c => sameAddress(c, target, fxId, track.effects ?? []));
     chain.hp.frequency.setTargetAtTime(track.filterLow, t0, 0.03);
     // Автоматизированные цели качает кривая партии — базу сюда не пишем.
     if (!autoOf('filterFreq')) chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
@@ -373,11 +373,11 @@ export class AudioEngine implements AudioBackend {
     (track.effects ?? []).forEach((e, i) => {
       const n = chain.fx[i];
       if (!n) return;
-      n.dry.gain.setTargetAtTime(dryGain(e.mix), t0, 0.03);
-      n.wet.gain.setTargetAtTime(wetGain(e.mix), t0, 0.03);
+      const id = effectId(e, i);
+      if (!autoOf('fxMix', id)) n.mix.offset.setTargetAtTime(e.mix, t0, 0.03);
       if (e.type === 'delay') {
-        n.delay?.delayTime.setTargetAtTime(e.timeSec, t0, 0.05);
-        n.feedback?.gain.setTargetAtTime(e.feedback, t0, 0.05);
+        if (!autoOf('fxTime', id)) n.timeControl?.source.offset.setTargetAtTime(e.timeSec, t0, 0.05);
+        if (!autoOf('fxFeedback', id)) n.feedbackControl?.source.offset.setTargetAtTime(e.feedback, t0, 0.05);
       } else if (e.type === 'reverb' && n.convolver) {
         const ir = getImpulse(ctx, e.sizeSec, this.patch?.performanceSeed);
         if (n.convolver.buffer !== ir) n.convolver.buffer = ir;
@@ -1141,12 +1141,8 @@ export class AudioEngine implements AudioBackend {
               chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
             } else if (c.target === 'volume' && (chain.fadeHold === undefined || ctx.currentTime >= chain.fadeHold)) {
               chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
-            } else if (c.target === 'fxMix' && chain.fx[0]) {
-              chain.fx[0].wet.gain.setTargetAtTime(v, at, 0.03);
-            } else if (c.target === 'fxTime' && chain.fx[0]?.delay) {
-              chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), at, 0.03);
-            } else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) {
-              chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), at, 0.03);
+            } else if (c.target.startsWith('fx')) {
+              fxParamOf(chain.fx, c.target, c.fxId)?.setTargetAtTime(autoToParam(c.target, v), at, 0.03);
             }
           }
         }
@@ -1221,9 +1217,7 @@ export class AudioEngine implements AudioBackend {
           if (c.target === 'filterFreq') chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
           else if (c.target === 'pan') chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
           else if (c.target === 'volume') chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
-          else if (c.target === 'fxMix' && chain.fx[0]) chain.fx[0].wet.gain.setTargetAtTime(v, at, 0.03);
-          else if (c.target === 'fxTime' && chain.fx[0]?.delay) chain.fx[0].delay.delayTime.setTargetAtTime(autoToParam('fxTime', v), at, 0.03);
-          else if (c.target === 'fxFeedback' && chain.fx[0]?.feedback) chain.fx[0].feedback.gain.setTargetAtTime(autoToParam('fxFeedback', v), at, 0.03);
+          else if (c.target.startsWith('fx')) fxParamOf(chain.fx, c.target, c.fxId)?.setTargetAtTime(autoToParam(c.target, v), at, 0.03);
         }
       }
     }

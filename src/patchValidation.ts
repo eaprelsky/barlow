@@ -41,11 +41,21 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   const instrumentIds = new Set(instruments.map(i => i.id));
   const patterns = new Map<string, Set<string>>();
   for (const t of value.tracks) {
+    if (t.effects !== undefined) {
+      if (!Array.isArray(t.effects) || t.effects.length > 16) return false;
+      const ids = new Set<string>();
+      for (const fx of t.effects) {
+        if (!record(fx)) return false;
+        if (fx.id !== undefined) { if (!id(fx.id) || ids.has(fx.id)) return false; ids.add(fx.id); }
+      }
+    }
+    if (t.mods !== undefined && (!Array.isArray(t.mods) || t.mods.length > 16)) return false;
     if ((value.version as number) >= 34 && (!id(t.instrumentId) || !instrumentIds.has(t.instrumentId))) return false;
     const ps = t.patterns ?? [];
     if (!Array.isArray(ps) || !unique(ps, 128)) return false;
     patterns.set(t.id as string, new Set(ps.map(p => p.id as string)));
     for (const p of ps) {
+      if (p.mods !== undefined && (!Array.isArray(p.mods) || p.mods.length > 16)) return false;
       if (!Array.isArray(p.steps) || p.steps.length > 4096) return false;
       if ((value.version as number) < 37) continue; // old step shapes are migrated
       for (const step of p.steps) {

@@ -9,7 +9,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { AutoCurve, AutoPoint, AutoTarget, Mod } from '../types';
+import type { AutoCurve, AutoPoint, AutoTarget, Mod, Effect } from '../types';
+import { sameAddress } from '../music/effectAddress';
+import { useEditGesture } from './editGesture';
 import { AUTO_TARGET_LABELS } from '../types';
 import { modCurveValue } from '../music/modCurve';
 
@@ -37,6 +39,8 @@ const MOD_SOURCE_TITLE: Record<string, string> = {
 export function AutoLane({
   curves,
   target,
+  fxId,
+  effects,
   length,
   activeStep,
   fadeIn,
@@ -49,6 +53,8 @@ export function AutoLane({
 }: {
   curves: AutoCurve[];
   target: AutoTarget;
+  fxId?: string;
+  effects: Effect[];
   /** Шагов в цикле эскиза. */
   length: number;
   /** Текущий шаг (плейхед) или −1. */
@@ -62,24 +68,28 @@ export function AutoLane({
    *  поверх кривой — видно, как параметр «гуляет» от LFO/шума. */
   mods: Mod[];
   /** База цели: фильтр — частота «верха» инструмента, fx* — текущее
-   *  значение первого эффекта (вокруг базы штрих модуляции). */
+   *  значение выбранного эффекта (вокруг базы штрих модуляции). */
   base: number;
   onCurves: (curves: AutoCurve[]) => void;
   onFade: (which: 'in' | 'out', sec: number) => void;
 }) {
   const W = length * PITCH - 3;
   const drag = useRef<number | null>(null);
+  const gesture = useEditGesture();
+  const pendingAtStart = useRef<AutoPoint[] | null>(null);
+  const pointerActive = useRef(false);
   const fadeDrag = useRef<'in' | 'out' | null>(null);
   // Кривая коммитится в патч от двух точек: пока их меньше, живёт локально —
   // иначе первый клик по пустой дорожке пропадал и линию не нарисовать.
   const [pending, setPending] = useState<AutoPoint[] | null>(null);
   const [dragLabel, setDragLabel] = useState<{ x: number; y: number; text: string } | null>(null);
-  const curve = curves.find((c) => c.target === target);
+  const matches = (c: { target: string; fxId?: string }) => sameAddress(c, target, fxId, effects);
+  const curve = curves.find(matches);
   const points = pending ?? curve?.points ?? [];
 
   // Смена цели (или внешняя правка) — недозревшая кривая не про эту цель.
-  useEffect(() => setPending(null), [target]);
-  useEffect(() => setDragLabel(null), [target]);
+  useEffect(() => setPending(null), [target, fxId]);
+  useEffect(() => setDragLabel(null), [target, fxId]);
 
   const yb = H - V_PAD;
   const vToY = (v: number) => yb - v * (H - V_PAD * 2);
@@ -91,8 +101,8 @@ export function AutoLane({
     const sorted = [...pts].sort((a, b) => a.t - b.t);
     if (sorted.length >= 2) {
       setPending(null);
-      const rest = curves.filter((c) => c.target !== target);
-      onCurves([...rest, { target, points: sorted }]);
+      const rest = curves.filter(c => !matches(c));
+      onCurves([...rest, { target, fxId: target.startsWith('fx') ? fxId : undefined, points: sorted }]);
     } else {
       setPending(sorted);
     }
@@ -130,6 +140,9 @@ export function AutoLane({
   const down = (e: ReactPointerEvent<SVGSVGElement>) => {
     e.preventDefault(); // драг не выделяет текст страницы
     if (e.button !== 0) return;
+    pendingAtStart.current = pending;
+    pointerActive.current = true;
+    gesture.begin();
     const { x, y } = local(e);
     e.currentTarget.setPointerCapture(e.pointerId);
     // 1) точка кривой рядом — тянуть её
@@ -185,12 +198,19 @@ export function AutoLane({
     drag.current = null;
     fadeDrag.current = null;
     setDragLabel(null);
+    pointerActive.current = false;
+    gesture.commit();
+  };
+  const cancel = () => {
+    gesture.cancel(); setPending(pointerActive.current ? pendingAtStart.current : null);
+    pointerActive.current = false;
+    drag.current = null; fadeDrag.current = null; setDragLabel(null);
   };
 
   const removeAt = (i: number) => {
     if (points.length <= 2) {
       setPending(null);
-      onCurves(curves.filter((c) => c.target !== target));
+      onCurves(curves.filter(c => !matches(c)));
       return;
     }
     setPoints(points.filter((_, j) => j !== i));
@@ -205,7 +225,7 @@ export function AutoLane({
   // пьесы, здесь видна форма и размах качания по длине цикла.
   const modLines = mods
     .map((m, i) => ({ m, seed: i }))
-    .filter(({ m }) => m.target === target && m.depth > 0.001)
+    .filter(({ m }) => matches(m) && m.depth > 0.001)
     .map(({ m, seed }) => {
       const N = 96;
       const cycleSec = stepSec * length;
@@ -237,10 +257,19 @@ export function AutoLane({
       viewBox={`0 0 ${W} ${H}`}
       width={W}
       height={H}
+      tabIndex={0}
+      role="group"
+      aria-label={`Кривая: ${AUTO_TARGET_LABELS[target]}. Enter — добавить ровную кривую; Tab — точки, стрелки — редактировать.`}
+      onKeyDown={e => {
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        if (e.key === 'Enter' && e.target === e.currentTarget && points.length < 2) {
+          e.preventDefault(); gesture.begin(); setPoints([{ t: 0, v: 0.5 }, { t: 1, v: 0.5 }]); gesture.commit();
+        }
+      }}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
-      onPointerCancel={up}
+      onPointerCancel={cancel}
       onContextMenu={(e) => {
         e.preventDefault();
         const { x } = local(e);
@@ -312,7 +341,22 @@ export function AutoLane({
         </>
       )}
       {points.map((p, i) => (
-        <circle key={i} cx={p.t * W} cy={vToY(p.v)} r={3.5} className="env-handle" />
+        <circle key={i} cx={p.t * W} cy={vToY(p.v)} r={5} className="env-handle" tabIndex={0}
+          role="slider" aria-label={`Точка ${i + 1}: вверх/вниз — уровень, влево/вправо — время, Delete — удалить`}
+          aria-valuemin={0} aria-valuemax={1} aria-valuenow={p.v} aria-orientation="vertical"
+          aria-valuetext={`шаг ${(p.t * length).toFixed(2)}, ${(p.v * 100).toFixed(1)}%`}
+          onKeyDown={e => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); gesture.cancel(); setPending(null); return; }
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Delete', 'Backspace'].includes(e.key)) return;
+            e.preventDefault(); e.stopPropagation(); if (!e.repeat) gesture.begin();
+            if (e.key === 'Delete' || e.key === 'Backspace') { removeAt(i); gesture.commit(); e.currentTarget.ownerSVGElement?.focus(); return; }
+            const dv = e.shiftKey ? 0.001 : 0.01, dt = (e.shiftKey ? 0.1 : 1) / length;
+            const value = e.key === 'Home' ? 0 : e.key === 'End' ? 1 : Math.min(1, Math.max(0, p.v + (e.key === 'ArrowUp' ? dv : e.key === 'ArrowDown' ? -dv : 0)));
+            const time = Math.min(i + 1 < points.length ? points[i + 1].t - 0.001 : 1,
+              Math.max(i > 0 ? points[i - 1].t + 0.001 : 0, p.t + (e.key === 'ArrowRight' ? dt : e.key === 'ArrowLeft' ? -dt : 0)));
+            setPoints(points.map((point, index) => index === i ? { t: time, v: value } : point));
+          }}
+          onKeyUp={() => gesture.commit()} onBlur={() => gesture.commit()} />
       ))}
       {dragLabel && (
         <text x={Math.min(dragLabel.x + 6, W - 30)} y={Math.max(dragLabel.y - 8, 10)} className="env-text strong">

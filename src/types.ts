@@ -10,7 +10,7 @@
 // цикла в рантайме нет.
 import { recipeForLegacy } from './music/waveRecipes';
 import { validPatchInput } from './patchValidation';
-import { PARAMETERS, normalizeParameter, type ParameterId } from './parameters';
+import { PARAMETERS, normalizeParameter, parameterAt, type ParameterId } from './parameters';
 import { normalizeMacros, type SoundMacro } from './music/macros';
 import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
 
@@ -240,7 +240,7 @@ export type ModTarget =
   | 'pan'
   | 'volume'
   | 'filterFreq'
-  // Цели эффектов — действуют на первый эффект в списке трека.
+  // Цели эффектов адресуются по fxId; legacy без ID — первый эффект.
   | 'fxMix'
   | 'fxTime'
   | 'fxFeedback';
@@ -255,12 +255,12 @@ export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
 };
 
 /** Вставной эффект трека (после фильтра, до панорамы). */
-export type Effect =
+export type Effect = { id?: string } & (
   | { type: 'delay'; timeSec: number; feedback: number; mix: number }
   | { type: 'reverb'; sizeSec: number; mix: number }
   | { type: 'dist'; drive: number; mix: number }
   | { type: 'chorus'; rate: number; mix: number }
-  | { type: 'lofi'; bits: number; mix: number };
+  | { type: 'lofi'; bits: number; mix: number });
 
 export const EFFECT_LABELS: Record<Effect['type'], string> = {
   delay: 'задержка (эхо)',
@@ -276,6 +276,8 @@ export type ModSource = 'lfo' | 'sah' | 'perlin';
 
 export interface Mod {
   target: string;
+  /** Stable effect address; absent in legacy patches means first effect. */
+  fxId?: string;
   // Вид источника; отсутствует (старые патчи) = LFO.
   source?: ModSource;
   // Форма — только для LFO.
@@ -350,7 +352,7 @@ export interface Track {
 
 /** Цель автоматизации партии (кривая и модуляции — один набор): громкость
  *  — доля от громкости партии, фильтр — 60…12000 Гц по логарифму, панорама
- *  — L…R; цели fx* действуют на первый эффект в списке трека. */
+ *  — L…R; цели fx* адресуются по стабильному fxId. */
 export type AutoTarget =
   | 'volume'
   | 'filterFreq'
@@ -376,6 +378,7 @@ export interface AutoPoint {
 
 export interface AutoCurve {
   target: AutoTarget;
+  fxId?: string;
   points: AutoPoint[];
 }
 
@@ -397,8 +400,9 @@ export function autoValue(points: AutoPoint[] | undefined, t: number): number | 
 /** Нормированное 0..1 → значение параметра. */
 export function autoToParam(target: AutoTarget, v: number): number {
   if (target === 'filterFreq') return 60 * Math.pow(200, v); // 60…12000 Гц, лог
-  if (target === 'fxTime') return 0.01 * Math.pow(200, v); // 10 мс…2 с, лог
-  if (target === 'fxFeedback') return v * 0.9; // 0…90% повторы
+  if (target === 'fxTime') return parameterAt('effect.timeSec', v);
+  if (target === 'fxFeedback') return parameterAt('effect.feedback', v);
+  if (target === 'fxMix') return parameterAt('effect.mix', v);
   return v; // volume 0..1 (доля), pan 0..1 (позже ×2−1), fxMix 0..1 (wet)
 }
 
@@ -557,7 +561,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 44;
+export const PATCH_VERSION = 45;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -667,7 +671,7 @@ export function makeTrackWithInstrument(
     mods: partial.mods ?? [],
     arp: partial.arp,
     mono: partial.mono,
-    effects: partial.effects,
+    effects: normalizeEffects(partial.effects),
     scaleOctUp: partial.scaleOctUp,
     scaleOctDown: partial.scaleOctDown,
     patterns:
@@ -738,11 +742,14 @@ const clamp = (v: number, lo: number, hi: number, fallback: number) =>
 const MOD_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'] as const;
 const MOD_TARGETS = ['pan', 'volume', 'filterFreq', 'fxTime', 'fxFeedback', 'fxMix'] as const;
 
-function normalizeEffects(raw: unknown): Effect[] {
+export function normalizeEffects(raw: unknown): Effect[] {
   if (!Array.isArray(raw)) return [];
   const out: Effect[] = [];
-  for (const item of raw) {
+  const used = new Set<string>();
+  for (const [index, item] of raw.slice(0, 16).entries()) {
+    const before = out.length;
     const e = item as {
+      id?: unknown;
       type?: unknown;
       timeSec?: unknown;
       feedback?: unknown;
@@ -756,34 +763,40 @@ function normalizeEffects(raw: unknown): Effect[] {
     if (e.type === 'delay') {
       out.push({
         type: 'delay',
-        timeSec: clamp(typeof e.timeSec === 'number' ? e.timeSec : 0.28, 0.01, 2, 0.28),
-        feedback: clamp(typeof e.feedback === 'number' ? e.feedback : 0.35, 0, 0.9, 0.35),
-        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.3, 0, 1, 0.3),
+        timeSec: normalizeParameter('effect.timeSec', e.timeSec),
+        feedback: normalizeParameter('effect.feedback', e.feedback),
+        mix: normalizeParameter('effect.mix', typeof e.mix === 'number' ? e.mix : 0.3),
       });
     } else if (e.type === 'reverb') {
       out.push({
         type: 'reverb',
         sizeSec: clamp(typeof e.sizeSec === 'number' ? e.sizeSec : 1.8, 0.2, 8, 1.8),
-        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.25, 0, 1, 0.25),
+        mix: normalizeParameter('effect.mix', typeof e.mix === 'number' ? e.mix : 0.25),
       });
     } else if (e.type === 'dist') {
       out.push({
         type: 'dist',
         drive: clamp(typeof e.drive === 'number' ? e.drive : 6, 1, 40, 6),
-        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.5, 0, 1, 0.5),
+        mix: normalizeParameter('effect.mix', typeof e.mix === 'number' ? e.mix : 0.5),
       });
     } else if (e.type === 'chorus') {
       out.push({
         type: 'chorus',
         rate: clamp(typeof e.rate === 'number' ? e.rate : 0.6, 0.05, 8, 0.6),
-        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.5, 0, 1, 0.5),
+        mix: normalizeParameter('effect.mix', typeof e.mix === 'number' ? e.mix : 0.5),
       });
     } else if (e.type === 'lofi') {
       out.push({
         type: 'lofi',
         bits: Math.round(clamp(typeof e.bits === 'number' ? e.bits : 6, 2, 12, 6)),
-        mix: clamp(typeof e.mix === 'number' ? e.mix : 0.7, 0, 1, 0.7),
+        mix: normalizeParameter('effect.mix', typeof e.mix === 'number' ? e.mix : 0.7),
       });
+    }
+    if (out.length > before) {
+      let id = typeof e.id === 'string' && e.id.length > 0 && e.id.length <= 128 ? e.id : `fx-${index}`;
+      let suffix = 0;
+      while (used.has(id)) id = `fx-${index}-${++suffix}`;
+      used.add(id); out[out.length - 1].id = id;
     }
   }
   return out;
@@ -794,7 +807,7 @@ const MOD_SOURCES = ['lfo', 'sah', 'perlin'] as const;
 function normalizeMods(raw: unknown): Mod[] {
   if (!Array.isArray(raw)) return [];
   const out: Mod[] = [];
-  for (const m of raw as Partial<Mod>[]) {
+  for (const m of raw.slice(0, 16) as Partial<Mod>[]) {
     if (!m || typeof m !== 'object') continue;
     const target = (MOD_TARGETS as readonly string[]).includes(String(m.target))
       ? (m.target as ModTarget)
@@ -808,6 +821,7 @@ function normalizeMods(raw: unknown): Mod[] {
       : undefined;
     out.push({
       target,
+      fxId: typeof m.fxId === 'string' && m.fxId.length <= 128 ? m.fxId : undefined,
       source,
       shape,
       rate: clamp(m.rate ?? 0.2, 0.01, 40, 0.2),
@@ -1117,7 +1131,8 @@ export function normalizePatch(p: Patch): Patch {
                   }))
                   .sort((a2, b2) => a2.t - b2.t)
                   .slice(0, 33);
-                if (points.length >= 2) out.push({ target: c.target as AutoTarget, points });
+                if (points.length >= 2) out.push({ target: c.target as AutoTarget, points,
+                  fxId: typeof c.fxId === 'string' && c.fxId.length <= 128 ? c.fxId : undefined });
               }
               return out.length > 0 ? out : undefined;
             })(),
@@ -1238,6 +1253,12 @@ export function normalizePatch(p: Patch): Patch {
   // — длина цикла, а не 4×.
   for (const t of tracks) {
     const inst = instruments.find((i) => i.id === t.instrumentId);
+    const firstFx = t.effects?.[0]?.id;
+    const bindLegacy = (m: { target: string; fxId?: string }) => {
+      if (m.target.startsWith('fx') && m.fxId === undefined && firstFx) m.fxId = firstFx;
+    };
+    t.mods.forEach(bindLegacy);
+    for (const pt of t.patterns) { pt.mods?.forEach(bindLegacy); pt.automation?.forEach(bindLegacy); }
     const atk = inst?.attack ?? 0.002;
     const dec = inst?.decay ?? 0.25;
     const tick = 60 / (Math.round(clamp(p.bpm, 30, 300, 120)) || 120) / 4;

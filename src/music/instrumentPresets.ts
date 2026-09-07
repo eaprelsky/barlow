@@ -56,7 +56,9 @@ export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): s
   // Свои — первыми: перезаписанный юзером пресет важнее встроенного тёзки.
   for (const p of [...loadUserPresets(), ...INSTRUMENT_PRESETS]) {
     const preset: Partial<Track & Instrument> = p.track;
-    if (MATCH_FIELDS.every((f) => preset[f] === undefined || sameValue(preset[f], track[f]))) {
+    if (MATCH_FIELDS.every((f) => preset[f] === undefined || (f === 'effects'
+      ? JSON.stringify(preset[f], (key, value) => key === 'id' ? undefined : value) === JSON.stringify(track[f], (key, value) => key === 'id' ? undefined : value)
+      : sameValue(preset[f], track[f])))) {
       return p.name;
     }
   }

@@ -1,10 +1,13 @@
 /** Numeric parameter contract shared by normalization, controls and macros.
  * Values are stored in model units; display formatting never changes the patch. */
-type Owner = 'instrument' | 'track' | 'pattern' | 'patch';
+type Owner = 'instrument' | 'track' | 'pattern' | 'patch' | 'effect';
 const spec = (owner: Owner, label: string, min: number, max: number, step: number, initial: number, unit = '', scale: 'linear' | 'log' = 'linear') =>
   ({ owner, label, min, max, step, initial, unit, scale });
 
 export const PARAMETERS = {
+  'effect.mix': spec('effect', 'микс эффекта', 0, 1, 0.01, 0.3, '%'),
+  'effect.timeSec': spec('effect', 'время эха', 0.01, 2, 0.01, 0.28, 'с', 'log'),
+  'effect.feedback': spec('effect', 'повторы эха', 0, 0.9, 0.01, 0.35, '%'),
   'patch.bpm': spec('patch', 'темп', 30, 300, 1, 120, 'BPM'),
   'patch.masterVolume': spec('patch', 'общая громкость', 0, 2, 0.01, 1, '%'),
   'track.volume': spec('track', 'громкость дорожки', 0, 1, 0.01, 0.8, '%'),

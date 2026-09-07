@@ -3556,3 +3556,7 @@ svg.auto-lane {
 .bridge-settings input[type="checkbox"], .seed-controls input[type="checkbox"] { width: auto; }
 .seed-controls { flex-basis: 100%; gap: 14px; }
 .seed-controls label { display: inline-flex; align-items: center; gap: 6px; }
+.auto-box { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.auto-box select { width: auto; min-width: 190px; max-width: 280px; }
+.auto-box > .auto-hint { flex-basis: 100%; }
+.auto-lane:focus-visible, .auto-lane .env-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
