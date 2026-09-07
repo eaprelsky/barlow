@@ -12,7 +12,7 @@
 // Публичная поверхность движка — контракт AudioBackend (backend.ts):
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
-import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
+import type { Mod, Note, Patch, Scene, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { resolveMacros } from '../music/macros';
 import { sampleAssets } from '../music/sampleZones';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
@@ -1178,8 +1178,8 @@ export class AudioEngine implements AudioBackend {
   }
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
-  async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8): Promise<Blob> {
-    const plan = planRender(patch, fallbackSceneId, fallbackBars);
+  async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8, options?: WavRenderOptions): Promise<Blob> {
+    const plan = planRender(patch, fallbackSceneId, fallbackBars, options);
     await this.ensureSamples(patch);
     const duration = plan.duration;
     const sampleRate = 44100;
@@ -1190,60 +1190,97 @@ export class AudioEngine implements AudioBackend {
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
-      connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03, patch.performanceSeed);
+      const layer = connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03, patch.performanceSeed, options ? plan.musicalStart : 0);
+      if (options) {
+        layer.gain.gain.setValueAtTime(layer.gain.gain.value, Math.max(plan.musicalStart, plan.musicalEnd - .02));
+        layer.gain.gain.linearRampToValueAtTime(0, plan.musicalEnd);
+        layer.src.stop(plan.musicalEnd);
+      }
     }
     const noise = makeNoiseBuffer(ctx, patch.performanceSeed);
 
     const chainsByKey = new Map<string, TrackChain>();
-    for (const part of plan.parts) {
-      const { track, st, pattern, bpm, start, end } = part;
-      const eff = effectiveParams(track, pattern);
-      const chain = makeChain(ctx, { ...st, ...eff }, master.input, bpm, patch.performanceSeed, start);
-      chainsByKey.set(part.key, chain);
-      const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
-      const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
-      const gg = chain.gain.gain;
-      gg.setValueAtTime(0, start);
-      gg.linearRampToValueAtTime(eff.volume, start + fadeIn);
-      const exitFrom = Math.max(start + fadeIn, end - fadeOut);
-      if (exitFrom < end - 0.001) gg.setValueAtTime(eff.volume, exitFrom);
-      if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, end);
-      else gg.setValueAtTime(0, end);
-      for (const step of part.steps) {
-        for (const c of pattern.automation ?? []) {
-          const v = autoValue(c.points, step.index / pattern.length);
-          if (v === undefined) continue;
-          const at = step.at;
-          if (c.target === 'filterFreq') chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
-          else if (c.target === 'pan') chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
-          else if (c.target === 'volume') chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
-          else if (c.target.startsWith('fx')) fxParamOf(chain.fx, c.target, c.fxId)?.setTargetAtTime(autoToParam(c.target, v), at, 0.03);
+    try {
+      for (const part of plan.parts) {
+        const { track, st, pattern, bpm, start, end } = part;
+        const eff = effectiveParams(track, pattern);
+        const naturalFinal = options?.tail === 'natural' && part.itemIndex === plan.finalItemIndex;
+        const output = options ? ctx.createGain() : master.input;
+        if (options) {
+          output.connect(master.input);
+          if (!naturalFinal) {
+            output.gain.setValueAtTime(1, Math.max(start, end - .005));
+            output.gain.linearRampToValueAtTime(0, end);
+          }
+        }
+        const chain = makeChain(ctx, { ...st, ...eff }, output, bpm, patch.performanceSeed, start);
+        chainsByKey.set(part.key, chain);
+        const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
+        const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
+        const gg = chain.gain.gain;
+        gg.setValueAtTime(0, start);
+        gg.linearRampToValueAtTime(eff.volume, start + fadeIn);
+        if (!naturalFinal) {
+          const exitFrom = Math.max(start + fadeIn, end - fadeOut);
+          if (exitFrom < end - 0.001) gg.setValueAtTime(eff.volume, exitFrom);
+          if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, end);
+          else gg.setValueAtTime(0, end);
+        }
+        for (const step of part.steps) {
+          for (const c of pattern.automation ?? []) {
+            const v = autoValue(c.points, step.index / pattern.length);
+            if (v === undefined) continue;
+            const at = step.at;
+            if (c.target === 'filterFreq') chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
+            else if (c.target === 'pan') chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
+            else if (c.target === 'volume') chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
+            else if (c.target.startsWith('fx')) fxParamOf(chain.fx, c.target, c.fxId)?.setTargetAtTime(autoToParam(c.target, v), at, 0.03);
+          }
         }
       }
-    }
-    // Globally ordered creation is required for mono/choke/voice budgets.
-    const monoVoices = new MonoVoices();
-    const voiceBudget = new VoiceBudget();
-    for (const ev of plan.events) {
-      const { track, st, itemIndex } = ev.part;
-      voiceBudget.prune(ev.at);
-      if (!voiceBudget.allows(st, ev.notes.length))
-        throw new Error('WAV: превышена полифония (128 нот / 8192 условных узла). Уменьши длину нот, унисон или плотность арпеджио.');
-      const chain = chainsByKey.get(ev.part.key)!;
-      const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
-        st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-        randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex));
-      voice.amp.gain.value *= ev.gain ?? 1;
-      voiceBudget.add(voice, st, ev.notes.length);
-      monoVoices.prune(ev.at);
-      if (track.mono) monoVoices.register(track.id, voice, ev.at);
-      for (const rt of patch.tracks) {
-        const sc = rt.sidechain;
-        const rc = chainsByKey.get(`${itemIndex}:${rt.id}`);
-        if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, ev.at, sc);
+      // Globally ordered creation is required for mono/choke/voice budgets.
+      const monoVoices = new MonoVoices();
+      const voiceBudget = new VoiceBudget();
+      for (const ev of plan.events) {
+        const { track, st, itemIndex } = ev.part;
+        voiceBudget.prune(ev.at);
+        if (!voiceBudget.allows(st, ev.notes.length))
+          throw new Error('WAV: превышена полифония (128 нот / 8192 условных узла). Уменьши длину нот, унисон или плотность арпеджио.');
+        const chain = chainsByKey.get(ev.part.key)!;
+        const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
+          st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
+          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex));
+        voice.amp.gain.value *= ev.gain ?? 1;
+        voiceBudget.add(voice, st, ev.notes.length);
+        monoVoices.prune(ev.at);
+        if (track.mono) monoVoices.register(track.id, voice, ev.at);
+        for (const rt of patch.tracks) {
+          const sc = rt.sidechain;
+          const rc = chainsByKey.get(`${itemIndex}:${rt.id}`);
+          if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, ev.at, sc);
+        }
       }
+      const rendered = await ctx.startRendering();
+      if (!options) return audioBufferToWav(rendered);
+      const from = Math.round(plan.musicalStart * sampleRate);
+      let to = Math.round(plan.musicalEnd * sampleRate);
+      if (options.tail === 'natural') {
+        let last = to - 1;
+        for (let c = 0; c < rendered.numberOfChannels; c++) {
+          const data = rendered.getChannelData(c);
+          for (let i = data.length - 1; i >= to; i--) {
+            if (!Number.isFinite(data[i])) throw new Error('WAV: некорректный сигнал при рендере хвоста.');
+            if (Math.abs(data[i]) > 1 / 32768) { last = Math.max(last, i); break; }
+          }
+        }
+        const silence = Math.ceil(.05 * sampleRate);
+        if (last >= rendered.length - silence)
+          throw new Error('WAV: звук не успел затихнуть в расчётное время. Файл не обрезан и не сохранён. Уменьши feedback или выбери точную границу.');
+        if (last >= to) to = Math.min(rendered.length, last + 1 + silence);
+      }
+      return audioBufferToWav(rendered, { from, to, fadeFrames: Math.round(.005 * sampleRate) });
+    } finally {
+      for (const chain of chainsByKey.values()) disposeChain(chain);
     }
-    const rendered = await ctx.startRendering();
-    return audioBufferToWav(rendered);
   }
 }

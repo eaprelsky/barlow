@@ -532,6 +532,10 @@ export interface ChainItem {
 
 export type MasterNoise = 'off' | 'white' | 'pink';
 
+/** Export choice, not a change to the musical patch. Omission at the backend
+ * boundary retains the historical padded export for API/golden compatibility. */
+export interface WavRenderOptions { tail: 'natural' | 'trim' }
+
 export interface Patch {
   /** Explicit deterministic performance; undefined preserves legacy randomness. */
   performanceSeed?: number;

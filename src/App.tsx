@@ -7,6 +7,7 @@ import { AudioEngine } from './audio/engine';
 import { AudioStatus } from './components/AudioStatus';
 import { instantiateEffects } from './music/effectAddress';
 import { BridgeSettings } from './components/BridgeSettings';
+import { WavExport } from './components/WavExport';
 import { loadBridgeSession, saveBridgeSession, type BridgeSession, type BridgeStatus } from './bridgeSession';
 import { stepIndexAt } from './audio/timing';
 import type { AudioBackend } from './audio/backend';
@@ -25,7 +26,7 @@ import {
   scaleOf,
   uid,
 } from './types';
-import type { Instrument, Patch, Pattern, SceneSlot, Track } from './types';
+import type { Instrument, Patch, Pattern, SceneSlot, Track, WavRenderOptions } from './types';
 import { TrackRow } from './components/TrackRow';
 import type { InstEditorTab } from './components/InstrumentEditor';
 import { LevelBar } from './components/LevelBar';
@@ -61,7 +62,6 @@ import {
 
 const UI_KEY = 'barlow.ui.v1';
 const AI_KEY_STORE = 'barlow.ai.v1';
-const WAV_BARS = 8;
 
 /** Стем имён файлов экспорта: название пьесы (транслит) или 'barlow'. */
 const exportStem = (patch: Patch): string =>
@@ -324,6 +324,7 @@ export default function App() {
   }, [showHelp]);
   const [fileOpen, setFileOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [wavExport, setWavExport] = useState<{ patch: Patch; sceneId: string } | null>(null);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [sampleJobs] = useState(() => new SampleJobs());
   useEffect(() => () => sampleJobs.cancelAll(), [sampleJobs]);
@@ -1372,14 +1373,14 @@ export default function App() {
     setSceneId(fresh.scenes[0].id);
   };
 
-  const renderWav = async () => {
-    if (rendering) return;
+  const renderWav = async (snapshot: Patch, bars: number, options: WavRenderOptions) => {
+    if (rendering) throw new Error('Экспорт уже выполняется.');
     setRendering(true);
     try {
-      const blob = await engine.renderToWav(patch, sceneId, WAV_BARS);
-      await saveBlob(blob, `${exportStem(patch)}.wav`);
-    } catch (e) {
-      void alertDialog(`Рендер не удался: ${errText(e)}`, 'запись wav');
+      const blob = await engine.renderToWav(snapshot, wavExport?.sceneId ?? sceneId, bars, options);
+      const saved = await saveBlob(blob, `${exportStem(snapshot)}.wav`);
+      if (isDesktop && saved === null) throw new Error('Сохранение отменено; файл не записан.');
+      return (blob.size - 44) / (44100 * 4);
     } finally {
       setRendering(false);
     }
@@ -1623,7 +1624,7 @@ export default function App() {
               <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Открыть демо: дефолтный полиритм">
                 открыть демо
               </button>
-              <button onClick={() => { renderWav(); setFileOpen(false); }} disabled={rendering} title="Записать аранжмент в wav">
+              <button onClick={() => { setWavExport({ patch, sceneId }); setFileOpen(false); }} disabled={rendering} title="Выбрать длину и окончание WAV">
                 {rendering ? 'рендер…' : 'записать wav'}
               </button>
               <button
@@ -2134,6 +2135,8 @@ export default function App() {
         </Modal>
       )}
 
+      {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId}
+        onClose={() => setWavExport(null)} onExport={renderWav} />}
       <DialogHost />
       {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}
       {obRun && (

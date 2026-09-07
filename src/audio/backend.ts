@@ -3,7 +3,7 @@
 // же интерфейсом — через Tauri-команды и события. Пока контракт не
 // выписан, «замена слоя» — надежда, а не план (см. docs/DESIGN.md).
 
-import type { Note, Patch, SoundingTrack, Track } from '../types';
+import type { Note, Patch, SoundingTrack, Track, WavRenderOptions } from '../types';
 import type { TrackClock } from './timing';
 
 export interface AudioDiagnostics {
@@ -70,7 +70,7 @@ export interface AudioBackend {
   previewSounding(st: SoundingTrack, noteRow?: number): void;
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
-  renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number): Promise<Blob>;
+  renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number, options?: WavRenderOptions): Promise<Blob>;
 
   /** Заморозить жест скрэтча: оффлайн-рендер ноты жеста в WAV-блоб —
    *  тот же звук, что «▶ послушать» (обрезка, жест, огибающая). */

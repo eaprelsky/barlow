@@ -1,12 +1,13 @@
-import type { Patch, Pattern, SoundingTrack, Track } from '../types';
+import type { Patch, Pattern, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { patternInScene, slotMuted } from '../types';
 import { resolveMacros } from '../music/macros';
 import { BAR_TICKS, startStepIndex, stepDuration, tickDuration } from './timing';
 import { planStepEvents, type PlannedNoteEvent } from './eventPlan';
 import { randomFor } from './random';
 import { estimateVoiceNodes } from './voiceBudget';
+import { effectTailBound, voiceLifetimeBound } from './renderTail';
 
-export const RENDER_LIMITS = { seconds: 600, chains: 512, steps: 200000, events: 20000, estimatedNodes: 100000 };
+export const RENDER_LIMITS = { seconds: 600, tailSeconds: 120, chains: 512, steps: 200000, events: 20000, estimatedNodes: 100000 };
 
 export interface RenderPart {
   key: string; itemIndex: number; start: number; end: number; bpm: number;
@@ -19,7 +20,7 @@ export interface RenderEvent extends PlannedNoteEvent {
 
 /** Validate all allocation limits before creating an OfflineAudioContext or
  * loading assets. Repeated scene occurrences deliberately have distinct keys. */
-export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: number) {
+export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: number, options?: WavRenderOptions) {
   const items = patch.followChain && patch.chain.length ? patch.chain : [{ sceneId: fallbackSceneId, bars: fallbackBars }];
   const parts: RenderPart[] = [], events: RenderEvent[] = [];
   let start = 0.05, steps = 0, nodes = 0;
@@ -63,5 +64,19 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     start = end;
   }
   events.sort((a, b) => a.at - b.at);
-  return { parts, events, duration: start + 0.95, estimatedNodes: nodes };
+  let duration = options ? start : start + .95;
+  if (options?.tail === 'natural') {
+    const tails = new Map<string, number>();
+    for (const ev of events) {
+      if (ev.part.itemIndex !== items.length - 1) continue;
+      let tail = tails.get(ev.part.key);
+      if (tail === undefined) { tail = effectTailBound(ev.part.st, ev.part.pattern); tails.set(ev.part.key, tail); }
+      duration = Math.max(duration, ev.at + voiceLifetimeBound(ev.part.st, ev.notes, ev.stepDur, ev.durSec) + tail);
+    }
+    // Master/filter settling at the final boundary, also for a silent last scene.
+    duration = Math.max(duration, start + 2);
+    if (!Number.isFinite(duration) || duration - start > RENDER_LIMITS.tailSeconds)
+      throw new Error('WAV: расчётный хвост больше 120 секунд. Уменьши длину нот, время/повторы эха или выбери точную границу.');
+  }
+  return { parts, events, duration, musicalStart: .05, musicalEnd: start, finalItemIndex: items.length - 1, estimatedNodes: nodes };
 }

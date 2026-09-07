@@ -3560,3 +3560,13 @@ svg.auto-lane {
 .auto-box select { width: auto; min-width: 190px; max-width: 280px; }
 .auto-box > .auto-hint { flex-basis: 100%; }
 .auto-lane:focus-visible, .auto-lane .env-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.wav-export { width: min(620px, calc(100vw - 40px)); }
+.wav-export > p, .wav-export fieldset p { line-height: 1.6; color: var(--muted, #9ca8b6); }
+.wav-export fieldset { margin: 20px 0; padding: 16px; border: 1px solid #35404b; border-radius: 8px; }
+.wav-export fieldset label { display: flex; align-items: center; gap: 8px; }
+.wav-export fieldset p { margin: 8px 0 18px 24px; }
+.wav-export input[type="number"] { width: 90px; margin-left: 10px; }
+.wav-export input[type="radio"] { width: auto; flex: none; margin: 0; accent-color: #ffb14e; }
+.wav-export .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wav-export .primary:not(:disabled) { border-color: #b78132; color: #ffb14e; }
+.wav-export .error { color: #ffad88; }

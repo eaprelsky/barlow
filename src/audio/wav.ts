@@ -1,8 +1,10 @@
 // Кодировщик AudioBuffer → WAV (16-bit PCM, без зависимостей).
 
-export function audioBufferToWav(buffer: AudioBuffer): Blob {
+export function audioBufferToWav(buffer: AudioBuffer, region?: { from: number; to: number; fadeFrames?: number }): Blob {
   const numCh = Math.min(2, buffer.numberOfChannels);
-  const len = buffer.length;
+  const from = Math.min(buffer.length, Math.max(0, Math.round(region?.from ?? 0)));
+  const len = Math.max(0, Math.min(buffer.length, Math.round(region?.to ?? buffer.length)) - from);
+  const fade = Math.min(len, Math.max(0, Math.round(region?.fadeFrames ?? 0)));
   const bytesPerSample = 2;
   const blockAlign = numCh * bytesPerSample;
   const dataSize = len * blockAlign;
@@ -33,7 +35,8 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
   let offset = 44;
   for (let i = 0; i < len; i++) {
     for (let c = 0; c < numCh; c++) {
-      const v = Math.max(-1, Math.min(1, chans[c][i]));
+      const gain = fade > 1 && i >= len - fade ? (len - 1 - i) / (fade - 1) : 1;
+      const v = Math.max(-1, Math.min(1, chans[c][from + i] * gain));
       view.setInt16(offset, v < 0 ? v * 0x8000 : v * 0x7fff, true);
       offset += 2;
     }
