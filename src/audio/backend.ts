@@ -5,6 +5,7 @@
 
 import type { Note, Patch, SoundingTrack, Track, WavRenderOptions } from '../types';
 import type { TrackClock } from './timing';
+import type { SamplePCM } from './pcm';
 
 export interface AudioDiagnostics {
   activeNotes: number; estimatedNodes: number; queuedEvents: number;
@@ -12,6 +13,7 @@ export interface AudioDiagnostics {
   chains: number; chainNodes: number; chainBufferBytes: number; blockedTracks: string[];
   schedulerMaxMs: number; slowSchedulerCalls: number;
   preparationMs: number;
+  decodedBytes: number; decodedAssets: number; pendingDecodes: number;
 }
 
 export interface AudioBackend {
@@ -63,8 +65,8 @@ export interface AudioBackend {
   /** Пики волны сэмпла (64 сегмента, 0..1) для мини-карты скрэтч-пэда. */
   getSamplePeaks(id: string | undefined): Promise<{ peaks: number[]; duration: number } | null>;
 
-  /** Декодированный буфер сэмпла — редактору волны (канвас, разложение). */
-  getSampleBuffer(id: string | undefined): Promise<AudioBuffer | null>;
+  /** Независимая копия PCM одной записи для канваса/FFT; не загружает патч. */
+  getSamplePCM(id: string | undefined): Promise<SamplePCM | null>;
   /** Прослушать кусок сэмпла — проверка обрезки в редакторе. */
   previewSampleRegion(track: Track, fromSec: number, toSec: number): void;
   /** Прослушать одну ноту инструмента — проверка тембра в редакторе. */

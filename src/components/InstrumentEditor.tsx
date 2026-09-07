@@ -1,3 +1,4 @@
+import type { SamplePCM } from '../audio/pcm';
 // Большой редактор инструмента дорожки: «раздвинутый» режим карточки
 // (остальные треки съёживаются). Пресет из панели инструментов
 // переставляет именно эти ручки — здесь тембр крутят и дотюнивают.
@@ -70,7 +71,7 @@ interface Props {
   onPickSample: () => void;
   /** Загрузить файл сэмпла с диска (положит в слот). */
   onLoadSampleFile: (f: File) => void;
-  getBuffer: (id?: string) => Promise<AudioBuffer | null>;
+  getPCM: (id?: string) => Promise<SamplePCM | null>;
   onPreviewRegion: (inst: Instrument, fromSec: number, toSec: number) => void;
   /** Превью ноты тембром (карточка сольёт с дорожкой). */
   onPreviewNote: (i: Instrument) => void;
@@ -89,10 +90,10 @@ interface Props {
 }
 
 /** Микс в моно для канваса (рисуем один канал суммы). */
-function monoOf(buf: AudioBuffer): Float32Array {
-  if (buf.numberOfChannels === 1) return buf.getChannelData(0);
-  const a = buf.getChannelData(0);
-  const b = buf.getChannelData(1);
+function monoOf(buf: SamplePCM): Float32Array {
+  if (buf.channels.length === 1) return buf.channels[0];
+  const a = buf.channels[0];
+  const b = buf.channels[1];
   const out = new Float32Array(a.length);
   for (let i = 0; i < a.length; i++) out[i] = (a[i] + b[i]) / 2;
   return out;
@@ -114,7 +115,7 @@ export function InstrumentEditor({
   onClose,
   onPickSample,
   onLoadSampleFile,
-  getBuffer,
+  getPCM,
   onPreviewRegion,
   onPreviewNote,
   onTransformSample,
@@ -133,7 +134,9 @@ export function InstrumentEditor({
   const scope = `[data-track-id="${track.id}"]`;
 
   // ---- Сэмпл: буфер, выделение, FFT, ИИ ----
-  const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
+  const [buffer, setBuffer] = useState<SamplePCM | null>(null);
+  const [sampleError, setSampleError] = useState('');
+  const [sampleRetry, setSampleRetry] = useState(0);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const [fftK, setFftK] = useState(64);
   const [f0Manual, setF0Manual] = useState(0);
@@ -144,18 +147,18 @@ export function InstrumentEditor({
   const [genSeconds, setGenSeconds] = useState(3);
 
   useEffect(() => {
+    setBuffer(null); setSampleError(''); setSel(null);
     if (tab !== 'snd' || !inst.sampleId) {
-      if (tab === 'snd') setBuffer(null);
       return;
     }
     let alive = true;
-    void getBuffer(inst.sampleId).then((b) => {
-      if (alive) setBuffer(b);
-    });
+    void getPCM(inst.sampleId).then((b) => {
+      if (alive) { setBuffer(b); if (!b) setSampleError('Запись отсутствует в библиотеке.'); }
+    }).catch(e => { if (alive) setSampleError(String(e)); });
     return () => {
       alive = false;
     };
-  }, [tab, inst.sampleId, getBuffer]);
+  }, [tab, inst.sampleId, getPCM, sampleRetry]);
 
   // Память о последней волне — для возврата с сэмпла сегментом.
   useEffect(() => {
@@ -338,15 +341,16 @@ export function InstrumentEditor({
 
   // Мини-карта волны сэмпла для скрэтч-пэда.
   useEffect(() => {
+    setScratchMap(null);
     if (st.waveform !== 'sample' || (st.sampleMode ?? 'plain') !== 'scratch') return;
     let alive = true;
     void onScratchPeaks().then((m) => {
       if (alive) setScratchMap(m);
-    });
+    }).catch(e => { if (alive) setSampleError(String(e)); });
     return () => {
       alive = false;
     };
-  }, [st.waveform, st.sampleMode, st.sampleId, onScratchPeaks]);
+  }, [st.waveform, st.sampleMode, st.sampleId, onScratchPeaks, sampleRetry]);
 
   // Длительность ноты, с — как её посчитает triggerVoice: сетка
   // («нота», шагов × шаг эскиза) или огибающая (атака + спад).
@@ -797,10 +801,13 @@ export function InstrumentEditor({
             </div>
           )}
 
+          {isSample && sampleError && <div role="alert" className="sample-load-error">
+            Не удалось загрузить сэмпл: {sampleError} <button onClick={() => setSampleRetry(v => v + 1)}>повторить загрузку</button>
+          </div>}
           {isSample && (!inst.sampleId || !buffer ? (
             <p className="empty">
               {inst.sampleId
-                ? 'сэмпл ещё грузится…'
+                ? sampleError ? 'Волна недоступна.' : 'сэмпл ещё грузится…'
                 : inst.sampleZones?.length ? 'Основной сэмпл не выбран; ноты внутри настроенных зон используют записи зон.' : 'Основной сэмпл не выбран — выбери из хранилища или загрузи файл.'}
             </p>
           ) : (

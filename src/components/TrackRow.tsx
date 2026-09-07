@@ -1,3 +1,4 @@
+import type { SamplePCM } from '../audio/pcm';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type {
@@ -176,7 +177,7 @@ interface Props {
   onEditorTab: (t: InstEditorTab) => void;
   onOpenEditor: (id: string, tab?: InstEditorTab) => void;
   onCloseEditor: () => void;
-  onGetSampleBuffer: (id?: string) => Promise<AudioBuffer | null>;
+  onGetSamplePCM: (id?: string) => Promise<SamplePCM | null>;
   onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
   onPreviewNote: (track: Track) => void;
   /** Открыть панель инструментов с применением к этой дорожке. */
@@ -229,7 +230,7 @@ export const TrackRow = memo(function TrackRow({
   onEditorTab,
   onOpenEditor,
   onCloseEditor,
-  onGetSampleBuffer,
+  onGetSamplePCM,
   onPreviewSampleRegion,
   onPreviewNote,
   onOpenBrowser,
@@ -1314,7 +1315,7 @@ export const TrackRow = memo(function TrackRow({
           onClose={onCloseEditor}
           onPickSample={() => setShowPicker(true)}
           onLoadSampleFile={loadSampleFile}
-          getBuffer={onGetSampleBuffer}
+          getPCM={onGetSamplePCM}
           onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i }, a, b)}
           onPreviewNote={(i) => onPreviewNote({ ...st, ...i })}
           onTransformSample={onTransformSample}

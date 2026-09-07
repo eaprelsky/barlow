@@ -24,6 +24,7 @@
     "test:resources": "node scripts/resources.test.mjs",
     "test:stress": "node scripts/stress-contract.mjs",
     "test:palette": "node scripts/palette-contract.mjs",
+    "test:assets": "node scripts/assets.test.mjs && node scripts/assets-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },

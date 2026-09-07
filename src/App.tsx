@@ -354,8 +354,8 @@ export default function App() {
     engineRef.current.warnSink = (m) => void alertDialog(m, 'звук');
   }
   const engine: AudioBackend = engineRef.current;
-  const getSampleBuffer = useCallback(
-    (id?: string) => engine.getSampleBuffer(id),
+  const getSamplePCM = useCallback(
+    (id?: string) => engine.getSamplePCM(id),
     [engine],
   );
   const previewSampleRegion = useCallback(
@@ -2079,7 +2079,7 @@ export default function App() {
             onEditorTab={setEditorTab}
             onOpenEditor={openEditor}
             onCloseEditor={closeEditor}
-            onGetSampleBuffer={getSampleBuffer}
+            onGetSamplePCM={getSamplePCM}
             onPreviewSampleRegion={previewSampleRegion}
             onPreviewNote={previewNote}
             onOpenBrowser={openLibraryAt}

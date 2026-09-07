@@ -16,6 +16,8 @@ import type { Mod, Note, Patch, Scene, SoundingTrack, Track, WavRenderOptions } 
 import { resolveMacros } from '../music/macros';
 import { sampleAssets } from '../music/sampleZones';
 import { SampleRoundRobin } from '../music/sampleRoundRobin';
+import { DecodedAssets } from './decodedAssets';
+import { copySamplePCM, type SamplePCM } from './pcm';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { planStepEvents } from './eventPlan';
 import { MonoVoices } from './monoVoices';
@@ -124,7 +126,8 @@ export class AudioEngine implements AudioBackend {
       queuedEvents: this.pendingNotes.size, droppedEvents: this.droppedEvents, lateEvents: this.lateEvents,
       chains: chains.chains, chainNodes: chains.nodes, chainBufferBytes: chains.bufferBytes,
       blockedTracks: [...this.blockedTracks].map(id => this.patch?.tracks.find(t => t.id === id)?.name ?? id),
-      schedulerMaxMs: this.schedulerMaxMs, slowSchedulerCalls: this.slowSchedulerCalls, preparationMs: this.preparationMs };
+      schedulerMaxMs: this.schedulerMaxMs, slowSchedulerCalls: this.slowSchedulerCalls, preparationMs: this.preparationMs,
+      decodedBytes: this.sampleCache.bytes, decodedAssets: this.sampleCache.size, pendingDecodes: this.sampleCache.pending };
   }
   // Дебаг-мост: приёмник событий нот live-планировщика.
   noteSink?: (trackId: string, at: number, notes: Note[]) => void;
@@ -151,7 +154,8 @@ export class AudioEngine implements AudioBackend {
   private startAt = 0;
   private sceneOccurrence = 0;
   // Декодированные сэмплы библиотеки, id → AudioBuffer.
-  private sampleCache = new Map<string, AudioBuffer>();
+  private sampleCache = new DecodedAssets<AudioBuffer>();
+  private releasePatchAssets: (() => void) | undefined;
   private previewRequest = 0;
   private previewCleanup: (() => void) | null = null;
   private async loadSoundSample(st: SoundingTrack): Promise<void> {
@@ -159,13 +163,32 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ensureCtx();
     if (st.sampleMode === 'scratch') await ensureScratchModule(ctx);
     for (const asset of sampleAssets(st)) {
-      if (this.sampleCache.has(asset.sampleId)) continue;
-      const blob = await getSampleBlob(asset.sampleId);
-      if (!blob) throw new Error(`Нет записи «${asset.sampleName ?? asset.sampleId}» в библиотеке`);
-      const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
-      normalizeBuffer(buf);
-      this.sampleCache.set(asset.sampleId, buf);
+      await this.loadSample(asset.sampleId, asset.sampleName);
     }
+  }
+  private loadSample(id: string, name = id): Promise<AudioBuffer> {
+    if (!/^[a-f0-9]{64}$/.test(id)) return Promise.reject(new Error('Некорректный SHA-256 сэмпла.'));
+    return this.sampleCache.load(id, async () => {
+      const blob = await getSampleBlob(id);
+      if (!blob) throw new Error(`Нет записи «${name}» в библиотеке`);
+      if (blob.size > 64 * 1048576) throw new Error('Файл сэмпла больше 64 МиБ.');
+      const buf = await this.ensureCtx().decodeAudioData(await blob.arrayBuffer());
+      const bytes = buf.length * buf.numberOfChannels * 4;
+      if (bytes <= this.sampleCache.limits.assetBytes) normalizeBuffer(buf);
+      return { value: buf, bytes };
+    });
+  }
+  private patchAssetIds(patch: Patch): string[] {
+    return patch.tracks.flatMap(t => {
+      const st = stOf(patch, t);
+      return st.waveform === 'sample' ? sampleAssets(st).map(a => a.sampleId) : [];
+    });
+  }
+  private async loadMainSample(st: SoundingTrack, scratch = false): Promise<AudioBuffer | null> {
+    if (!st.sampleId) return null;
+    const sample = await this.loadSample(st.sampleId, st.sampleName);
+    if (scratch) await ensureScratchModule(this.ensureCtx());
+    return sample;
   }
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new MonoVoices();
@@ -269,14 +292,16 @@ export class AudioEngine implements AudioBackend {
 
   /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
   async ensureSamples(patch: Patch): Promise<void> {
-    for (const track of patch.tracks) {
-      await this.loadSoundSample(stOf(patch, track));
-    }
+    const release = this.sampleCache.pin(this.patchAssetIds(patch));
+    try { for (const track of patch.tracks) await this.loadSoundSample(stOf(patch, track)); }
+    finally { release(); }
   }
 
   /** Обновить данные патча без остановки: движок читает их на каждом шаге.
    *  Параметры цепочек применяет scheduler — ему известен активный эскиз. */
   setPatch(patch: Patch): void {
+    const release = this.sampleCache.pin(this.patchAssetIds(patch));
+    this.releasePatchAssets?.(); this.releasePatchAssets = release;
     if (this.ctx && this.patch?.performanceSeed !== patch.performanceSeed) {
       this.noiseBuffer = makeNoiseBuffer(this.ctx, patch.performanceSeed);
       this.stopNoiseLayer();
@@ -685,25 +710,28 @@ export class AudioEngine implements AudioBackend {
   // ---- Ручной скрэтч-пэд: игла под мышью, вне планировщика ----
 
   private scratchNode: AudioWorkletNode | null = null;
+  private scratchRequest = 0;
   // Обрезка сэмпла в нормальных координатах иглы (0..1 всего буфера).
   private scratchMap: ((p: number) => number) | null = null;
 
   /** Начать ручной скрэтч: игла с заданной позиции. Без играющего
    *  транспорта звук идёт прямо в мастер — запись жеста всегда слышна. */
   scratchBegin(track: Track, pos0 = 0): void {
+    this.scratchEnd();
+    const request = ++this.scratchRequest;
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
-      await this.ensureSamples(patch);
+      const st = stOf(patch, track);
+      const sample = await this.loadMainSample(st, true);
+      if (request !== this.scratchRequest) return;
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') await ctx.resume();
       if (!this.playing) this.applyMasterVolume(patch.masterVolume);
-      const st = stOf(patch, track);
-      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
+      if (request !== this.scratchRequest) return;
       const chain = this.chains.get(track.id);
       if (!sample || (!chain && !this.master)) return;
       const dest: AudioNode = chain ? chain.hp : this.master!.input;
-      this.scratchEnd();
       // Игла ходит по обрезанному куску сэмпла, если он задан.
       const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
       const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
@@ -715,7 +743,7 @@ export class AudioEngine implements AudioBackend {
       off.setValueAtTime(0, ctx.currentTime);
       node.connect(dest);
       this.scratchNode = node;
-    })();
+    })().catch(e => { if (request === this.scratchRequest) this.warnSink?.(`Скрэтч: ${String(e)}`); });
   }
 
   /** Игла едет за мышью. */
@@ -741,13 +769,10 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ensureCtx();
     if (ctx.state === 'suspended') void ctx.resume();
     if (!this.playing) this.applyMasterVolume(patch.masterVolume);
-    try {
-      await this.ensureSamples(patch);
-    } catch {
-      return 'сэмпл дорожки не загрузился (битый файл в библиотеке?)';
-    }
     const st = stOf(patch, track);
-    const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
+    let sample: AudioBuffer | null;
+    try { sample = await this.loadMainSample(st, true); }
+    catch (e) { return `Сэмпл не загрузился: ${String(e)}`; }
     if (!sample) return 'в слоте дорожки нет сэмпла';
     const chain = this.chains.get(track.id);
     if (!chain && !this.master) return 'звуковой граф не поднят';
@@ -793,6 +818,7 @@ export class AudioEngine implements AudioBackend {
 
   /** Отпустили: узел завершает себя по расписанию off. */
   scratchEnd(): void {
+    ++this.scratchRequest;
     const ctx = this.ctx;
     this.scratchMap = null;
     if (!ctx || !this.scratchNode) return;
@@ -807,9 +833,8 @@ export class AudioEngine implements AudioBackend {
   async renderScratchWav(track: Track): Promise<Blob> {
     const patch = this.patch;
     if (!patch) throw new Error('патч не загружен');
-    await this.ensureSamples(patch);
     const st = stOf(patch, track);
-    const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
+    const sample = await this.loadMainSample(st);
     if (!sample) throw new Error('в слоте нет сэмпла');
     const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
     const len = st.noteSteps && st.noteSteps > 0 ? st.noteSteps * stepSec : st.attack + st.decay;
@@ -855,11 +880,7 @@ export class AudioEngine implements AudioBackend {
     if (!id) return null;
     const cached = this.peaksCache.get(id);
     if (cached) return cached;
-    const patch = this.patch;
-    if (!patch) return null;
-    await this.ensureSamples(patch);
-    const buf = this.sampleCache.get(id);
-    if (!buf) return null;
+    const buf = await this.loadSample(id);
     const N = 64;
     const data = buf.getChannelData(0);
     const seg = Math.max(1, Math.floor(data.length / N));
@@ -874,18 +895,16 @@ export class AudioEngine implements AudioBackend {
       peaks.push(m);
     }
     const entry = { peaks, duration: buf.duration };
+    if (this.peaksCache.size >= 1024) this.peaksCache.delete(this.peaksCache.keys().next().value!);
     this.peaksCache.set(id, entry);
     return entry;
   }
 
   /** Декодированный буфер сэмпла — редактору волны для канваса
    *  (пики на любой зум считает UI по буферу). */
-  async getSampleBuffer(id: string | undefined): Promise<AudioBuffer | null> {
+  async getSamplePCM(id: string | undefined): Promise<SamplePCM | null> {
     if (!id) return null;
-    const patch = this.patch;
-    if (!patch) return null;
-    await this.ensureSamples(patch);
-    return this.sampleCache.get(id) ?? null;
+    return copySamplePCM(await this.loadSample(id));
   }
 
   /** Прослушать кусок сэмпла (редактор: проверка обрезки). Играет через
@@ -894,12 +913,11 @@ export class AudioEngine implements AudioBackend {
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
-      await this.ensureSamples(patch);
+      const st = stOf(patch, track);
+      const sample = await this.loadMainSample(st);
       const ctx = this.ensureCtx();
       if (ctx.state === 'suspended') void ctx.resume();
       if (!this.playing) this.applyMasterVolume(patch.masterVolume);
-      const st = stOf(patch, track);
-      const sample = st.sampleId ? this.sampleCache.get(st.sampleId) : undefined;
       if (!sample || !this.master) return;
       const chain = this.chains.get(track.id);
       const dest: AudioNode = chain ? chain.hp : this.master.input;
@@ -918,7 +936,8 @@ export class AudioEngine implements AudioBackend {
       g.connect(dest);
       src.start(t0, from, dur);
       src.stop(t0 + dur + 0.02);
-    })();
+      src.onended = () => { src.disconnect(); g.disconnect(); };
+    })().catch(e => this.warnSink?.(`Прослушивание сэмпла: ${String(e)}`));
   }
 
   /** Прослушать одну ноту слитого трека (SoundingTrack). Так браузер
@@ -937,77 +956,83 @@ export class AudioEngine implements AudioBackend {
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
+      const releaseAssets = this.sampleCache.pin(sampleAssets(st).map(a => a.sampleId));
+      let assetsOwnedByPreview = false;
       try {
-        await this.loadSoundSample(st);
-      } catch {
-        this.warnSink?.('Сэмпл не загрузился — «▶ нота» молчит (битый файл в библиотеке?)');
-        return;
-      }
-      const ctx = this.ensureCtx();
-      if (request !== this.previewRequest) return;
-      if (!this.master || !this.noiseBuffer) return;
-      // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
-      // без объяснений; говорим.
-      if (st.waveform === 'sample' && !sampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
-        this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
-        return;
-      }
-      let failedChain: TrackChain | undefined;
-      try {
-        // Audition has its own complete chain: it must not inherit the old
-        // track's filters/FX or alter its running notes.
-        const pseudo = makeChain(ctx, st, this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
-        failedChain = pseudo;
-        const pattern = patternInScene(st, this.scene());
-        const stepSec = stepDuration(st, patch.bpm, pattern);
-        const notes = [makeNote(noteRow, 0.9, 1)];
-        this.voiceBudget.prune(ctx.currentTime);
-        if (!this.voiceBudget.allows(st, notes.length)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
-        const voice = triggerVoice(
-          ctx,
-          pseudo,
-          this.noiseBuffer,
-          this.sampleCache.get(st.sampleId ?? '') ?? null,
-          st,
-          notes,
-          ctx.currentTime + 0.02,
-          stepSec,
-          undefined,
-          (id) => this.sampleCache.get(id) ?? null,
-          randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
-          this.previewRoundRobin,
-        );
-        this.voiceBudget.add(voice, st, notes.length);
-        let cleaned = false;
-        const cleanup = () => {
-          if (cleaned) return;
-          cleaned = true;
-          voice.stopAt = Math.min(voice.stopAt, ctx.currentTime + .03);
-          voice.amp.gain.cancelScheduledValues(ctx.currentTime);
-          voice.amp.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
-          window.setTimeout(() => {
-            for (const source of voice.sources) { try { (source as AudioScheduledSourceNode).stop?.(); } catch { /* ended */ } source.disconnect(); }
-            voice.amp.disconnect();
-            disposeChain(pseudo);
-          }, 30);
-        };
-        const tail = Math.max(0.1, ...(st.effects ?? []).map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
-        const timeout = window.setTimeout(cleanup, Math.max(0, voice.stopAt - ctx.currentTime + tail) * 1000);
-        this.previewCleanup = () => { window.clearTimeout(timeout); cleanup(); };
-        failedChain = undefined; // cleanup now owns this graph and reservation
-        // Голос живёт своей огибающей; хвост подчищаем по stopAt.
-        const src = voice.sources[0];
         try {
-          (src as AudioScheduledSourceNode).stop?.(voice.stopAt);
-        } catch {
-          /* уже остановлен */
+          await this.loadSoundSample(st);
+        } catch (e) {
+          if (request === this.previewRequest) this.warnSink?.(`Сэмпл не загрузился: ${String(e)}`);
+          return;
         }
-      } catch (e) {
-        if (failedChain) disposeChain(failedChain);
-        this.warnSink?.(
-          `Нота не прозвучала: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
+        const ctx = this.ensureCtx();
+        if (request !== this.previewRequest) return;
+        if (!this.master || !this.noiseBuffer) return;
+        // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
+        // без объяснений; говорим.
+        if (st.waveform === 'sample' && !sampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
+          this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
+          return;
+        }
+        let failedChain: TrackChain | undefined;
+        try {
+          // Audition has its own complete chain: it must not inherit the old
+          // track's filters/FX or alter its running notes.
+          const pseudo = makeChain(ctx, st, this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
+          failedChain = pseudo;
+          const pattern = patternInScene(st, this.scene());
+          const stepSec = stepDuration(st, patch.bpm, pattern);
+          const notes = [makeNote(noteRow, 0.9, 1)];
+          this.voiceBudget.prune(ctx.currentTime);
+          if (!this.voiceBudget.allows(st, notes.length)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
+          const voice = triggerVoice(
+            ctx,
+            pseudo,
+            this.noiseBuffer,
+            this.sampleCache.get(st.sampleId ?? '') ?? null,
+            st,
+            notes,
+            ctx.currentTime + 0.02,
+            stepSec,
+            undefined,
+            (id) => this.sampleCache.get(id) ?? null,
+            randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
+            this.previewRoundRobin,
+          );
+          this.voiceBudget.add(voice, st, notes.length);
+          let cleaned = false;
+          const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
+            voice.stopAt = Math.min(voice.stopAt, ctx.currentTime + .03);
+            voice.amp.gain.cancelScheduledValues(ctx.currentTime);
+            voice.amp.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
+            window.setTimeout(() => {
+              for (const source of voice.sources) { try { (source as AudioScheduledSourceNode).stop?.(); } catch { /* ended */ } source.disconnect(); }
+              voice.amp.disconnect();
+              disposeChain(pseudo);
+              releaseAssets();
+            }, 30);
+          };
+          const tail = Math.max(0.1, ...(st.effects ?? []).map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
+          const timeout = window.setTimeout(cleanup, Math.max(0, voice.stopAt - ctx.currentTime + tail) * 1000);
+          this.previewCleanup = () => { window.clearTimeout(timeout); cleanup(); };
+          assetsOwnedByPreview = true;
+          failedChain = undefined; // cleanup now owns this graph and reservation
+          // Голос живёт своей огибающей; хвост подчищаем по stopAt.
+          const src = voice.sources[0];
+          try {
+            (src as AudioScheduledSourceNode).stop?.(voice.stopAt);
+          } catch {
+            /* уже остановлен */
+          }
+        } catch (e) {
+          if (failedChain) disposeChain(failedChain);
+          this.warnSink?.(
+            `Нота не прозвучала: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      } finally { if (!assetsOwnedByPreview) releaseAssets(); }
     })();
   }
 
@@ -1253,13 +1278,20 @@ export class AudioEngine implements AudioBackend {
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8, options?: WavRenderOptions): Promise<Blob> {
     const plan = planRender(patch, fallbackSceneId, fallbackBars, options);
-    await this.ensureSamples(patch);
+    const release = this.sampleCache.pin(plan.parts.flatMap(p => p.st.waveform === 'sample' ? sampleAssets(p.st).map(a => a.sampleId) : []));
+    try {
+      for (const part of plan.parts) await this.loadSoundSample(part.st);
+      return await this.renderPreparedWav(patch, plan, options);
+    } finally { release(); }
+  }
+
+  private async renderPreparedWav(patch: Patch, plan: ReturnType<typeof planRender>, options?: WavRenderOptions): Promise<Blob> {
     const duration = plan.duration;
     const sampleRate = 44100;
     const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
     // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
     // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
-    if (patch.instruments.some(i=>i.waveform==='sample' && i.sampleMode==='scratch')) await ensureScratchModule(ctx);
+    if (plan.parts.some(p=>p.st.waveform==='sample' && p.st.sampleMode==='scratch')) await ensureScratchModule(ctx);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
