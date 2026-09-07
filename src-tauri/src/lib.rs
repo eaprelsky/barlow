@@ -1,5 +1,6 @@
 // Публично для бина golden (и будущих CLI-рендеров): модель патча и тайминг.
 pub mod audio;
+mod sample_path;
 
 use std::sync::Mutex;
 use tauri::AppHandle;
@@ -202,12 +203,13 @@ fn samples_dir_path(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn sample_write(app: AppHandle, name: String, data: Vec<u8>) -> Result<(), String> {
-    std::fs::write(samples_dir(&app)?.join(name), &data).map_err(|e| e.to_string())
+    if data.len() > 64 * 1024 * 1024 { return Err("Сэмпл больше 64 МиБ".into()); }
+    std::fs::write(sample_path::checked_path(&samples_dir(&app)?, &name)?, &data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn sample_read(app: AppHandle, name: String) -> Result<Option<Vec<u8>>, String> {
-    match std::fs::read(samples_dir(&app)?.join(name)) {
+    match std::fs::read(sample_path::checked_path(&samples_dir(&app)?, &name)?) {
         Ok(d) => Ok(Some(d)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -216,7 +218,7 @@ fn sample_read(app: AppHandle, name: String) -> Result<Option<Vec<u8>>, String> 
 
 #[tauri::command]
 fn sample_delete(app: AppHandle, name: String) -> Result<(), String> {
-    match std::fs::remove_file(samples_dir(&app)?.join(name)) {
+    match std::fs::remove_file(sample_path::checked_path(&samples_dir(&app)?, &name)?) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.to_string()),
@@ -234,7 +236,18 @@ fn sample_index_read(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn sample_index_write(app: AppHandle, json: String) -> Result<(), String> {
-    std::fs::write(samples_dir(&app)?.join("index.json"), json).map_err(|e| e.to_string())
+    if json.len() > 4 * 1024 * 1024 { return Err("Индекс библиотеки больше 4 МиБ".into()); }
+    let parsed: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    let rows = parsed.as_array().ok_or("Индекс должен быть массивом")?;
+    for row in rows {
+        if !row.get("file").and_then(|f| f.as_str()).map(sample_path::valid_name).unwrap_or(false) {
+            return Err("Недопустимый путь в индексе сэмплов".into());
+        }
+    }
+    let dir = samples_dir(&app)?;
+    let tmp = dir.join("index.json.tmp");
+    std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+    std::fs::rename(tmp, dir.join("index.json")).map_err(|e| e.to_string())
 }
 
 /// Открыть папку библиотеки в системном файловом менеджере.

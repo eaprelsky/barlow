@@ -13,6 +13,9 @@ audio-to-audio, `src/ai/providers.ts` — провайдер-агностик), 
 
 ## Дальше
 
+- Реализация ревизии 07.09.2026 — [implementation-plan.md](implementation-plan.md).
+- Контракт звука v40 и совместимость — [audio-contract.md](audio-contract.md).
+
 - Агент MCP → Launchpad MK3 / VST.
 - Архитектурные решения — docs/DESIGN.md.
 

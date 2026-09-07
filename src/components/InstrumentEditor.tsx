@@ -20,7 +20,7 @@ import type {
   WaveDef,
   WavePartial,
 } from '../types';
-import { ARP_MODE_LABELS, PARTIAL_TYPE_LABELS } from '../types';
+import { ARP_MODE_LABELS, PARTIAL_TYPE_LABELS, canRouteWave, normalizeWave } from '../types';
 import {
   instrumentNameOf,
   loadUserPresets,
@@ -189,7 +189,7 @@ export function InstrumentEditor({
   const draftForm = useMemo(() => renderOpCycle(wave), [wave]);
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(applied);
   const applyDraft = () => {
-    if (draft) onChangeInst({ waveform: 'wave', wave: draft });
+    if (draft) onChangeInst({ waveform: 'wave', wave: normalizeWave(draft) });
     setDraft(null);
   };
 
@@ -213,7 +213,7 @@ export function InstrumentEditor({
   }, [appliedKey]);
 
   const setPartial = (i: number, upd: Partial<WavePartial>) =>
-    setDraft({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) });
+    setDraft(normalizeWave({ ...wave, partials: wave.partials.map((p, j) => (j === i ? { ...p, ...upd } : p)) }) ?? null);
   /** Убрать строку i: её модуляторы теряют цель — снимаются тоже,
    *  маршруты на строки дальше i сдвигаются. */
   const removePartial = (i: number) => {
@@ -621,7 +621,7 @@ export function InstrumentEditor({
                         <option value="sum">в сумму</option>
                         {wave.partials.map((q, j) =>
                           j !== i ? (
-                            <option key={j} value={j}>
+                            <option key={j} value={j} disabled={!canRouteWave(wave.partials, i, j)}>
                               мод. ×{Math.round(q.ratio * 100) / 100}
                             </option>
                           ) : null,
@@ -905,6 +905,20 @@ export function InstrumentEditor({
             </>
           ))}
 
+          {isSample && (
+            <div className="inline">
+              <label title="Высота = тоника дорожки × отношение шкалы. Выключено — прежнее воспроизведение по отношениям шкалы">
+                <input type="checkbox" checked={inst.keyTracking ?? false}
+                  onChange={(e) => onChangeInst({ keyTracking: e.target.checked })} />
+                тональный сэмпл
+              </label>
+              <label title="Частота исходной записи; используется только для тонального сэмпла">
+                тоника записи, Гц
+                <NumField value={inst.rootHz ?? 440} min={1} max={24000} step={1}
+                  onChange={(rootHz) => onChangeInst({ rootHz })} />
+              </label>
+            </div>
+          )}
           {isSample && (
             <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью), гранулярно (нота = облако коротких осколков) или скрэтчем (нота = жест иглы)" data-ob="sample-mode">
               режим

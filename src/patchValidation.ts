@@ -1,0 +1,71 @@
+// Bounded validation before migrations or asset I/O; legacy versions retain
+// their own optional fields and are converted by normalizePatch afterwards.
+const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128;
+
+export function validPatchInput(value: unknown, latestVersion: number): boolean {
+  if (!record(value) || !Number.isInteger(value.version) || (value.version as number) < 0 || (value.version as number) > latestVersion
+    || typeof value.bpm !== 'number' || !Number.isFinite(value.bpm) || value.bpm <= 0 || value.bpm > 1000
+    || !Array.isArray(value.tracks) || value.tracks.length > 128) return false;
+  // Walk iteratively so malicious depth cannot overflow the JS call stack.
+  const queue: [unknown, number][] = [[value, 0]];
+  let count = 0;
+  while (queue.length) {
+    const [v, depth] = queue.pop()!;
+    if (++count > 500000 || depth > 24) return false;
+    if (typeof v === 'number' && !Number.isFinite(v)) return false;
+    if (typeof v === 'string' && v.length > 65536) return false;
+    if (Array.isArray(v)) {
+      if (v.length > 8192) return false;
+      for (const child of v) queue.push([child, depth + 1]);
+    } else if (record(v)) {
+      for (const [key, child] of Object.entries(v)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
+        queue.push([child, depth + 1]);
+      }
+    }
+  }
+  const unique = (items: unknown[], limit: number): items is Record<string, unknown>[] => {
+    if (items.length > limit) return false;
+    const seen = new Set<string>();
+    for (const item of items) {
+      if (!record(item) || !id(item.id) || seen.has(item.id)) return false;
+      seen.add(item.id);
+    }
+    return true;
+  };
+  if (!unique(value.tracks, 128)) return false;
+  const instruments = value.instruments ?? [];
+  const scenes = value.scenes ?? [];
+  if (!Array.isArray(instruments) || !unique(instruments, 512) || !Array.isArray(scenes) || !unique(scenes, 512)) return false;
+  const instrumentIds = new Set(instruments.map(i => i.id));
+  const patterns = new Map<string, Set<string>>();
+  for (const t of value.tracks) {
+    if ((value.version as number) >= 34 && (!id(t.instrumentId) || !instrumentIds.has(t.instrumentId))) return false;
+    const ps = t.patterns ?? [];
+    if (!Array.isArray(ps) || !unique(ps, 128)) return false;
+    patterns.set(t.id as string, new Set(ps.map(p => p.id as string)));
+    for (const p of ps) {
+      if (!Array.isArray(p.steps) || p.steps.length > 4096) return false;
+      if ((value.version as number) < 37) continue; // old step shapes are migrated
+      for (const step of p.steps) {
+        if (!record(step) || !Array.isArray(step.notes) || step.notes.length > 128) return false;
+        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number')) return false;
+      }
+    }
+  }
+  for (const inst of instruments) {
+    if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;
+  }
+  for (const scene of scenes) {
+    if (scene.slots !== undefined && !record(scene.slots)) return false;
+    for (const [trackId, slot] of Object.entries((scene.slots ?? {}) as Record<string, unknown>)) {
+      const patternId = typeof slot === 'string' ? slot : record(slot) ? slot.patternId : null;
+      if (!patterns.has(trackId) || !id(patternId) || !patterns.get(trackId)!.has(patternId)) return false;
+    }
+  }
+  const chain = value.chain ?? [];
+  if (!Array.isArray(chain) || chain.length > 4096) return false;
+  const sceneIds = new Set(scenes.map(s => s.id));
+  return chain.every(item => record(item) && sceneIds.has(item.sceneId));
+}

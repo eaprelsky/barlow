@@ -1365,14 +1365,15 @@ export default function App() {
           setSceneId(norm.scenes[0].id);
           return;
         }
+        if (file.size > 8 * 1024 * 1024) throw new Error('JSON патча больше 8 МиБ');
         const parsed: unknown = JSON.parse(await file.text());
         if (isPatch(parsed)) {
           const norm = normalizePatch(parsed);
           setPatchStep(norm);
           setSceneId(norm.scenes[0].id);
         } else void alertDialog('Файл не похож на патч barlow', 'импорт');
-      } catch {
-        void alertDialog('Не удалось прочитать файл', 'импорт');
+      } catch (e) {
+        void alertDialog(`Не удалось импортировать: ${errText(e)}`, 'импорт');
       }
     })();
   };

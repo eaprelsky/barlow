@@ -21,6 +21,7 @@ import {
 import type { MutateModes } from '../music/mutate';
 import { instrumentNameOf } from '../music/instrumentPresets';
 import { bakeModToPoints } from '../music/modCurve';
+import { modRateHz } from '../types';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
@@ -965,7 +966,7 @@ export const TrackRow = memo(function TrackRow({
     if (!m) return;
     const target = m.target as AutoTarget;
     const cycleSec = stepDuration(st, bpm, pattern) * pattern.length;
-    const points = bakeModToPoints(m, target, pattern.length, cycleSec, autoBaseOf(target), i);
+    const points = bakeModToPoints({ ...m, rate: modRateHz(m, bpm) }, target, pattern.length, cycleSec, autoBaseOf(target), i);
     onPatternCommand(track.id, pattern.id, {
       automation: [
         ...(pattern.automation ?? []).filter((c) => c.target !== m.target),
@@ -1731,7 +1732,7 @@ export const TrackRow = memo(function TrackRow({
             fadeIn={pattern.fadeIn ?? 0.005}
             fadeOut={pattern.fadeOut ?? 0.05}
             stepSec={stepDuration(st, bpm, pattern)}
-            mods={pattern.mods ?? track.mods}
+            mods={(pattern.mods ?? track.mods).map(m => ({ ...m, rate: modRateHz(m, bpm) }))}
             base={autoBaseOf(laneTarget)}
             onCurves={(cs) =>
               onPatternChange(track.id, pattern.id, { automation: cs.length > 0 ? cs : undefined })
@@ -1893,20 +1894,19 @@ export const TrackRow = memo(function TrackRow({
                       <Knob
                         label="скорость"
                         title="Скорость колебаний, Гц: 0.2 — период 5 секунд; 4–8 — вибрато. Двойной клик — точное число"
-                        value={m.rate} min={0.01} max={40} step={0.05} log
-                        onChange={(rate) => updateMod(i, { rate })}
+                        value={modRateHz(m, bpm)} min={0.01} max={40} step={0.05} log
+                        onChange={(rate) => updateMod(i, { rate, beatsPerCycle: undefined })}
                       />
                       <select
                         className="sync-select"
-                        value=""
+                        value={m.beatsPerCycle ?? ''}
                         title="Синхронизировать с темпом: вобблеру и пульсациям нужна доля, а не свободные Гц"
                         onChange={(e) => {
                           const k = Number(e.target.value);
-                          if (k) updateMod(i, { rate: +((bpm / 60) * k).toFixed(3) });
-                          e.currentTarget.value = '';
+                          updateMod(i, { beatsPerCycle: k || undefined, rate: modRateHz(m, bpm) });
                         }}
                       >
-                        <option value="">синхр</option>
+                        <option value="">свободно, Гц</option>
                         <option value="0.25">1/16</option>
                         <option value="0.375">1/16 точ</option>
                         <option value="0.5">1/8</option>

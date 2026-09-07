@@ -4,6 +4,7 @@
 // Rust-движок по мере надобности.
 
 import type { Effect, Mod, SoundingTrack } from '../types';
+import { modRateHz } from '../types';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -180,9 +181,9 @@ function makeModSource(ctx: BaseAudioContext, m: Mod): AudioScheduledSourceNode 
   const source = m.source ?? 'lfo';
   if (source === 'sah' || source === 'perlin') {
     const src = ctx.createBufferSource();
-    src.buffer = source === 'sah' ? makeSahBuffer(ctx, m.rate) : makePerlinBuffer(ctx, m.rate);
+    src.buffer = source === 'sah' ? makeSahBuffer(ctx, 1) : makePerlinBuffer(ctx, 1);
     src.loop = true;
-    src.playbackRate.value = 1;
+    src.playbackRate.value = m.rate;
     return src;
   }
   const osc = ctx.createOscillator();
@@ -230,7 +231,7 @@ export interface MasterNodes {
   setPan: (v: number, at: number) => void;
 }
 
-export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode): TrackChain {
+export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
   hp.frequency.value = track.filterLow;
@@ -311,7 +312,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
   }
   node.connect(panner);
   const mods: ModNodes[] = track.mods.map((m) => {
-    const src = makeModSource(ctx, m);
+    const src = makeModSource(ctx, { ...m, rate: modRateHz(m, bpm) });
     const depth = ctx.createGain();
     depth.gain.value = modScale(m.target, m.depth, filter.frequency.value);
     src.connect(depth);

@@ -105,30 +105,49 @@ export async function samplesDirPick(): Promise<string | null> {
   return invoke<string | null>('samples_dir_pick');
 }
 
-export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
-  const buf = await blob.arrayBuffer();
-  const id = await sha256Hex(buf);
-  const meta: SampleMeta = { id, name, size: blob.size, createdAt: Date.now() };
+let mutations: Promise<unknown> = Promise.resolve();
+function serialize<T>(action: () => Promise<T>): Promise<T> {
+  const next = mutations.then(action, action);
+  mutations = next.catch(() => undefined);
+  return next;
+}
+
+/** One visible library commit: one IndexedDB transaction / one index replace.
+ * Desktop content is staged before the index is published; interrupted writes
+ * may leave unreferenced files, but never a partially published import. */
+export function putSamples(items: { blob: Blob; name: string }[]): Promise<SampleMeta[]> {
+  return serialize(async () => {
+  const prepared = await Promise.all(items.map(async ({ blob, name }) => {
+    if (blob.size > 64 * 1024 * 1024) throw new Error('Сэмпл больше 64 МиБ');
+    const buf = await blob.arrayBuffer();
+    const id = await sha256Hex(buf);
+    const meta: SampleMeta = { id, name, size: blob.size, createdAt: Date.now(), file: `${slugify(name)}-${id}.${extOf(blob)}` };
+    return { blob, buf, meta };
+  }));
   if (isDesktop) {
-    // Человекочитаемое имя + короткий хеш: и в папке видно, и уникально.
-    meta.file = `${slugify(name)}-${id.slice(0, 8)}.${extOf(blob)}`;
-    await invoke('sample_write', {
-      name: meta.file,
-      data: Array.from(new Uint8Array(buf)),
-    });
     const list = await desktopIndex();
-    await desktopIndexSave([...list.filter((m) => m.id !== id), meta]);
-    return meta;
+    for (const { buf, meta } of prepared) {
+      if (list.some(m => m.id === meta.id)) continue;
+      await invoke('sample_write', { name: meta.file, data: Array.from(new Uint8Array(buf)) });
+      list.push(meta);
+    }
+    await desktopIndexSave(list);
+    return prepared.map(p => list.find(m => m.id === p.meta.id)!);
   }
   const db = await openDb();
   try {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put({ meta, blob });
+    for (const { meta, blob } of prepared) tx.objectStore(STORE).put({ meta, blob });
     await txDone(tx);
   } finally {
     db.close();
   }
-  return meta;
+  return prepared.map(p => p.meta);
+  });
+}
+
+export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
+  return (await putSamples([{ blob, name }]))[0];
 }
 
 export async function getSampleBlob(id: string): Promise<Blob | undefined> {
@@ -174,7 +193,11 @@ export async function listSamples(): Promise<SampleMeta[]> {
   }
 }
 
-export async function deleteSample(id: string): Promise<void> {
+export function deleteSample(id: string): Promise<void> {
+  return serialize(() => deleteSampleInternal(id));
+}
+
+async function deleteSampleInternal(id: string): Promise<void> {
   if (isDesktop) {
     const list = await desktopIndex();
     const meta = list.find((m) => m.id === id);

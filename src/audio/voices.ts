@@ -3,7 +3,7 @@
 // оффлайн-рендер WAV (это же — точка сверки с Rust-движком по golden WAV).
 
 import type { Note, SoundingTrack, WavePartial } from '../types';
-import { scaleOf } from '../types';
+import { normalizeWave, scaleOf } from '../types';
 import type { TrackChain } from './fx';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -52,15 +52,17 @@ export function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
 
 // Аддитивные модели (гармоники, орган): массив амплитуд гармоник →
 // PeriodicWave с кэшем (морф квантуется в ступени — попаданий много).
-const waveCache = new Map<string, PeriodicWave>();
+const waveCaches = new WeakMap<BaseAudioContext, Map<string, PeriodicWave>>();
 function harmonicWave(ctx: BaseAudioContext, amps: number[]): PeriodicWave {
+  let waveCache = waveCaches.get(ctx);
+  if (!waveCache) { waveCache = new Map(); waveCaches.set(ctx, waveCache); }
   const key = `${ctx.sampleRate}:${amps.map((a) => a.toFixed(4)).join(',')}`;
   let w = waveCache.get(key);
   if (!w) {
     const imag = new Float32Array(amps.length + 1);
     for (let i = 0; i < amps.length; i++) imag[i + 1] = amps[i];
     w = ctx.createPeriodicWave(new Float32Array(amps.length + 1), imag, {
-      disableNormalization: false,
+      disableNormalization: true,
     });
     if (waveCache.size > 128) waveCache.clear();
     waveCache.set(key, w);
@@ -138,9 +140,7 @@ function scheduleGrainCloud(
   regStart: number,
   regEnd: number,
 ): number {
-  // Гейт в облаке общий: облако тянется по самой длинной ноте шага.
-  const gMax = Math.max(1, ...notes.map((nt) => clampNum(nt.gate ?? 1, 0.1, 4)));
-  const dur = Math.max(0.05, baseLenSec * gMax);
+  const dur = Math.max(0.01, baseLenSec);
   const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
   const pos = clampNum(track.grainPos ?? 0.3, 0, 1);
   const scatter = clampNum(track.grainScatter ?? 0.15, 0, 1);
@@ -150,7 +150,8 @@ function scheduleGrainCloud(
   const stepT = dur / per;
   // Ханн-окна наполовину перекрываются — суммарная громкость растёт как
   // √числа зёрен, компенсируем корнем и держим запас под лимитер.
-  const grainAmp = (peak * 1.4) / Math.sqrt(total);
+  // Velocity и headroom применяются ровно один раз общей огибающей.
+  const grainAmp = 1.4 / Math.sqrt(total);
   const max = rows.length - 1;
   // Унисон в облаке — разброс по зёрнам: каждому зерну случайный голос
   // унисона (детюн центами → множитель скорости, панорама — k·разброс).
@@ -177,7 +178,7 @@ function scheduleGrainCloud(
     // паразитный тон на частоте 1/шага.
     const at = Math.max(time, t0 + (Math.random() - 0.5) * stepT * 0.4);
     for (const nt of notes) {
-      const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
+      const ratio = samplePitchRatio(track, (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt));
       // Голос унисона этого зерна: скорость с расстройкой k·детюн центов.
       const k = uniN > 1 ? (Math.floor(Math.random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
       const rate = ratio * Math.pow(2, (k * uniDet) / 1200);
@@ -196,7 +197,7 @@ function scheduleGrainCloud(
       // Ханн-окно: линейные рампы вверх-вниз по половине зерна.
       const gAmp = ctx.createGain();
       gAmp.gain.setValueAtTime(0, at);
-      gAmp.gain.linearRampToValueAtTime(grainAmp * nt.vel, at + sizeSec / 2);
+      gAmp.gain.linearRampToValueAtTime(grainAmp, at + sizeSec / 2);
       gAmp.gain.linearRampToValueAtTime(0, at + sizeSec);
       if (vibG) vibG.connect(src.playbackRate);
       src.connect(gAmp);
@@ -218,16 +219,43 @@ function scheduleGrainCloud(
   // только мягкий старт и общий спад в конце.
   amp.gain.setValueAtTime(0, time);
   amp.gain.linearRampToValueAtTime(peak, time + Math.min(0.02, dur * 0.2));
-  amp.gain.setValueAtTime(peak, time + dur);
+  amp.gain.setValueAtTime(peak, Math.max(time + Math.min(0.02, dur * 0.2), lastEnd));
   amp.gain.exponentialRampToValueAtTime(0.0001, lastEnd + 0.01);
   // Вибрато-LFO облака останавливается вместе с последним зерном.
   if (vibLfo) vibLfo.stop(lastEnd + 0.06);
   return lastEnd + 0.05;
 }
 
+/** Untuned/legacy slots use scale ratios; tuned slots map absolute Hz. */
+export function samplePitchRatio(track: SoundingTrack, ratio: number): number {
+  return ratio * (track.keyTracking ? track.freq / clampNum(track.rootHz ?? 440, 1, 24000) : 1);
+}
+
+/** Аккорд — независимые ноты, объединённые только gain/stop-контрактом.
+ * Это сохраняет velocity, длину и хвост каждой ноты во всех режимах. */
 export function triggerVoice(
   ctx: BaseAudioContext,
   chain: TrackChain,
+  noise: AudioBuffer,
+  sample: AudioBuffer | null,
+  track: SoundingTrack,
+  notes: Note[],
+  time: number,
+  stepSec: number,
+  durSec?: number,
+): Voice {
+  const amp = ctx.createGain();
+  amp.gain.value = 1 / Math.max(1, notes.length);
+  amp.connect(chain.hp);
+  if (track.waveform === 'wave') track = { ...track, wave: normalizeWave(track.wave) };
+  const voices = notes.filter(nt => nt.vel > 0).map(nt =>
+    triggerNoteVoice(ctx, amp, noise, sample, track, [nt], time, stepSec, durSec));
+  return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };
+}
+
+function triggerNoteVoice(
+  ctx: BaseAudioContext,
+  destination: AudioNode,
   noise: AudioBuffer,
   sample: AudioBuffer | null,
   track: SoundingTrack,
@@ -261,7 +289,7 @@ export function triggerVoice(
   // Огибающая фильтра (v36): свой lowpass на голос — старт в ±полутонах
   // от ручки «верх» и съезд к базе за время. Плюс — яркая атака-плак,
   // минус — тёмный свелл. Выключена (0) — голос идёт напрямую, как раньше.
-  let sink: AudioNode = chain.hp;
+  let sink: AudioNode = destination;
   const feAmt = clampNum(track.filterEnvAmount ?? 0, -24, 24);
   if (Math.abs(feAmt) > 0.01) {
     const base = clampNum(track.filterFreq, 60, 12000);
@@ -271,7 +299,7 @@ export function triggerVoice(
     const from = clampNum(base * Math.pow(2, feAmt / 12), 40, 18000);
     lp.frequency.setValueAtTime(from, time);
     lp.frequency.exponentialRampToValueAtTime(base, time + clampNum(track.filterEnvTime ?? 0.3, 0.01, 4));
-    lp.connect(chain.hp);
+    lp.connect(destination);
     sink = lp;
   }
   // Формантный слой (v39, универсальный): бугры громкости на фиксированных
@@ -342,15 +370,6 @@ export function triggerVoice(
   const uniDet = clampNum(track.unisonDetune ?? 12, 0, 50);
   const uniSpread = clampNum(track.unisonSpread ?? 0, 0, 1);
 
-  if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
-    if (!sample) return { amp, sources, stopAt: time };
-    const baseLenG =
-      durSec ??
-      (track.noteSteps && track.noteSteps > 0 ? track.noteSteps * stepSec : track.attack + track.decay);
-    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, baseLenG, regStart, regEnd);
-    return { amp, sources, stopAt: lastEnd };
-  }
-
   // Мгновенная атака = скачок = щелчок; минимальный пологий фронт обязателен.
   // На низких нотах фронт масштабируем периодом волны: четверть периода
   // самой низкой ноты убирает широкополосный «прищёлк» у баса, панч сохраняя.
@@ -378,14 +397,19 @@ export function triggerVoice(
     }
     return clampNum(nt.gate ?? 1, 0.1, 4);
   });
-  const maxGate = Math.max(1, ...gates);
+  const maxGate = Math.max(...gates);
   let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   // Готовая длина арп-доли уже включает гейт; «тянуть до перебоя» —
   // только для обычных нот без сетки.
   let voiceLen = durSec !== undefined ? durSec : baseLen * maxGate;
-  if (durSec === undefined && !track.noteSteps && sus >= 0.99) {
+  if (durSec === undefined && !track.noteSteps && !notes.some(nt => nt.len !== undefined) && sus >= 0.99) {
     voiceLen = Math.max(voiceLen, 16);
     sus = 1 - 0.05 / voiceLen;
+  }
+  if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
+    if (!sample) return { amp, sources, stopAt: time };
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd);
+    return { amp, sources, stopAt: lastEnd };
   }
   // Атака не бывает длиннее самой ноты: иначе план огибающей строится
   // «назад во времени» (спад раньше конца атаки, осциллятор стопается
@@ -479,7 +503,7 @@ export function triggerVoice(
           )
         : 1;
     notes.forEach((nt, ni) => {
-      const ratio = (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt);
+      const ratio = samplePitchRatio(track, (rows[Math.min(Math.max(Math.round(nt.n), 0), max)] ?? 1) * octMulOf(nt));
       for (let i = 0; i < uniN; i++) {
         const k = uniN > 1 ? (i / (uniN - 1)) * 2 - 1 : 0;
         // Детюн центами → множитель скорости (полутон = 2^(1/12)).
@@ -542,17 +566,17 @@ export function triggerVoice(
           )
         : 1;
     // Точка входа голоса унисона: гейн окна (+ панорама), далее — нота.
-    const uniDest = (fi: number, k: number): AudioNode => {
-      if (uniN <= 1) return noteDest(fi);
+    const uniDest = (fi: number, k: number, input: AudioNode = noteDest(fi)): AudioNode => {
+      if (uniN <= 1) return input;
       const g = ctx.createGain();
       g.gain.value = uShape(k) / uNorm;
       if (uniSpread > 0.001) {
         const p = ctx.createStereoPanner();
         p.pan.value = k * uniSpread;
         g.connect(p);
-        p.connect(noteDest(fi));
+        p.connect(input);
       } else {
-        g.connect(noteDest(fi));
+        g.connect(input);
       }
       return g;
     };
@@ -563,9 +587,11 @@ export function triggerVoice(
       // осцилляторами/зернами шума, унисон — копиями на голос.
       const ints = new Map<number, number>();
       const solo: WavePartial[] = [];
+      const sum = rows.reduce((s, p) => s + p.amp, 0);
+      const scale = sum > 1 ? 1 / sum : 1;
       for (const p of rows) {
         if (p.type === 'sine' && Number.isInteger(p.ratio) && p.ratio >= 1) {
-          ints.set(p.ratio, Math.min(1, (ints.get(p.ratio) ?? 0) + p.amp));
+          ints.set(p.ratio, (ints.get(p.ratio) ?? 0) + p.amp * scale);
         } else {
           solo.push(p);
         }
@@ -576,8 +602,7 @@ export function triggerVoice(
         pw = harmonicWave(ctx, Array.from({ length: top }, (_, i) => ints.get(i + 1) ?? 0));
       }
       // Сольные строки не должны в сумме пересть запас осцилляторов.
-      const soloSum = solo.reduce((s, p) => s + p.amp, 0);
-      const soloScale = soloSum > 1 ? 1 / soloSum : 1;
+      const soloScale = scale;
       const oscType = (t: WavePartial['type']): OscillatorType =>
         t === 'saw' ? 'sawtooth' : t === 'noise' ? 'sine' : t;
       freqs.forEach((f, fi) => {
@@ -702,6 +727,7 @@ export function triggerVoice(
       srcs: (OscillatorNode | AudioBufferSourceNode | null)[],
       noiseAt: number[],
       dest: AudioNode,
+      tailDest: AudioNode,
     ): void => {
       rows.forEach((p, ri) => {
         const src = srcs[ri];
@@ -725,7 +751,7 @@ export function triggerVoice(
             // Свой хвост: экспонента T60 от конца атаки, мимо релиза.
             g.gain.setTargetAtTime(0, time + atk, dec / 6.9078);
             src.connect(g);
-            g.connect(tail ?? dest);
+            g.connect(tailDest);
           } else {
             src.connect(g);
             g.connect(dest);
@@ -741,7 +767,8 @@ export function triggerVoice(
       for (let i = 0; i < uniN; i++) {
         const k = uniN > 1 ? (i / (uniN - 1)) * 2 - 1 : 0;
         const { srcs, noiseAt } = buildSources(f, k * uniDet);
-        wireRows(f, srcs, noiseAt, uniDest(fi, k));
+        const dest = uniDest(fi, k);
+        wireRows(f, srcs, noiseAt, dest, tail ? uniDest(fi, k, tail) : dest);
       }
     });
     return finish();

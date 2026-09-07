@@ -9,6 +9,7 @@
 // моделей. Импорт односторонний (waveRecipes берёт из types только типы),
 // цикла в рантайме нет.
 import { recipeForLegacy } from './music/waveRecipes';
+import { validPatchInput } from './patchValidation';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -94,6 +95,18 @@ export const PARTIAL_TYPE_LABELS: Record<PartialType, string> = {
   noise: 'шум',
 };
 
+export function canRouteWave(partials: WavePartial[], from: number, to: number): boolean {
+  if (!Number.isInteger(to) || !partials[to] || partials[to].type === 'noise') return false;
+  const seen = new Set<number>([from]);
+  let next: number | undefined = to;
+  while (next !== undefined) {
+    if (seen.has(next)) return false;
+    seen.add(next);
+    next = partials[next]?.mod;
+  }
+  return true;
+}
+
 /** Довести определение волны до валидного: клампы, лимит строк,
  *  маршруты в пределах таблицы. */
 export function normalizeWave(raw: unknown): WaveDef | undefined {
@@ -123,11 +136,23 @@ export function normalizeWave(raw: unknown): WaveDef | undefined {
     if (partials.length >= 64) break;
   }
   if (partials.length === 0) return undefined;
-  // Маршруты: только на другую существующую строку, иначе — в сумму.
+  // Только существующие осцилляторы; feedback требует отдельной модели.
   partials.forEach((p, i) => {
-    if (p.mod !== undefined && (p.mod < 0 || p.mod >= partials.length || p.mod === i)) {
+    if (p.mod !== undefined && (!Number.isInteger(p.mod) || p.mod < 0 || p.mod >= partials.length || p.mod === i || partials[p.mod]?.type === 'noise')) {
       delete p.mod;
     }
+  });
+  // Разрываем цикл детерминированно: первая замыкающая его строка
+  // становится несущей. Повторная нормализация даёт тот же результат.
+  partials.forEach((p, i) => {
+    const seen = new Set<number>([i]);
+    let next = p.mod;
+    while (next !== undefined) {
+      if (seen.has(next)) { delete p.mod; break; }
+      seen.add(next);
+      next = partials[next]?.mod;
+    }
+    if (p.mod === undefined) p.amp = Math.min(1, p.amp);
   });
   const grain = (raw as { noiseGrainMs?: unknown }).noiseGrainMs;
   return {
@@ -248,7 +273,16 @@ export interface Mod {
   // Форма — только для LFO.
   shape: 'sine' | 'triangle' | 'square' | 'sawtooth';
   rate: number;
+  // Период в четвертных долях. Нет — свободная частота rate в Гц.
+  beatsPerCycle?: number;
   depth: number;
+}
+
+/** Один перевод периода в частоту для UI, live и offline. */
+export function modRateHz(mod: Mod, bpm: number): number {
+  return mod.beatsPerCycle !== undefined && mod.beatsPerCycle > 0
+    ? bpm / 60 / mod.beatsPerCycle
+    : mod.rate;
 }
 
 export interface Track {
@@ -378,6 +412,9 @@ export interface Instrument {
   // Обрезка сэмпла, сек: играет только кусок [sampleStart, sampleEnd].
   // Применимо ко всем режимам сэмплера, включая скрэтч.
   sampleStart?: number;
+  // Тоника исходного сэмпла; mapping включается отдельно (legacy = ratio).
+  rootHz?: number;
+  keyTracking?: boolean;
   sampleEnd?: number;
   // Режим сэмплера: прямой, гранулярный (облако осколков) или скрэтч.
   sampleMode?: SampleMode;
@@ -437,7 +474,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd',
+  'waveform', 'wave', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -504,7 +541,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 39;
+export const PATCH_VERSION = 40;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -548,6 +585,8 @@ export function makeInstrument(
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
+    rootHz: partial.rootHz,
+    keyTracking: partial.keyTracking,
     sampleEnd: partial.sampleEnd,
     vibratoRate: partial.vibratoRate,
     vibratoDepth: partial.vibratoDepth,
@@ -667,15 +706,9 @@ export function stepFreqs(track: Track, step: Step): number[] {
   });
 }
 
-// Поверхностная валидация при импорте JSON (zod подключим, когда схема разрастётся).
+// До миграции проверяются версия, бюджет структуры, ID и ссылки.
 export function isPatch(value: unknown): value is Patch {
-  if (typeof value !== 'object' || value === null) return false;
-  const p = value as Record<string, unknown>;
-  return (
-    typeof p.version === 'number' &&
-    typeof p.bpm === 'number' &&
-    Array.isArray(p.tracks)
-  );
+  return validPatchInput(value, PATCH_VERSION);
 }
 
 const clamp = (v: number, lo: number, hi: number, fallback: number) =>
@@ -757,6 +790,8 @@ function normalizeMods(raw: unknown): Mod[] {
       source,
       shape,
       rate: clamp(m.rate ?? 0.2, 0.01, 40, 0.2),
+      beatsPerCycle: typeof m.beatsPerCycle === 'number' && Number.isFinite(m.beatsPerCycle)
+        ? clamp(m.beatsPerCycle, 1 / 64, 64, 1) : undefined,
       depth: clamp(m.depth ?? 0.5, 0, 1, 0.5),
     });
   }
@@ -875,6 +910,8 @@ function normalizeInstrument(
     sustain: clamp(t.sustain ?? 0, 0, 1, 0),
     sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+    rootHz: typeof t.rootHz === 'number' ? clamp(t.rootHz, 1, 24000, 440) : 440,
+    keyTracking: t.keyTracking === true,
     // Обрезка сэмпла: конец должен быть дальше начала.
     sampleStart:
       typeof t.sampleStart === 'number' ? clamp(t.sampleStart, 0, 3600, 0) : undefined,

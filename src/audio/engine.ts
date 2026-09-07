@@ -13,7 +13,7 @@
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track } from '../types';
-import { autoToParam, autoValue, makeNote, patternInScene, slotMuted } from '../types';
+import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { arpEvents } from './arp';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
@@ -94,6 +94,15 @@ function stOf(patch: Patch | null, track: Track): SoundingTrack {
 function validSceneId(patch: Patch | null, want: string): string {
   const scenes = patch?.scenes ?? [];
   return scenes.some((s) => s.id === want) ? want : (scenes[0]?.id ?? '');
+}
+
+function effModTempo(chain: TrackChain, mods: Mod[], bpm: number, at: number): void {
+  mods.forEach((m, i) => {
+    const source = chain.mods[i]?.src;
+    if (!source) return;
+    const param = (source as OscillatorNode).frequency ?? (source as AudioBufferSourceNode).playbackRate;
+    param?.setValueAtTime(modRateHz(m, bpm), at);
+  });
 }
 
 export class AudioEngine implements AudioBackend {
@@ -325,7 +334,7 @@ export class AudioEngine implements AudioBackend {
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       this.retireChain(chain, t0);
-      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
+      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm);
       this.chains.set(trackId, fresh);
       return fresh;
     }
@@ -343,8 +352,8 @@ export class AudioEngine implements AudioBackend {
     eff.mods.forEach((m, i) => {
       const nodes = chain.mods[i];
       if (!nodes) return;
-      const freqParam = (nodes.src as OscillatorNode).frequency;
-      if (freqParam) freqParam.setTargetAtTime(m.rate, t0, 0.05);
+      const freqParam = (nodes.src as OscillatorNode).frequency ?? (nodes.src as AudioBufferSourceNode).playbackRate;
+      if (freqParam) freqParam.setTargetAtTime(modRateHz(m, this.currentBpm), t0, 0.05);
       nodes.depth.gain.setTargetAtTime(
         modScale(m.target, m.depth, chain.filter.frequency.value),
         t0,
@@ -1040,7 +1049,7 @@ export class AudioEngine implements AudioBackend {
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
       if (!chain && this.master) {
-        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input);
+        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm);
         this.chains.set(track.id, chain);
         // Свежая цепочка: планируем ей вход (старт игры / вливание на ходу)
         // и, если граница сцен известна, переходный выход.
@@ -1156,7 +1165,7 @@ export class AudioEngine implements AudioBackend {
         const eff = effectiveParams(track, pattern);
         chainsByKey.set(
           `${track.id}:${item.sceneId}`,
-          makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input),
+          makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, master.input, item.bpm ?? patch.bpm),
         );
       }
     }
@@ -1176,6 +1185,7 @@ export class AudioEngine implements AudioBackend {
         const stepDur = stepDuration(track, itemBpm, pattern);
         // Не dispose-им: запланированные ноты привязаны к узлам.
         const chain = chainsByKey.get(`${track.id}:${item.sceneId}`)!;
+        effModTempo(chain, pattern.mods ?? track.mods, itemBpm, t);
         const itemDur = item.bars * BAR_TICKS * tickDuration(item.bpm ?? patch.bpm);
         // Переходная огибающая: вход партии от начала пункта цепочки,
         // выход — к его концу. Те же правила, что и в live-планировщике
