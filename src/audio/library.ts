@@ -19,6 +19,8 @@ export interface SampleMeta {
 
 const DB_NAME = 'barlow-library';
 const STORE = 'samples';
+export const LIBRARY_CHANGED_EVENT = 'barlow:library-changed';
+const libraryChanged = () => window.dispatchEvent(new Event(LIBRARY_CHANGED_EVENT));
 
 const EXT_BY_MIME: Record<string, string> = {
   'audio/wav': 'wav',
@@ -102,7 +104,7 @@ export async function revealSamplesDir(): Promise<void> {
  *  она. Возвращает новый путь или null (отмена / веб). */
 export async function samplesDirPick(): Promise<string | null> {
   if (!isDesktop) return null;
-  return invoke<string | null>('samples_dir_pick');
+  return invoke<string | null>('samples_dir_pick').then(path => { if (path) libraryChanged(); return path; });
 }
 
 let mutations: Promise<unknown> = Promise.resolve();
@@ -135,15 +137,26 @@ export function putSamples(items: { blob: Blob; name: string }[]): Promise<Sampl
     return prepared.map(p => list.find(m => m.id === p.meta.id)!);
   }
   const db = await openDb();
+  const chosen = new Map<string, SampleMeta>();
   try {
     const tx = db.transaction(STORE, 'readwrite');
-    for (const { meta, blob } of prepared) tx.objectStore(STORE).put({ meta, blob });
-    await txDone(tx);
+    const done = txDone(tx), store = tx.objectStore(STORE);
+    const unique = new Map<string, typeof prepared[number]>();
+    for (const p of prepared) if (!unique.has(p.meta.id)) unique.set(p.meta.id, p);
+    for (const { meta, blob } of unique.values()) {
+      const request = store.get(meta.id);
+      request.onsuccess = () => {
+        const existing = request.result as { meta?: SampleMeta } | undefined;
+        if (existing?.meta) chosen.set(meta.id, existing.meta);
+        else { store.put({ meta, blob }); chosen.set(meta.id, meta); }
+      };
+    }
+    await done;
   } finally {
     db.close();
   }
-  return prepared.map(p => p.meta);
-  });
+  return prepared.map(p => chosen.get(p.meta.id)!);
+  }).then(result => { libraryChanged(); return result; });
 }
 
 export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
@@ -194,7 +207,7 @@ export async function listSamples(): Promise<SampleMeta[]> {
 }
 
 export function deleteSample(id: string): Promise<void> {
-  return serialize(() => deleteSampleInternal(id));
+  return serialize(() => deleteSampleInternal(id)).then(() => { libraryChanged(); });
 }
 
 async function deleteSampleInternal(id: string): Promise<void> {

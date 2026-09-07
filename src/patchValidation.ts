@@ -69,6 +69,8 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
     if (inst.sampleZones !== undefined) {
       if (!Array.isArray(inst.sampleZones) || !unique(inst.sampleZones, 64)) return false;
       if (inst.sampleZones.some(z => typeof z.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(z.sampleId))) return false;
+      if (inst.sampleZones.some(z => z.alternates !== undefined && (!Array.isArray(z.alternates) || z.alternates.length > 7
+        || z.alternates.some(v => !record(v) || typeof v.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(v.sampleId))))) return false;
     }
   }
   for (const scene of scenes) {

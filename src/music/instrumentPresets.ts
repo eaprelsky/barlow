@@ -11,6 +11,7 @@ const SOUND_FIELDS = INSTRUMENT_FIELDS.filter((f): f is Exclude<typeof f, 'fmRat
 export interface InstrumentPreset {
   id?: string;
   tags?: string[];
+  packId?: string;
   name: string;
   // Группа в браузере инструментов (порядок категорий — CATEGORY_ORDER).
   category: string;
@@ -806,8 +807,8 @@ const convertPresetV39 = (p: {
 
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [...RAW_PRESETS.map((p, index) => ({
   ...convertPresetV39(p), id: `factory-v39-${String(index + 1).padStart(3, '0')}`,
-  tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'],
-})), ...IDM_BANK];
+  tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'], packId: 'core-v39',
+})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' }))];
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр
 // с несущей под своим именем, в браузере инструментов категорией «мои».
@@ -852,6 +853,7 @@ export function loadUserPresets(): InstrumentPreset[] {
       // Сохранённые до v39 модели пересобираются в строки рецептами.
       .map((p) => ({ ...convertPresetV39({ name: p.name, category: USER_CATEGORY, track: p.track }),
         id: typeof (p as InstrumentPreset).id === 'string' ? (p as InstrumentPreset).id : `user:${p.name}`,
+        packId: 'user', hint: typeof (p as InstrumentPreset).hint === 'string' ? (p as InstrumentPreset).hint?.slice(0, 600) : undefined,
         tags: Array.isArray((p as InstrumentPreset).tags)
           ? (p as InstrumentPreset).tags!.filter((t) => typeof t === 'string').slice(0, 16) : ['user'],
       }));
@@ -872,7 +874,8 @@ export function saveUserPreset(
   const existing = loadUserPresets();
   const list = existing.filter((p) => p.name !== name);
   list.push({ id: existing.find((p) => p.name === name)?.id ?? `user:${crypto.randomUUID()}`,
-    name, category: USER_CATEGORY, tags: ['user'], track: sound });
+    name, category: USER_CATEGORY, packId: 'user', tags: existing.find(p => p.name === name)?.tags ?? ['user'],
+    hint: existing.find(p => p.name === name)?.hint, track: sound });
   localStorage.setItem(USER_KEY, JSON.stringify(list));
   window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }

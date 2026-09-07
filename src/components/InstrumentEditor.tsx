@@ -461,8 +461,8 @@ export function InstrumentEditor({
               </button>
             </div>
             {isSample && (
-              <label title="Сэмпл из хранилища. Строки нотного стана = скорость воспроизведения (×1 — как есть)" data-ob="snd-sample">
-                сэмпл
+              <label title="Основная запись: звучит вне настроенных зон. Тональный режим учитывает частоту записи; без него строки шкалы задают отношение скоростей." data-ob="snd-sample">
+                основной сэмпл
                 <span className="inline">
                   <span className="sample-name" title={st.sampleName ?? 'сэмпл не выбран'}>
                     {st.sampleName ?? 'не выбран'}
@@ -801,7 +801,7 @@ export function InstrumentEditor({
             <p className="empty">
               {inst.sampleId
                 ? 'сэмпл ещё грузится…'
-                : 'в слоте нет сэмпла — выбери из хранилища или загрузи файл'}
+                : inst.sampleZones?.length ? 'Основной сэмпл не выбран; ноты внутри настроенных зон используют записи зон.' : 'Основной сэмпл не выбран — выбери из хранилища или загрузи файл.'}
             </p>
           ) : (
             <>

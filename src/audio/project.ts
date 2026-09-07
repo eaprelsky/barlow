@@ -7,7 +7,7 @@
 import { strFromU8, strToU8, unzip, zipSync } from 'fflate';
 import type { Patch } from '../types';
 import { isPatch, normalizePatch } from '../types';
-import { getSampleBlob, putSamples } from './library';
+import { getSampleBlob, putSamples, listSamples } from './library';
 import { sampleAssets } from '../music/sampleZones';
 
 interface ProjectManifest {
@@ -37,6 +37,7 @@ export async function exportProject(patch: Patch): Promise<Blob> {
   const files: Record<string, Uint8Array> = {};
   const manifest: ProjectManifest = { barlow: 1, exportedAt: Date.now(), samples: [] };
   const seen = new Set<string>();
+  const names = new Map((await listSamples()).map(sample => [sample.id, sample.name]));
   for (const inst of patch.instruments.flatMap(sampleAssets)) {
     if (!inst.sampleId || seen.has(inst.sampleId)) continue;
     seen.add(inst.sampleId);
@@ -44,7 +45,7 @@ export async function exportProject(patch: Patch): Promise<Blob> {
     if (!blob) throw new Error(`Не найден сэмпл «${inst.sampleName ?? inst.sampleId}»: проект не сохранён`);
     const file = `${inst.sampleId}.${extOf(blob)}`;
     files[`samples/${file}`] = new Uint8Array(await blob.arrayBuffer());
-    manifest.samples.push({ id: inst.sampleId, name: inst.sampleName ?? inst.sampleId, file });
+    manifest.samples.push({ id: inst.sampleId, name: inst.sampleName ?? names.get(inst.sampleId) ?? inst.sampleId, file });
   }
   files['patch.json'] = strToU8(JSON.stringify(patch, null, 2));
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));

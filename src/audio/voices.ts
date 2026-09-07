@@ -8,6 +8,7 @@ import type { TrackChain } from './fx';
 import { prepareSampleRegion } from './sampleRegion';
 import { resolveMacros } from '../music/macros';
 import { sampleZoneAt } from '../music/sampleZones';
+import type { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { randomFor } from './random';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -252,6 +253,7 @@ export function triggerVoice(
   durSec?: number,
   sampleById?: (id: string) => AudioBuffer | null,
   random: () => number = Math.random,
+  roundRobin?: SampleRoundRobin,
 ): Voice {
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
@@ -262,8 +264,9 @@ export function triggerVoice(
   const voices = notes.filter(nt => nt.vel > 0).map(nt => {
     const hz = track.freq * (rows[Math.min(rows.length - 1, Math.max(0, Math.round(nt.n)))] ?? 1) * octMulOf(nt);
     const zone = track.waveform === 'sample' ? sampleZoneAt(track.sampleZones, hz, nt.vel) : undefined;
-    const selected = zone ? { ...track, sampleId: zone.sampleId, rootHz: zone.rootHz, keyTracking: true } : track;
-    const buffer = zone ? sampleById?.(zone.sampleId) ?? (zone.sampleId === track.sampleId ? sample : null) : sample;
+    const variant = zone ? roundRobin?.select(track.id, zone) ?? zone : undefined;
+    const selected = variant ? { ...track, sampleId: variant.sampleId, rootHz: variant.rootHz, keyTracking: true } : track;
+    const buffer = variant ? sampleById?.(variant.sampleId) ?? (variant.sampleId === track.sampleId ? sample : null) : sample;
     return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec, random);
   });
   return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };

@@ -1,0 +1,141 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
+import { chromium } from 'playwright-core';
+const root=fileURLToPath(new URL('..',import.meta.url)),port=5187;
+mkdirSync(root+'/tmp',{recursive:true});writeFileSync(root+'/tmp/palette-contract.html','<!doctype html><title>Palette contract</title>');
+const vite=spawn(process.execPath,[root+'/node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:root,stdio:'ignore'});
+let browser;
+try{
+  for(let i=0;i<60;i++){if(vite.exitCode!==null)throw new Error('Vite exited');try{if((await fetch(`http://127.0.0.1:${port}`)).ok)break;}catch{}await delay(250);}
+  browser=await chromium.launch({executablePath:process.env.BARLOW_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(`http://127.0.0.1:${port}/tmp/palette-contract.html`);
+  const result=await page.evaluate(async()=>{
+    const {SampleRoundRobin}=await import('/src/music/sampleRoundRobin.ts');
+    const {sampleAssets,normalizeSampleZones}=await import('/src/music/sampleZones.ts');
+    const {triggerVoice}=await import('/src/audio/voices.ts');
+    const {audioBufferToWav}=await import('/src/audio/wav.ts');
+    const {defaultPatch}=await import('/src/music/defaultPatch.ts');
+    const {normalizePatch,isPatch}=await import('/src/types.ts');
+    const {putSample,putSamples,listSamples,deleteSample}=await import('/src/audio/library.ts');
+    const {exportProject,importProject}=await import('/src/audio/project.ts');
+    const {soundMatches,presetMatches,presetPackOf}=await import('/src/music/soundSearch.ts');
+    const {INSTRUMENT_PRESETS,saveUserPreset,loadUserPresets}=await import('/src/music/instrumentPresets.ts');
+    const checks=[],check=(name,pass,details)=>checks.push({name,pass:!!pass,details});
+    check('AND search matches independent words and rejects missing term',soundMatches('короткий резиновый бас','бас короткий')&&!soundMatches('мягкий бас','бас металлический'));
+    check('bilingual search, case/yo normalization and quoted phrase',soundMatches('ТЁМНЫЙ СНЕЙР','dark snare')&&soundMatches('очень низкий бас','"низкий бас"')&&!soundMatches('низкий и звонкий бас','"низкий бас"'));
+    const kicks=INSTRUMENT_PRESETS.filter(p=>presetPackOf(p)==='idm-01'&&p.tags.includes('kick'));
+    check('real IDM kick briefs are retrievable by multiword query',kicks.length===8&&kicks.every(p=>presetMatches(p,'IDM kick')));
+    check('packs partition the existing bank without multiplying presets',INSTRUMENT_PRESETS.filter(p=>presetPackOf(p)==='idm-01').length===68&&INSTRUMENT_PRESETS.filter(p=>presetPackOf(p)==='core-v39').length===54);
+    const ctx=new OfflineAudioContext(1,44100,44100),buffers=[];
+    for(let k=0;k<3;k++){
+      const b=ctx.createBuffer(1,44100,44100),d=b.getChannelData(0);
+      for(let i=0;i<d.length;i++)d[i]=.25*Math.sin(2*Math.PI*(220+k*110)*i/44100)+k*.05*Math.sin(2*Math.PI*880*i/44100);
+      buffers.push(b);
+    }
+    const metas=[];for(let k=0;k<3;k++)metas.push(await putSample(audioBufferToWav(buffers[k]),`Round ${String.fromCharCode(65+k)}`));
+    const duplicate=await putSample(audioBufferToWav(buffers[0]),'replacement');
+    check('reimport never overwrites existing sample metadata',duplicate.name==='Round A'&&duplicate.createdAt===metas[0].createdAt);
+    const extra=new Blob(['dedup fixture'],{type:'application/octet-stream'});
+    const batch=await putSamples([{blob:extra,name:'first'},{blob:extra,name:'second'}]);
+    check('duplicates within one atomic batch use the first name',batch.length===2&&batch.every(m=>m.name==='first')&&(await listSamples()).filter(m=>m.id===batch[0].id).length===1);
+    await deleteSample(batch[0].id);
+    const zone={id:'z',sampleId:metas[0].id,rootHz:220,lowHz:20,highHz:24000,lowVelocity:0,highVelocity:1,
+      alternates:[{sampleId:metas[1].id,rootHz:330},{sampleId:metas[2].id,rootHz:220}]};
+    const rr=new SampleRoundRobin();
+    check('round robin cycles main then alternates',Array.from({length:5},()=>rr.select('t',zone).sampleId).join()===metas.concat(metas.slice(0,2)).map(m=>m.id).join());
+    check('round robin counters are independent per track and zone',rr.select('other',zone).sampleId===metas[0].id&&rr.select('t',{...zone,id:'other-zone'}).sampleId===metas[0].id);
+    rr.clear();check('Play reset starts with main variant',rr.select('t',zone).sampleId===metas[0].id);
+    check('editing a variant mapping restarts only that zone',rr.select('t',{...zone,alternates:[zone.alternates[1]]}).sampleId===metas[0].id);
+    check('asset traversal includes every alternate once',sampleAssets({sampleZones:[zone],sampleId:metas[0].id}).length===3);
+    const normalizedZones=normalizeSampleZones([{...zone,alternates:[{sampleId:metas[1].id}]}]);
+    check('alternate root defaults to its zone and survives normalization',normalizedZones[0].alternates[0].rootHz===220);
+    let patch=defaultPatch();patch.performanceSeed=19;patch.bpm=120;patch.followChain=false;patch.masterNoise='off';
+    patch.tracks=[patch.tracks[0]];const t=patch.tracks[0];t.arp=undefined;t.effects=[];t.mods=[];t.mono=false;t.phase=0;t.freq=220;t.rate=1;
+    t.patterns=[{id:'p',name:'round',length:4,rate:1,steps:Array.from({length:4},(_,i)=>({notes:i%2===0?[{n:0,vel:.7,prob:1,len:1}]:[]}))}];
+    patch.instruments=[{...patch.instruments.find(i=>i.id===t.instrumentId),waveform:'sample',sampleId:undefined,sampleZones:[zone],freq:220,attack:.005,decay:.15,sustain:0,sampleMode:'plain',unisonVoices:1,sampleStart:0,sampleEnd:undefined}];
+    patch.scenes=[{id:'s',name:'round',slots:{[t.id]:{patternId:'p'}}}];patch.chain=[];patch=normalizePatch(patch);
+    const renderSeq=async(useRoundRobin)=>{
+      const c=new OfflineAudioContext(1,88200,44100),hp=c.createGain();hp.connect(c.destination);
+      const st={...patch.tracks[0],...patch.instruments[0]}, selector=new SampleRoundRobin();
+      for(let i=0;i<4;i++){
+        const selected=[zone,...zone.alternates][i%3];
+        const source=useRoundRobin?{...st,sampleZones:[zone]}:{...st,sampleZones:undefined,sampleId:selected.sampleId,rootHz:selected.rootHz,keyTracking:true};
+        triggerVoice(c,{hp},buffers[0],buffers[metas.findIndex(m=>m.id===selected.sampleId)],source,[{n:0,vel:.7,prob:1,len:1}],.05+i*.4,.125,undefined,id=>buffers[metas.findIndex(m=>m.id===id)],()=>.5,useRoundRobin?selector:undefined);
+      }
+      return (await c.startRendering()).getChannelData(0);
+    };
+    const actual=await renderSeq(true),expected=await renderSeq(false),drift=actual.reduce((m,v,i)=>Math.max(m,Math.abs(v-expected[i])),0);
+    check('actual PCM follows A B C A and applies each alternate rootHz',drift<1e-6,drift);
+    const portable=await importProject(new File([await exportProject(patch)],'round-robin.zip'));
+    check('round robin mappings and assets roundtrip in portable project',portable.instruments[0].sampleZones[0].alternates.length===2&&sampleAssets(portable.instruments[0]).every(a=>metas.some(m=>m.id===a.sampleId)));
+    check('portable roundtrip and deduplication retain existing sample names',(await listSamples()).every(m=>metas.find(a=>a.id===m.id)?.name===m.name));
+    saveUserPreset('round test',{...patch.tracks[0],...patch.instruments[0]});
+    check('saved sampler preset retains alternates',loadUserPresets().find(p=>p.name==='round test').track.sampleZones[0].alternates.length===2);
+    const {AudioEngine}=await import('/src/audio/engine.ts');
+    const select=SampleRoundRobin.prototype.select,choices=[];
+    SampleRoundRobin.prototype.select=function(...args){const v=select.apply(this,args);choices.push({owner:this,id:v.sampleId});return v;};
+    const live=new AudioEngine();
+    try{
+      const renderer=new AudioEngine();await renderer.renderToWav(patch,'s',1,{tail:'trim'});
+      const firstRun=choices.map(c=>c.id);choices.length=0;
+      await renderer.renderToWav(patch,'s',1,{tail:'trim'});
+      check('WAV starts its round-robin sequence anew on each export',firstRun.length===8&&choices.map(c=>c.id).join()===firstRun.join()&&firstRun.every((id,i)=>id===metas[i%3].id));
+      if(renderer.ctx)await renderer.ctx.close();choices.length=0;
+      await live.ensureSamples(patch);live.play(patch,'s');
+      await new Promise(r=>setTimeout(r,280));live.previewSounding({...patch.tracks[0],...patch.instruments[0]},0);
+      await new Promise(r=>setTimeout(r,350));
+      const played=choices.filter(c=>c.owner===live.roundRobin).map(c=>c.id),preview=choices.filter(c=>c.owner===live.previewRoundRobin).map(c=>c.id);
+      check('live uses chronological round robin and preview does not advance it',played.length>=3&&played.every((id,i)=>id===metas[i%3].id)&&preview[0]===metas[0].id,{played:played.length,preview:preview.length});
+    }finally{SampleRoundRobin.prototype.select=select;live.stop();await new Promise(r=>setTimeout(r,400));if(live.ctx)await live.ctx.close();}
+    const bad=structuredClone(patch);bad.instruments[0].sampleZones[0].alternates[0].sampleId='bad';
+    check('malformed alternate hash rejected at input boundary',!isPatch(bad));
+    bad.instruments[0].sampleZones[0].alternates=Array.from({length:8},()=>zone.alternates[0]);
+    check('more than seven alternates rejected at input boundary',!isPatch(bad));
+    patch.instruments[0].sampleZones[0].alternates=undefined;
+    localStorage.setItem('barlow.patch.v12',JSON.stringify(patch));localStorage.setItem('barlow.onboarding.v1',JSON.stringify({invited:true,seen:{main:true}}));
+    return {checks,patch,metas};
+  });
+  for(const c of result.checks)console.log(`${c.pass?'PASS':'FAIL'} ${c.name} ${JSON.stringify(c.details??'')}`);
+  assert.ok(result.checks.every(c=>c.pass),'palette audio/data contract failed');
+  await page.goto(`http://127.0.0.1:${port}`);await page.getByRole('button',{name:'инструменты',exact:true}).click();
+  await page.locator('[data-ob="sb-tab-instruments"]').click();
+  const search=page.getByRole('textbox',{name:'поиск звука'});await search.fill('IDM kick');
+  assert.ok(await page.locator('.inst-card').count()>=8);
+  const pack=page.getByRole('combobox',{name:'Пакет звуков'});await pack.selectOption('core-v39');assert.equal(await page.locator('.inst-card').count(),0);
+  await page.getByRole('button',{name:'сбросить фильтры',exact:true}).click();await pack.selectOption('idm-01');
+  assert.equal(await page.locator('.inst-card').count(),68);
+  const first=page.locator('.inst-card').first(),name=await first.getAttribute('aria-label'),favorite=first.getByRole('button',{name:`Избранное: ${name}`});
+  await favorite.click();assert.equal(await favorite.getAttribute('aria-pressed'),'true');
+  await page.getByRole('checkbox',{name:'только избранное'}).check();assert.equal(await page.locator('.inst-card').count(),1);
+  await page.screenshot({path:root+'/tmp/palette-browser.png'});
+  await page.reload();await page.getByRole('button',{name:'инструменты',exact:true}).click();await page.locator('[data-ob="sb-tab-instruments"]').click();await page.getByRole('checkbox',{name:'только избранное'}).check();
+  assert.equal(await page.locator('.inst-card').count(),1);assert.equal(await page.locator('.inst-card').getAttribute('aria-label'),name);
+  console.log('PASS AND/pack filters compose, count matches, stable-ID favorite persists after reload');
+  await page.evaluate(()=>{
+    window.savedStorageSet=Storage.prototype.setItem;
+    Storage.prototype.setItem=function(k,v){if(k==='barlow.sound-favorites.v1')throw new DOMException('fixture quota','QuotaExceededError');return window.savedStorageSet.call(this,k,v);};
+  });
+  await page.getByRole('button',{name:`Избранное: ${name}`}).click();
+  assert.equal(await page.getByRole('button',{name:`Избранное: ${name}`}).getAttribute('aria-pressed'),'true');
+  await page.getByText(/fixture quota/).waitFor();
+  await page.evaluate(()=>{Storage.prototype.setItem=window.savedStorageSet;});
+  console.log('PASS favorite storage failure is visible and preserves the last saved selection');
+  await page.locator('[data-ob="library-panel"]').getByRole('button',{name:'скрыть',exact:true}).click();
+  await page.locator('[data-ob="mode-inst"]').first().click();await page.locator('.sample-zones > summary').click();
+  await page.getByRole('button',{name:'+ вариант round-robin',exact:true}).click();
+  await page.getByRole('combobox',{name:'Запись варианта 2 зоны 1'}).selectOption(result.metas[1].id);
+  const rootHz=page.getByRole('spinbutton',{name:'Тоника варианта 2 зоны 1'});await rootHz.fill('330');await rootHz.press('Enter');
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('barlow.patch.v12')).instruments[0].sampleZones[0].alternates?.[0].rootHz===330);
+  await page.getByRole('button',{name:'Поднять вариант 2 зоны 1'}).click();
+  await page.waitForFunction(id=>JSON.parse(localStorage.getItem('barlow.patch.v12')).instruments[0].sampleZones[0].sampleId===id,result.metas[1].id);
+  await page.keyboard.press('Control+z');
+  await page.waitForFunction(id=>JSON.parse(localStorage.getItem('barlow.patch.v12')).instruments[0].sampleZones[0].sampleId===id,result.metas[0].id);
+  await page.screenshot({path:root+'/tmp/round-robin.png'});
+  console.log('PASS round-robin editor assigns alternate, edits pitch, promotes to main and undoes as one command');
+  await page.getByRole('button',{name:'Удалить вариант 2 зоны 1'}).click();assert.equal(await page.locator('.sample-variant').count(),0);
+  assert.deepEqual(errors,[]);
+}finally{await browser?.close();vite.kill();}

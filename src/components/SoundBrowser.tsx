@@ -10,6 +10,7 @@ import {
   deleteSample,
   getSampleBlob,
   listSamples,
+  LIBRARY_CHANGED_EVENT,
   revealSamplesDir,
   samplesDirLabel,
   samplesDirPick,
@@ -26,9 +27,10 @@ import {
 import type { Track } from '../types';
 import { WAVEFORM_LABELS } from '../types';
 import { sampleAssets } from '../music/sampleZones';
-import { isDesktop } from '../platform';
+import { isDesktop, saveBlob } from '../platform';
 import { alertDialog, confirmDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
+import { SOUND_PACKS, presetPackOf, presetMatches, soundMatches, presetFavoriteId, sampleFavoriteId, loadSoundFavorites, saveSoundFavorites, FAVORITES_KEY, FAVORITES_EVENT } from '../music/soundSearch';
 
 interface Props {
   tracks: Track[];
@@ -72,6 +74,15 @@ export function SoundBrowser({
   onClose,
 }: Props) {
   const [query, setQuery] = useState('');
+  const [pack, setPack] = useState('');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoriteState, setFavoriteState] = useState(() => {
+    try { return { ids: loadSoundFavorites(), error: '' }; }
+    catch (e) { return { ids: new Set<string>(), error: String(e) }; }
+  });
+  const favorites = favoriteState.ids;
+  const [libraryError, setLibraryError] = useState('');
+  const libraryRequest = useRef(0);
   // Схлопнутые категории инструментов (по умолчанию все раскрыты).
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -82,16 +93,36 @@ export function SoundBrowser({
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  const previewRequest = useRef(0);
 
   const refreshSamples = useCallback(() => {
-    void listSamples().then(setSamples).catch(() => setSamples([]));
+    const request = ++libraryRequest.current;
+    void listSamples().then(s => { if (request === libraryRequest.current) { setSamples(s); setLibraryError(''); } })
+      .catch(e => { if (request === libraryRequest.current) setLibraryError(`Не удалось прочитать библиотеку: ${String(e)}`); });
   }, []);
 
   useEffect(() => {
     refreshSamples();
-    if (isDesktop) void samplesDirLabel().then(setDirLabel);
+    if (isDesktop) void samplesDirLabel().then(setDirLabel).catch(e => setLibraryError(String(e)));
     else setDirLabel(null);
+    window.addEventListener(LIBRARY_CHANGED_EVENT, refreshSamples);
+    return () => { ++libraryRequest.current; window.removeEventListener(LIBRARY_CHANGED_EVENT, refreshSamples); };
   }, [refreshSamples]);
+
+  useEffect(() => {
+    const reload = () => { try { setFavoriteState({ ids: loadSoundFavorites(), error: '' }); } catch (e) { setFavoriteState(s => ({ ...s, error: String(e) })); } };
+    const storage = (e: StorageEvent) => { if (e.key === FAVORITES_KEY) reload(); };
+    window.addEventListener(FAVORITES_EVENT, reload); window.addEventListener('storage', storage);
+    return () => { window.removeEventListener(FAVORITES_EVENT, reload); window.removeEventListener('storage', storage); };
+  }, []);
+  const toggleFavorite = (id: string) => {
+    const next = new Set(favorites);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    try { saveSoundFavorites(next); } catch (e) { setFavoriteState(s => ({ ...s, error: String(e) })); }
+  };
+  const star = (id: string, name: string) => <button className="sb-favorite" aria-label={`Избранное: ${name}`}
+    aria-pressed={favorites.has(id)} title={favorites.has(id) ? 'Убрать из избранного' : 'Добавить в избранное'}
+    onClick={() => toggleFavorite(id)}>{favorites.has(id) ? '★' : '☆'}</button>;
 
   // Свои пресеты меняются мимо React (сохранение из редактора инструмента
   // пишет в localStorage напрямую) — слушаем событие и заодно синк вкладок
@@ -109,14 +140,17 @@ export function SoundBrowser({
     };
   }, []);
 
-  // Закрытие панели останавливает прослушивание сэмпла.
-  useEffect(
-    () => () => {
+  // Смена вкладки и закрытие отменяют также ещё не закончившуюся загрузку.
+  useEffect(() => {
+    setPlayingId(null);
+    return () => {
+      ++previewRequest.current;
       audioRef.current?.pause();
+      audioRef.current = null;
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    },
-    [],
-  );
+      urlRef.current = null;
+    };
+  }, [tab]);
 
   const all = useMemo(
     () => [...loadUserPresets(), ...INSTRUMENT_PRESETS],
@@ -147,24 +181,15 @@ export function SoundBrowser({
     });
   }, [tab, targetPresetName, all]);
   const groups = useMemo(() => {
-    // Поиск смотрит и в пояснение встроенных — «дабстеп» находит воббл.
-    const filtered = q
-      ? all.filter((p) =>
-          [p.name, p.hint ?? '', p.category, ...(p.tags ?? []), WAVEFORM_LABELS[p.track.waveform ?? 'wave']]
-            .join(' ')
-            .toLowerCase()
-            .includes(q),
-        )
-      : all;
+    const filtered = all.filter(p => (!pack || presetPackOf(p) === pack)
+      && (!favoritesOnly || favorites.has(presetFavoriteId(p))) && presetMatches(p, q));
     return CATEGORY_ORDER.map((cat) => ({
       cat,
       items: filtered.filter((p) => p.category === cat),
     })).filter((g) => g.items.length > 0);
-  }, [all, q]);
+  }, [all, q, pack, favoritesOnly, favorites]);
 
-  const samplesShown = q
-    ? samples.filter((s) => s.name.toLowerCase().includes(q))
-    : samples;
+  const samplesShown = samples.filter(s => soundMatches(s.name, q) && (!favoritesOnly || favorites.has(sampleFavoriteId(s.id))));
 
   const removeUser = async (name: string) => {
     const ok = await confirmDialog({
@@ -180,17 +205,35 @@ export function SoundBrowser({
     } catch (error) { await alertDialog(String(error), 'не удалось удалить пресет'); }
   };
 
-  const playSample = (meta: SampleMeta, blobUrl: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    }
-    const audio = new Audio(blobUrl);
-    audioRef.current = audio;
-    urlRef.current = blobUrl;
-    audio.onended = () => setPlayingId(null);
+  const playSample = async (meta: SampleMeta) => {
+    const request = ++previewRequest.current;
+    audioRef.current?.pause(); audioRef.current = null;
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    urlRef.current = null;
+    if (playingId === meta.id) { setPlayingId(null); return; }
     setPlayingId(meta.id);
-    void audio.play();
+    setLibraryError('');
+    try {
+      const blob = await getSampleBlob(meta.id);
+      if (request !== previewRequest.current) return;
+      if (!blob) throw new Error('Запись отсутствует в библиотеке.');
+      const url = URL.createObjectURL(blob), audio = new Audio(url);
+      audioRef.current = audio; urlRef.current = url;
+      audio.onended = () => { if (request === previewRequest.current) setPlayingId(null); };
+      await audio.play();
+    } catch (e) {
+      if (request === previewRequest.current) { setPlayingId(null); setLibraryError(`Прослушивание: ${String(e)}`); }
+    }
+  };
+
+  const downloadSample = async (meta: SampleMeta) => {
+    try {
+      const blob = await getSampleBlob(meta.id);
+      if (!blob) throw new Error('Запись отсутствует в библиотеке.');
+      const ext = ({ 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/flac': 'flac', 'audio/webm': 'weba' } as Record<string, string>)[blob.type] ?? 'bin';
+      const name = meta.name.replace(/[\\/:*?"<>|]/g, '_').replace(/\.(wav|mp3|m4a|ogg|flac|weba|webm|bin)$/i, '');
+      await saveBlob(blob, `${name}.${ext}`);
+    } catch (e) { setLibraryError(`Сохранение: ${String(e)}`); }
   };
 
   const toggleCat = (cat: string) =>
@@ -245,6 +288,7 @@ export function SoundBrowser({
         >
           ▶
         </button>
+        {star(presetFavoriteId(p), p.name)}
         {user && (
           <button
             className="inst-del"
@@ -309,6 +353,7 @@ export function SoundBrowser({
           data-ob="inst-search"
           placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
           value={query}
+          maxLength={256}
           onChange={(e) => setQuery(e.target.value)}
         />
         {query !== '' && (
@@ -322,6 +367,17 @@ export function SoundBrowser({
           </button>
         )}
       </div>
+      <div className="sb-filters">
+        {tab === 'inst' && <label>пакет <select aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
+          <option value="">все пакеты</option>
+          {SOUND_PACKS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetPackOf(s) === p.id).length})</option>)}
+        </select></label>}
+        <label><input type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
+        <span role="status">найдено: {tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>
+        {(pack || favoritesOnly || query) && <button onClick={() => { setPack(''); setFavoritesOnly(false); setQuery(''); }}>сбросить фильтры</button>}
+      </div>
+      {favoriteState.error && <p className="error" role="alert">{favoriteState.error}</p>}
+      {libraryError && <p className="error" role="alert">{libraryError} <button onClick={refreshSamples}>обновить список</button></p>}
       {/* Куда применяется клик: пресет меняет тембр этой дорожки. */}
       <div className="sb-target">
         <span className="rt-label">в дорожку</span>
@@ -347,19 +403,20 @@ export function SoundBrowser({
               <div className="sb-cat" key={g.cat}>
                 <div
                   className="sb-cat-label"
-                  role="button"
-                  tabIndex={0}
-                  aria-expanded={!closed.has(g.cat)}
-                  onClick={() => toggleCat(g.cat)}
+                  role={q ? 'heading' : 'button'}
+                  aria-level={q ? 3 : undefined}
+                  tabIndex={q ? undefined : 0}
+                  aria-expanded={q ? undefined : !closed.has(g.cat)}
+                  onClick={() => { if (!q) toggleCat(g.cat); }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCat(g.cat); }
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!q) toggleCat(g.cat); }
                   }}
                 >
-                  <span className={'sb-caret' + (closed.has(g.cat) ? '' : ' open')}>▸</span>
+                  <span className={'sb-caret' + (q || !closed.has(g.cat) ? ' open' : '')}>▸</span>
                   {g.cat}
                   <span className="sb-count">{g.items.length}</span>
                 </div>
-                {!closed.has(g.cat) && <div className="sb-cards">{g.items.map(presetRow)}</div>}
+                {(q || !closed.has(g.cat)) && <div className="sb-cards">{g.items.map(presetRow)}</div>}
               </div>
             ))}
             {groups.length === 0 && (
@@ -397,7 +454,7 @@ export function SoundBrowser({
                       setDirLabel(p);
                       refreshSamples();
                     }
-                  });
+                  }).catch(e => setLibraryError(String(e)));
                 }}
               >
                 сменить…
@@ -425,41 +482,23 @@ export function SoundBrowser({
                     {meta.name}
                   </button>
                   <span className="mini-info">{fmtSize(meta.size)}</span>
+                  {star(sampleFavoriteId(meta.id), meta.name)}
                   {used && (
                     <span className="lib-used" title="Используется проектом или сохранённым пресетом — удалить нельзя">
                       используется
                     </span>
                   )}
                   <button
-                    title={playingId === meta.id ? 'Играет…' : 'Прослушать'}
-                    onClick={() => {
-                      if (playingId === meta.id) {
-                        audioRef.current?.pause();
-                        setPlayingId(null);
-                        return;
-                      }
-                      void (async () => {
-                        const blob = await getSampleBlob(meta.id);
-                        if (blob) playSample(meta, URL.createObjectURL(blob));
-                      })();
-                    }}
+                    title={playingId === meta.id ? 'Остановить прослушивание / загрузку' : 'Прослушать'}
+                    aria-label={`${playingId === meta.id ? 'Остановить' : 'Прослушать'} сэмпл ${meta.name}`}
+                    onClick={() => void playSample(meta)}
                   >
                     {playingId === meta.id ? '■' : '▶'}
                   </button>
                   <button
                     title="Скачать файлом"
-                    onClick={() => {
-                      void (async () => {
-                        const blob = await getSampleBlob(meta.id);
-                        if (!blob) return;
-                        const ext = blob.type.includes('wav') ? 'wav' : 'mp3';
-                        const a = document.createElement('a');
-                        a.href = URL.createObjectURL(blob);
-                        a.download = `${meta.name.replace(/[\\/:*?"<>|]/g, '_')}.${ext}`;
-                        a.click();
-                        URL.revokeObjectURL(a.href);
-                      })();
-                    }}
+                    aria-label={`Скачать сэмпл ${meta.name}`}
+                    onClick={() => void downloadSample(meta)}
                   >
                     ⭳
                   </button>
@@ -471,7 +510,7 @@ export function SoundBrowser({
                       void deleteSample(meta.id).then(() => {
                         setListVersion((v) => v + 1);
                         refreshSamples();
-                      });
+                      }).catch(e => setLibraryError(`Удаление: ${String(e)}`));
                     }}
                   >
                     ×

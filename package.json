@@ -23,6 +23,7 @@
     "test:export": "node scripts/export-contract.mjs",
     "test:resources": "node scripts/resources.test.mjs",
     "test:stress": "node scripts/stress-contract.mjs",
+    "test:palette": "node scripts/palette-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },

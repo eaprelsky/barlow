@@ -15,6 +15,7 @@
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { resolveMacros } from '../music/macros';
 import { sampleAssets } from '../music/sampleZones';
+import { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { planStepEvents } from './eventPlan';
 import { MonoVoices } from './monoVoices';
@@ -108,6 +109,8 @@ export class AudioEngine implements AudioBackend {
     stepDur: number; durSec?: number; gain: number; ordinal: number; eventIndex: number;
   }>();
   private voiceBudget = new VoiceBudget();
+  private roundRobin = new SampleRoundRobin();
+  private previewRoundRobin = new SampleRoundRobin();
   private droppedEvents = 0;
   private lateEvents = 0;
   private blockedTracks = new Set<string>();
@@ -575,6 +578,7 @@ export class AudioEngine implements AudioBackend {
     this.droppedEvents = 0; this.lateEvents = 0;
     this.blockedTracks.clear(); this.schedulerMaxMs = 0; this.slowSchedulerCalls = 0;
     this.sceneOccurrence = 0;
+    this.roundRobin.clear();
     const ctx = this.ensureCtx();
     this.noiseBuffer = makeNoiseBuffer(ctx, patch.performanceSeed);
     if (ctx.state === 'suspended') void ctx.resume();
@@ -971,6 +975,7 @@ export class AudioEngine implements AudioBackend {
           undefined,
           (id) => this.sampleCache.get(id) ?? null,
           randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
+          this.previewRoundRobin,
         );
         this.voiceBudget.add(voice, st, notes.length);
         let cleaned = false;
@@ -1232,7 +1237,7 @@ export class AudioEngine implements AudioBackend {
       const at = Math.max(ctx.currentTime + 0.001, ev.at);
       const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null,
         st, ev.notes, at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex));
+        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin);
       voice.amp.gain.value *= ev.gain;
       this.voiceBudget.add(voice, st, ev.notes.length);
       if (track.mono) this.lastVoices.register(track.id, voice, at);
@@ -1309,6 +1314,7 @@ export class AudioEngine implements AudioBackend {
       // Globally ordered creation is required for mono/choke/voice budgets.
       const monoVoices = new MonoVoices();
       const voiceBudget = new VoiceBudget();
+      const roundRobin = new SampleRoundRobin();
       for (const ev of plan.events) {
         const { track, st, itemIndex } = ev.part;
         voiceBudget.prune(ev.at);
@@ -1317,7 +1323,7 @@ export class AudioEngine implements AudioBackend {
         const chain = chainsByKey.get(ev.part.key)!;
         const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
           st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex));
+          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex), roundRobin);
         voice.amp.gain.value *= ev.gain ?? 1;
         voiceBudget.add(voice, st, ev.notes.length);
         monoVoices.prune(ev.at);

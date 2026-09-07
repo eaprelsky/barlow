@@ -1,8 +1,12 @@
-export interface SampleZone {
-  id: string;
+export interface SampleVariant {
   sampleId: string;
   sampleName?: string;
   rootHz: number;
+}
+export interface SampleZone extends SampleVariant {
+  id: string;
+  /** Main recording, then up to seven alternates in a repeating cycle. */
+  alternates?: SampleVariant[];
   lowHz: number;
   highHz: number;
   lowVelocity: number;
@@ -18,8 +22,16 @@ export function normalizeSampleZones(raw: unknown): SampleZone[] | undefined {
     if (ids.has(id)) return [];
     ids.add(id);
     const lowHz = bound(z.lowHz, 1, 23999, 20), lowVelocity = bound(z.lowVelocity, 0, .999, 0);
+    const rootHz = bound(z.rootHz, 1, 24000, 440);
+    const alternates: SampleVariant[] = Array.isArray(z.alternates) ? z.alternates.slice(0, 7).flatMap((raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return [];
+      const v = raw as Record<string, unknown>;
+      if (typeof v.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(v.sampleId)) return [];
+      return [{ sampleId: v.sampleId, sampleName: typeof v.sampleName === 'string' ? v.sampleName.slice(0, 160) : undefined,
+        rootHz: bound(v.rootHz, 1, 24000, rootHz) }];
+    }) : [];
     return [{ id, sampleId: z.sampleId, sampleName: typeof z.sampleName === 'string' ? z.sampleName.slice(0, 160) : undefined,
-      rootHz: bound(z.rootHz, 1, 24000, 440), lowHz, highHz: bound(z.highHz, lowHz + .001, 24000, 24000),
+      rootHz, alternates: alternates.length ? alternates : undefined, lowHz, highHz: bound(z.highHz, lowHz + .001, 24000, 24000),
       lowVelocity, highVelocity: bound(z.highVelocity, lowVelocity + .001, 1, 1) }];
   });
 }
@@ -33,5 +45,6 @@ export function sampleAssets(source: { sampleId?: string; sampleName?: string; s
   const result = new Map<string, { sampleId: string; sampleName?: string }>();
   if (source.sampleId) result.set(source.sampleId, { sampleId: source.sampleId, sampleName: source.sampleName });
   for (const zone of source.sampleZones ?? []) result.set(zone.sampleId, { sampleId: zone.sampleId, sampleName: zone.sampleName });
+  for (const zone of source.sampleZones ?? []) for (const v of zone.alternates ?? []) result.set(v.sampleId, { sampleId: v.sampleId, sampleName: v.sampleName });
   return [...result.values()];
 }
