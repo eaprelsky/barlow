@@ -29,7 +29,7 @@ try {
       patterns:[{id:`p-${i}`,name:'stress',length:4,rate:1,steps:Array.from({length:4},(_,j)=>({notes:j===0?[{n:0,vel:.3,prob:1,len:1}]:[]}))}]}));
     patch.scenes=[{id:'s',name:'stress',slots:Object.fromEntries(patch.tracks.map(t=>[t.id,{patternId:t.patterns[0].id}]))}];patch.chain=[];patch=normalizePatch(patch);
     const excessive=structuredClone(patch);excessive.tracks.forEach(t=>t.enabled=true);
-    let loaded=false,rejected=false;const offline=new AudioEngine();offline.ensureSamples=async()=>{loaded=true;};
+    let loaded=false,rejected=false;const offline=new AudioEngine();offline.loadSoundSample=async()=>{loaded=true;};
     try{await offline.renderToWav(excessive,'s',1,{tail:'trim'});}catch(e){rejected=e instanceof ChainBudgetError;}
     check('WAV rejects excessive FX graph before loading assets',rejected&&!loaded);
     const empty=structuredClone(excessive);empty.tracks.forEach(t=>t.patterns[0].steps.forEach(s=>s.notes=[]));

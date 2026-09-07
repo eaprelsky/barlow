@@ -4,6 +4,8 @@ import { resolveMacros } from '../music/macros';
 import { BAR_TICKS, startStepIndex, stepDuration, tickDuration } from './timing';
 import { planStepEvents, type PlannedNoteEvent } from './eventPlan';
 import { randomFor } from './random';
+import { renderMemoryBytes, checkRenderMemory } from './renderMemory';
+import { WEB_AUDIO_CAPABILITIES } from './capabilities';
 import { estimateVoiceNodes } from './voiceBudget';
 import { effectTailBound, voiceLifetimeBound } from './renderTail';
 import { addResources, emptyResources, estimateChainResources, OFFLINE_CHAIN_LIMITS, resourcesFit, ChainBudgetError } from './chainBudget';
@@ -84,5 +86,8 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     if (!Number.isFinite(duration) || duration - start > RENDER_LIMITS.tailSeconds)
       throw new Error('WAV: расчётный хвост больше 120 секунд. Уменьши длину нот, время/повторы эха или выбери точную границу.');
   }
-  return { parts: activeParts, events, duration, musicalStart: .05, musicalEnd: start, finalItemIndex: items.length - 1, estimatedNodes: nodes, chainResources };
+  const format = WEB_AUDIO_CAPABILITIES.wav;
+  const memoryBytes = renderMemoryBytes(duration, format.channels, format.sampleRate, chainResources.bufferBytes);
+  checkRenderMemory(memoryBytes);
+  return { parts: activeParts, events, duration, musicalStart: .05, musicalEnd: start, finalItemIndex: items.length - 1, estimatedNodes: nodes, chainResources, memoryBytes };
 }

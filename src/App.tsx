@@ -2135,7 +2135,7 @@ export default function App() {
         </Modal>
       )}
 
-      {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId}
+      {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId} backend={engine}
         onClose={() => setWavExport(null)} onExport={renderWav} />}
       <DialogHost />
       {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}

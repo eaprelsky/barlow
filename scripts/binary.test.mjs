@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {encodeBinaryFile,decodeBinaryFile} from '../src/binaryFile.ts';
+const bytes=new Uint8Array([0,1,128,255]);
+const frame=encodeBinaryFile('пьеса — IDM.wav',bytes,4);
+const result=decodeBinaryFile(frame.buffer,4);
+assert.equal(result.name,'пьеса — IDM.wav');assert.deepEqual(result.data,bytes);
+assert.equal(result.data.buffer,frame.buffer);
+assert.deepEqual([...encodeBinaryFile('a',new Uint8Array([0,255]),2)],[66,82,76,49,1,0,0,0,97,0,255]);
+assert.equal(decodeBinaryFile(new ArrayBuffer(0),4),null);
+assert.equal(decodeBinaryFile(encodeBinaryFile('empty',new Uint8Array(),0).buffer,0).data.length,0);
+assert.deepEqual(decodeBinaryFile([...frame],4).data,bytes);
+for(const input of [new Uint8Array([1,2]).buffer,new Uint8Array([66,82,76,48,1,0,0,0,97]).buffer,new Uint8Array([66,82,76,49,255,255,255,255]).buffer,new Uint8Array([66,82,76,49,1,0,0,0,255]).buffer])assert.throws(()=>decodeBinaryFile(input,4));
+assert.throws(()=>decodeBinaryFile(frame.buffer,3));assert.throws(()=>decodeBinaryFile([999],4));
+assert.throws(()=>encodeBinaryFile('x'.repeat(1025),bytes,4));assert.throws(()=>encodeBinaryFile('a\0b',bytes,4));assert.throws(()=>encodeBinaryFile('a',bytes,3));
+console.log('PASS raw frame, Unicode, shared payload view, cross-language fixture, cancelled versus empty file, bounded fallback, malformed/oversize rejection');

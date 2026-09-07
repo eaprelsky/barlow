@@ -4,8 +4,7 @@
 // <appData>/samples + index.json с именами — та же структура, что в
 // zip-проекте; при смене слоя меняется только этот файл.
 
-import { invoke } from '@tauri-apps/api/core';
-import { isDesktop } from '../platform';
+import { nativeSamples } from '../platform';
 import { slugify } from '../utils/slug';
 
 export interface SampleMeta {
@@ -74,37 +73,43 @@ function txDone(tx: IDBTransaction): Promise<void> {
 // ---- Десктоп: файлы + index.json (см. src-tauri/src/lib.rs) ----
 
 async function desktopIndex(): Promise<SampleMeta[]> {
-  const json = await invoke<string | null>('sample_index_read');
+  const json = await nativeSamples!.readIndex();
   if (!json) return [];
-  try {
-    const arr = JSON.parse(json) as unknown;
-    return Array.isArray(arr) ? (arr as SampleMeta[]) : [];
-  } catch {
-    return [];
-  }
+  let arr: unknown;
+  const corrupt = () => new Error('Индекс библиотеки повреждён. Исходный индекс сохранён; исправь его или выбери другую папку.');
+  try { arr = JSON.parse(json); } catch { throw corrupt(); }
+  if (!Array.isArray(arr) || arr.some(m => !m || typeof m !== 'object'
+    || typeof m.id !== 'string' || !/^[a-f0-9]{64}$/.test(m.id)
+    || typeof m.name !== 'string' || typeof m.file !== 'string'
+    || !Number.isSafeInteger(m.size) || m.size < 0 || m.size > 64 * 1048576
+    || !Number.isFinite(m.createdAt) || m.createdAt < 0))
+    throw corrupt();
+  if (new Set(arr.map(m => m.id)).size !== arr.length) throw corrupt();
+  return arr as SampleMeta[];
 }
 
 async function desktopIndexSave(list: SampleMeta[]): Promise<void> {
-  await invoke('sample_index_write', { json: JSON.stringify(list, null, 2) });
+  await nativeSamples!.writeIndex(JSON.stringify(list, null, 2));
 }
 
 /** Путь к папке библиотеки (для подписи в панели сэмплов). */
 export async function samplesDirLabel(): Promise<string | null> {
-  if (!isDesktop) return null;
-  return invoke<string>('samples_dir_path');
+  if (!nativeSamples) return null;
+  return nativeSamples.directory();
 }
 
 /** Открыть папку библиотеки в проводнике (десктоп). */
 export async function revealSamplesDir(): Promise<void> {
-  await invoke('reveal_samples_dir');
+  await nativeSamples?.revealDirectory();
 }
 
 /** Сменить папку библиотеки: нативный диалог. Существующие сэмплы
  *  переносятся; если в новой папке уже есть своя библиотека — используется
  *  она. Возвращает новый путь или null (отмена / веб). */
 export async function samplesDirPick(): Promise<string | null> {
-  if (!isDesktop) return null;
-  return invoke<string | null>('samples_dir_pick').then(path => { if (path) libraryChanged(); return path; });
+  const adapter = nativeSamples;
+  if (!adapter) return null;
+  return serialize(() => adapter.pickDirectory()).then(path => { if (path) libraryChanged(); return path; });
 }
 
 let mutations: Promise<unknown> = Promise.resolve();
@@ -126,11 +131,11 @@ export function putSamples(items: { blob: Blob; name: string }[]): Promise<Sampl
     const meta: SampleMeta = { id, name, size: blob.size, createdAt: Date.now(), file: `${slugify(name)}-${id}.${extOf(blob)}` };
     return { blob, buf, meta };
   }));
-  if (isDesktop) {
+  if (nativeSamples) {
     const list = await desktopIndex();
     for (const { buf, meta } of prepared) {
       if (list.some(m => m.id === meta.id)) continue;
-      await invoke('sample_write', { name: meta.file, data: Array.from(new Uint8Array(buf)) });
+      await nativeSamples.write(meta.file!, buf);
       list.push(meta);
     }
     await desktopIndexSave(list);
@@ -164,14 +169,14 @@ export async function putSample(blob: Blob, name: string): Promise<SampleMeta> {
 }
 
 export async function getSampleBlob(id: string): Promise<Blob | undefined> {
-  if (isDesktop) {
+  if (nativeSamples) {
     const list = await desktopIndex();
     const meta = list.find((m) => m.id === id);
     if (!meta?.file) return undefined;
-    const data = await invoke<number[] | null>('sample_read', { name: meta.file });
+    const data = await nativeSamples.read(meta.file);
     if (!data) return undefined;
     const ext = meta.file.split('.').pop() ?? 'bin';
-    return new Blob([new Uint8Array(data)], { type: MIME_BY_EXT[ext] ?? 'application/octet-stream' });
+    return new Blob([data], { type: MIME_BY_EXT[ext] ?? 'application/octet-stream' });
   }
   const db = await openDb();
   try {
@@ -186,7 +191,7 @@ export async function getSampleBlob(id: string): Promise<Blob | undefined> {
 }
 
 export async function listSamples(): Promise<SampleMeta[]> {
-  if (isDesktop) {
+  if (nativeSamples) {
     return (await desktopIndex()).sort((a, b) => b.createdAt - a.createdAt);
   }
   const db = await openDb();
@@ -211,10 +216,10 @@ export function deleteSample(id: string): Promise<void> {
 }
 
 async function deleteSampleInternal(id: string): Promise<void> {
-  if (isDesktop) {
+  if (nativeSamples) {
     const list = await desktopIndex();
     const meta = list.find((m) => m.id === id);
-    if (meta?.file) await invoke('sample_delete', { name: meta.file });
+    if (meta?.file) await nativeSamples.remove(meta.file);
     await desktopIndexSave(list.filter((m) => m.id !== id));
     return;
   }

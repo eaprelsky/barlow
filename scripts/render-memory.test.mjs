@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {renderMemoryBytes,checkRenderMemory,RenderMemoryBudget,RENDER_MEMORY_LIMIT} from '../src/audio/renderMemory.ts';
+assert.equal(renderMemoryBytes(1),44100*2*12+88);
+assert.throws(()=>renderMemoryBytes(NaN));assert.throws(()=>renderMemoryBytes(0));assert.throws(()=>checkRenderMemory(renderMemoryBytes(600)));
+const budget=new RenderMemoryBudget(),a=budget.reserve(100),b=budget.reserve(200);
+assert.equal(budget.bytes,300);assert.throws(()=>budget.reserve(-1));assert.equal(budget.bytes,300);
+assert.throws(()=>a.resize(RENDER_MEMORY_LIMIT));assert.equal(budget.bytes,300);
+a.resize(50);assert.equal(budget.bytes,250);a.release();a.release();b.release();assert.equal(budget.bytes,0);
+assert.throws(()=>a.resize(1));const c=budget.reserve(RENDER_MEMORY_LIMIT);assert.throws(()=>budget.reserve(1));c.release();assert.equal(budget.bytes,0);
+console.log('PASS PCM/WAV byte estimate, invalid/large plans, shared memory limit, atomic resize/refusal and idempotent release');

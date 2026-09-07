@@ -18,12 +18,14 @@ import { sampleAssets } from '../music/sampleZones';
 import { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { DecodedAssets } from './decodedAssets';
 import { copySamplePCM, type SamplePCM } from './pcm';
+import { WEB_AUDIO_CAPABILITIES } from './capabilities';
+import { renderMemoryBudget, renderMemoryBytes, RENDER_MEMORY_LIMIT } from './renderMemory';
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { planStepEvents } from './eventPlan';
 import { MonoVoices } from './monoVoices';
 import { randomFor } from './random';
 import { EventQueue } from './eventQueue';
-import { planRender } from './renderPlan';
+import { planRender, RENDER_LIMITS } from './renderPlan';
 import { VoiceBudget } from './voiceBudget';
 import { chainBudgetOf, emptyResources, ChainBudgetError } from './chainBudget';
 import { sameAddress, effectId } from '../music/effectAddress';
@@ -106,6 +108,7 @@ function validSceneId(patch: Patch | null, want: string): string {
 }
 
 export class AudioEngine implements AudioBackend {
+  readonly capabilities = WEB_AUDIO_CAPABILITIES;
   private pendingNotes = new EventQueue<{
     at: number; trackId: string; patternId: string; notes: Note[];
     stepDur: number; durSec?: number; gain: number; ordinal: number; eventIndex: number;
@@ -834,10 +837,20 @@ export class AudioEngine implements AudioBackend {
     const patch = this.patch;
     if (!patch) throw new Error('патч не загружен');
     const st = stOf(patch, track);
-    const sample = await this.loadMainSample(st);
-    if (!sample) throw new Error('в слоте нет сэмпла');
     const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
     const len = st.noteSteps && st.noteSteps > 0 ? st.noteSteps * stepSec : st.attack + st.decay;
+    if (!Number.isFinite(len) || len <= 0 || len > RENDER_LIMITS.seconds) throw new Error('WAV: жест должен быть не длиннее 10 минут.');
+    const bytes = renderMemoryBytes(len + .2, 1);
+    const memory = renderMemoryBudget.reserve(bytes);
+    try {
+      const sample = await this.loadMainSample(st);
+      if (!sample) throw new Error('в слоте нет сэмпла');
+      memory.resize(bytes + sample.length * sample.numberOfChannels * 8);
+      return await this.renderPreparedScratch(st, sample, len);
+    } finally { memory.release(); }
+  }
+
+  private async renderPreparedScratch(st: SoundingTrack, sample: AudioBuffer, len: number): Promise<Blob> {
     const ctx = new OfflineAudioContext(1, Math.ceil((len + 0.2) * 44100), 44100);
     await ensureScratchModule(ctx);
     const node = makeScratchNode(ctx, sample);
@@ -1278,17 +1291,27 @@ export class AudioEngine implements AudioBackend {
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8, options?: WavRenderOptions): Promise<Blob> {
     const plan = planRender(patch, fallbackSceneId, fallbackBars, options);
-    const release = this.sampleCache.pin(plan.parts.flatMap(p => p.st.waveform === 'sample' ? sampleAssets(p.st).map(a => a.sampleId) : []));
+    const memory = renderMemoryBudget.reserve(plan.memoryBytes);
+    const assets = new Set(plan.parts.flatMap(p => p.st.waveform === 'sample' ? sampleAssets(p.st).map(a => a.sampleId) : []));
+    const release = this.sampleCache.pin(assets);
     try {
       for (const part of plan.parts) await this.loadSoundSample(part.st);
+      let assetBytes = 0;
+      for (const id of assets) { const b = this.sampleCache.get(id); if (b) assetBytes += b.length * b.numberOfChannels * 4; }
+      memory.resize(plan.memoryBytes + assetBytes);
       return await this.renderPreparedWav(patch, plan, options);
-    } finally { release(); }
+    } finally { release(); memory.release(); }
+  }
+
+  estimateWav(patch: Patch, sceneId: string, bars: number, options: WavRenderOptions) {
+    const plan = planRender(patch, sceneId, bars, options);
+    return { musicSeconds: plan.musicalEnd - plan.musicalStart, maxSeconds: plan.duration - plan.musicalStart, workingBytes: plan.memoryBytes, memoryLimitBytes: RENDER_MEMORY_LIMIT };
   }
 
   private async renderPreparedWav(patch: Patch, plan: ReturnType<typeof planRender>, options?: WavRenderOptions): Promise<Blob> {
     const duration = plan.duration;
-    const sampleRate = 44100;
-    const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+    const { sampleRate, channels } = this.capabilities.wav;
+    const ctx = new OfflineAudioContext(channels, Math.ceil(duration * sampleRate), sampleRate);
     // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
     // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
     if (plan.parts.some(p=>p.st.waveform==='sample' && p.st.sampleMode==='scratch')) await ensureScratchModule(ctx);

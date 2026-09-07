@@ -1,6 +1,7 @@
 // Публично для бина golden (и будущих CLI-рендеров): модель патча и тайминг.
 pub mod audio;
 mod sample_path;
+mod native_binary;
 
 use std::sync::Mutex;
 use tauri::AppHandle;
@@ -201,22 +202,24 @@ fn samples_dir_path(app: AppHandle) -> Result<String, String> {
     Ok(samples_dir(&app)?.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
-fn sample_write(app: AppHandle, name: String, data: Vec<u8>) -> Result<(), String> {
-    if data.len() > 64 * 1024 * 1024 { return Err("Сэмпл больше 64 МиБ".into()); }
-    std::fs::write(sample_path::checked_path(&samples_dir(&app)?, &name)?, &data).map_err(|e| e.to_string())
+#[tauri::command(async)]
+fn sample_write(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Ожидается бинарный пакет сэмпла".into()); };
+    let (name, data) = native_binary::unpack(bytes, native_binary::SAMPLE_LIMIT)?;
+    native_binary::write_atomic(&sample_path::checked_path(&samples_dir(&app)?, name)?, data).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn sample_read(app: AppHandle, name: String) -> Result<Option<Vec<u8>>, String> {
-    match std::fs::read(sample_path::checked_path(&samples_dir(&app)?, &name)?) {
-        Ok(d) => Ok(Some(d)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+#[tauri::command(async)]
+fn sample_read(app: AppHandle, name: String) -> Result<tauri::ipc::Response, String> {
+    let path = sample_path::checked_path(&samples_dir(&app)?, &name)?;
+    match native_binary::read_limited(&path, native_binary::SAMPLE_LIMIT) {
+        Ok(data) => Ok(tauri::ipc::Response::new(native_binary::pack(&name, data, native_binary::SAMPLE_LIMIT)?)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(tauri::ipc::Response::new(Vec::<u8>::new())),
         Err(e) => Err(e.to_string()),
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sample_delete(app: AppHandle, name: String) -> Result<(), String> {
     match std::fs::remove_file(sample_path::checked_path(&samples_dir(&app)?, &name)?) {
         Ok(()) => Ok(()),
@@ -225,16 +228,16 @@ fn sample_delete(app: AppHandle, name: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sample_index_read(app: AppHandle) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(samples_dir(&app)?.join("index.json")) {
-        Ok(s) => Ok(Some(s)),
+    match native_binary::read_limited(&samples_dir(&app)?.join("index.json"), 4 * 1024 * 1024) {
+        Ok(data) => Ok(Some(String::from_utf8(data).map_err(|e| e.to_string())?)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sample_index_write(app: AppHandle, json: String) -> Result<(), String> {
     if json.len() > 4 * 1024 * 1024 { return Err("Индекс библиотеки больше 4 МиБ".into()); }
     let parsed: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
@@ -245,9 +248,7 @@ fn sample_index_write(app: AppHandle, json: String) -> Result<(), String> {
         }
     }
     let dir = samples_dir(&app)?;
-    let tmp = dir.join("index.json.tmp");
-    std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
-    std::fs::rename(tmp, dir.join("index.json")).map_err(|e| e.to_string())
+    native_binary::write_atomic(&dir.join("index.json"), json.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Открыть папку библиотеки в системном файловом менеджере.
@@ -265,40 +266,26 @@ fn reveal_samples_dir(app: AppHandle) -> Result<(), String> {
 }
 
 /// Нативный «сохранить как»: диалог + запись файла. None — пользователь отменил.
-#[tauri::command]
-fn save_project(app: AppHandle, name: String, data: Vec<u8>) -> Result<Option<String>, String> {
-    let Some(file) = app.dialog().file().set_file_name(&name).blocking_save_file() else {
-        return Ok(None);
-    };
+#[tauri::command(async)]
+fn save_project(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Ожидается бинарный пакет файла".into()); };
+    let (name, data) = native_binary::unpack(bytes, native_binary::SAVE_LIMIT)?;
+    let Some(file) = app.dialog().file().set_file_name(name).blocking_save_file() else { return Ok(None); };
     let path = file.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&path, &data).map_err(|e| e.to_string())?;
+    native_binary::write_atomic(&path, data).map_err(|e| e.to_string())?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Открытый файл: структура (кортеж сериализовался бы в JSON-массив,
-/// а фронт ждёт объект с полями).
-#[derive(serde::Serialize)]
-struct OpenedFile {
-    name: String,
-    data: Vec<u8>,
-}/// Нативный «открыть проект»: диалог + чтение. None — отмена.
-#[tauri::command]
-fn open_project(app: AppHandle) -> Result<Option<OpenedFile>, String> {
-    let Some(file) = app
-        .dialog()
-        .file()
-        .add_filter("barlow: проект и патч", &["zip", "json"])
-        .blocking_pick_file()
-    else {
-        return Ok(None);
+/// Empty binary response means cancellation; a selected empty file has a frame.
+#[tauri::command(async)]
+fn open_project(app: AppHandle) -> Result<tauri::ipc::Response, String> {
+    let Some(file) = app.dialog().file().add_filter("barlow: проект и патч", &["zip", "json"]).blocking_pick_file() else {
+        return Ok(tauri::ipc::Response::new(Vec::<u8>::new()));
     };
     let path = file.into_path().map_err(|e| e.to_string())?;
-    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let name = path
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "project".into());
-    Ok(Some(OpenedFile { name, data }))
+    let data = native_binary::read_limited(&path, native_binary::PROJECT_LIMIT).map_err(|e| e.to_string())?;
+    let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into());
+    Ok(tauri::ipc::Response::new(native_binary::pack(&name, data, native_binary::PROJECT_LIMIT)?))
 }
 
 // ---- Нативный вывод (этап 1: WASAPI exclusive/shared + тест-тон) ----

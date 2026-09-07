@@ -6,6 +6,9 @@
 import type { Note, Patch, SoundingTrack, Track, WavRenderOptions } from '../types';
 import type { TrackClock } from './timing';
 import type { SamplePCM } from './pcm';
+import type { AudioCapabilities } from './capabilities';
+
+export interface WavEstimate { musicSeconds: number; maxSeconds: number; workingBytes: number; memoryLimitBytes: number }
 
 export interface AudioDiagnostics {
   activeNotes: number; estimatedNodes: number; queuedEvents: number;
@@ -17,6 +20,7 @@ export interface AudioDiagnostics {
 }
 
 export interface AudioBackend {
+  readonly capabilities: AudioCapabilities;
   readonly diagnostics: AudioDiagnostics;
   /** Транспорт играет (планировщик активен). */
   readonly playing: boolean;
@@ -75,6 +79,7 @@ export interface AudioBackend {
   previewSounding(st: SoundingTrack, noteRow?: number): void;
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
+  estimateWav(patch: Patch, sceneId: string, bars: number, options: WavRenderOptions): WavEstimate;
   renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars?: number, options?: WavRenderOptions): Promise<Blob>;
 
   /** Заморозить жест скрэтча: оффлайн-рендер ноты жеста в WAV-блоб —

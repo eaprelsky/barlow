@@ -19,6 +19,7 @@ try {
     const { normalizePatch } = await import('/src/types.ts');
     const { AudioEngine } = await import('/src/audio/engine.ts');
     const { planRender } = await import('/src/audio/renderPlan.ts');
+    const { renderMemoryBudget, RENDER_MEMORY_LIMIT } = await import('/src/audio/renderMemory.ts');
     const { triggerVoice } = await import('/src/audio/voices.ts');
     const { voiceLifetimeBound, effectTailBound } = await import('/src/audio/renderTail.ts');
     const checks = [];
@@ -57,9 +58,26 @@ try {
     const bare = effectTailBound(st, { ...echo.tracks[0].patterns[0], mods: [] });
     check('tail estimate includes summed feedback modulation', effectTailBound(st, echo.tracks[0].patterns[0]) > bare);
     const excessive = structuredClone(echo); excessive.tracks[0].effects = [{ id: 'echo', type: 'delay', mix: 1, timeSec: 2, feedback: .9 }];
-    let loaded = false, rejected = false; const bounded = new AudioEngine(); bounded.ensureSamples = async () => { loaded = true; };
+    let loaded = false, rejected = false; const bounded = new AudioEngine(); bounded.loadSoundSample = async () => { loaded = true; };
     try { await bounded.renderToWav(excessive, 's', 1, { tail: 'natural' }); } catch (e) { rejected = e.message.includes('120 секунд'); }
     check('excessive tail rejected before asset loading and context allocation', rejected && !loaded);
+    const long = structuredClone(patch); long.tracks[0].enabled=false;long.followChain=true;
+    long.chain=Array.from({length:3},()=>({sceneId:'s',bars:100}));
+    loaded=false;let memoryRejected=false;
+    try{await bounded.renderToWav(long,'s',1,{tail:'trim'});}catch(e){memoryRejected=e.message.includes('512 МиБ');}
+    check('long PCM allocation rejected before loading or creating a context',memoryRejected&&!loaded&&bounded.ctx===null);
+    const reserved=renderMemoryBudget.reserve(RENDER_MEMORY_LIMIT-1024);let concurrentRejected=false;
+    try{await bounded.renderToWav(patch,'s',1,{tail:'trim'});}catch(e){concurrentRejected=e.message.includes('512 МиБ');}
+    check('concurrent export reservations share one budget without altering existing lease',concurrentRejected&&renderMemoryBudget.bytes===RENDER_MEMORY_LIMIT-1024);
+    reserved.release();
+    const missing=structuredClone(patch);missing.instruments[0].waveform='sample';missing.instruments[0].sampleId='f'.repeat(64);
+    const failed=new AudioEngine();let missingRejected=false;
+    try{await failed.renderToWav(missing,'s',1,{tail:'trim'});}catch{missingRejected=true;}
+    check('failed asset load releases export memory reservation',missingRejected&&renderMemoryBudget.bytes===0);
+    failed.setPatch(missing);const hugeTrack={...missing.tracks[0],noteSteps:100000};let scratchRejected=false;
+    try{await failed.renderScratchWav(hugeTrack);}catch(e){scratchRejected=e.message.includes('10 минут');}
+    check('scratch length is bounded before sample loading',scratchRejected&&renderMemoryBudget.bytes===0);
+    if(failed.ctx)await failed.ctx.close();
     const silent = structuredClone(patch); silent.tracks[0].patterns[0].steps.forEach(s => s.notes = []); silent.masterNoise = 'pink'; silent.masterNoiseLevel = .1;
     const ns = await render(silent, 'natural');
     check('master noise stops at musical end and does not create an endless tail', ns.duration === 2 && ns.rms(.1, .5) > .0001, ns.duration);

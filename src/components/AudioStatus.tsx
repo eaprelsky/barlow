@@ -7,7 +7,7 @@ export function AudioStatus({ engine, playing }: { engine: AudioBackend; playing
     const timer = window.setInterval(() => setStatus(engine.diagnostics), 500);
     return () => window.clearInterval(timer);
   }, [engine]);
-  const details = `${status.activeNotes}/128 нот, ${status.estimatedNodes}/8192 условных узлов голосов, ${status.queuedEvents}/8192 событий. ` +
+  const details = `${engine.capabilities.name}: ${status.activeNotes}/128 нот, ${status.estimatedNodes}/8192 условных узлов голосов, ${status.queuedEvents}/8192 событий. ` +
     `Эффекты: ${status.chains}/192 цепочек, ${status.chainNodes}/8192 условных узлов, ${(status.chainBufferBytes / 1048576).toFixed(1)}/96 МиБ буферов (оценка). ` +
     `Кэш сэмплов: ${(status.decodedBytes / 1048576).toFixed(1)}/256 МиБ PCM, ${status.decodedAssets} записей, ожидают загрузки: ${status.pendingDecodes}. ` +
     `Подготовка: ${status.preparationMs.toFixed(1)} мс. Планировщик JS: максимум ${status.schedulerMaxMs.toFixed(1)} мс, проходов дольше 25 мс: ${status.slowSchedulerCalls}. Это не измерение CPU аудиопотока.` +
