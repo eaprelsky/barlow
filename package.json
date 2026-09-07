@@ -21,6 +21,8 @@
     "test:bridge-ui": "node scripts/bridge-ui.mjs",
     "test:fx-ui": "node scripts/fx-ui.mjs",
     "test:export": "node scripts/export-contract.mjs",
+    "test:resources": "node scripts/resources.test.mjs",
+    "test:stress": "node scripts/stress-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"
   },

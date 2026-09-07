@@ -9,6 +9,9 @@ import type { TrackClock } from './timing';
 export interface AudioDiagnostics {
   activeNotes: number; estimatedNodes: number; queuedEvents: number;
   droppedEvents: number; lateEvents: number;
+  chains: number; chainNodes: number; chainBufferBytes: number; blockedTracks: string[];
+  schedulerMaxMs: number; slowSchedulerCalls: number;
+  preparationMs: number;
 }
 
 export interface AudioBackend {

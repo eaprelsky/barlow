@@ -6,6 +6,7 @@ import { planStepEvents, type PlannedNoteEvent } from './eventPlan';
 import { randomFor } from './random';
 import { estimateVoiceNodes } from './voiceBudget';
 import { effectTailBound, voiceLifetimeBound } from './renderTail';
+import { addResources, emptyResources, estimateChainResources, OFFLINE_CHAIN_LIMITS, resourcesFit, ChainBudgetError } from './chainBudget';
 
 export const RENDER_LIMITS = { seconds: 600, tailSeconds: 120, chains: 512, steps: 200000, events: 20000, estimatedNodes: 100000 };
 
@@ -64,6 +65,11 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     start = end;
   }
   events.sort((a, b) => a.at - b.at);
+  const sounding = new Set(events.map(ev => ev.part.key));
+  const activeParts = parts.filter(part => sounding.has(part.key));
+  const chainResources = activeParts.reduce((total, part) => addResources(total,
+    estimateChainResources({ effects: part.st.effects, mods: part.pattern.mods ?? part.st.mods })), emptyResources());
+  if (!resourcesFit(chainResources, OFFLINE_CHAIN_LIMITS)) throw new ChainBudgetError();
   let duration = options ? start : start + .95;
   if (options?.tail === 'natural') {
     const tails = new Map<string, number>();
@@ -78,5 +84,5 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     if (!Number.isFinite(duration) || duration - start > RENDER_LIMITS.tailSeconds)
       throw new Error('WAV: расчётный хвост больше 120 секунд. Уменьши длину нот, время/повторы эха или выбери точную границу.');
   }
-  return { parts, events, duration, musicalStart: .05, musicalEnd: start, finalItemIndex: items.length - 1, estimatedNodes: nodes };
+  return { parts: activeParts, events, duration, musicalStart: .05, musicalEnd: start, finalItemIndex: items.length - 1, estimatedNodes: nodes, chainResources };
 }

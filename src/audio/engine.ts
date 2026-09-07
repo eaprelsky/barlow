@@ -22,6 +22,7 @@ import { randomFor } from './random';
 import { EventQueue } from './eventQueue';
 import { planRender } from './renderPlan';
 import { VoiceBudget } from './voiceBudget';
+import { chainBudgetOf, emptyResources, ChainBudgetError } from './chainBudget';
 import { sameAddress, effectId } from '../music/effectAddress';
 import { audioBufferToWav } from './wav';
 import { getSampleBlob } from './library';
@@ -40,6 +41,7 @@ import {
   type TrackChain,
   connectMaster,
   connectMasterNoise,
+  startChain,
   disposeChain,
   distCurve,
   fxParamOf,
@@ -108,10 +110,18 @@ export class AudioEngine implements AudioBackend {
   private voiceBudget = new VoiceBudget();
   private droppedEvents = 0;
   private lateEvents = 0;
+  private blockedTracks = new Set<string>();
+  private schedulerMaxMs = 0;
+  private slowSchedulerCalls = 0;
+  private preparationMs = 0;
   get diagnostics() {
     this.voiceBudget.prune(this.ctx?.currentTime ?? 0);
+    const chains = this.ctx ? chainBudgetOf(this.ctx).usage : emptyResources();
     return { activeNotes: this.voiceBudget.notes, estimatedNodes: this.voiceBudget.estimatedNodes,
-      queuedEvents: this.pendingNotes.size, droppedEvents: this.droppedEvents, lateEvents: this.lateEvents };
+      queuedEvents: this.pendingNotes.size, droppedEvents: this.droppedEvents, lateEvents: this.lateEvents,
+      chains: chains.chains, chainNodes: chains.nodes, chainBufferBytes: chains.bufferBytes,
+      blockedTracks: [...this.blockedTracks].map(id => this.patch?.tracks.find(t => t.id === id)?.name ?? id),
+      schedulerMaxMs: this.schedulerMaxMs, slowSchedulerCalls: this.slowSchedulerCalls, preparationMs: this.preparationMs };
   }
   // Дебаг-мост: приёмник событий нот live-планировщика.
   noteSink?: (trackId: string, at: number, notes: Note[]) => void;
@@ -275,6 +285,7 @@ export class AudioEngine implements AudioBackend {
     this.applyMasterFx(patch);
     if (!this.ctx) return;
     const alive = new Set(patch.tracks.map((t) => t.id));
+    for (const id of this.blockedTracks) if (!alive.has(id)) this.blockedTracks.delete(id);
     for (const [id, chain] of this.chains) {
       if (!alive.has(id)) {
         this.retireChain(chain, this.ctx.currentTime);
@@ -289,6 +300,8 @@ export class AudioEngine implements AudioBackend {
   /** Мягко увести цепочку: гейн в ноль за ~20 мс, узлы живут ещё 0.3 c —
    *  хвосты нот затухают, а не обрываются (клик на стыке). */
   private retireChain(chain: TrackChain, at: number): void {
+    chain.duck.gain.cancelScheduledValues(at);
+    chain.duck.gain.setTargetAtTime(0, at, 0.02);
     chain.gain.gain.cancelScheduledValues(at);
     chain.gain.gain.setTargetAtTime(0, at, 0.02);
     for (const m of chain.mods) {
@@ -343,11 +356,13 @@ export class AudioEngine implements AudioBackend {
     }
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
-      this.retireChain(chain, t0);
       const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
+      this.retireChain(chain, t0);
       this.chains.set(trackId, fresh);
       return fresh;
     }
+    // Resizing a reverb must reserve its new buffer before allocation too.
+    chain.resourceLease?.resize({ effects: track.effects, mods: eff.mods });
     const autoOf = (target: string, fxId?: string) => pattern?.automation?.some(c => sameAddress(c, target, fxId, track.effects ?? []));
     chain.hp.frequency.setTargetAtTime(track.filterLow, t0, 0.03);
     // Автоматизированные цели качает кривая партии — базу сюда не пишем.
@@ -555,8 +570,10 @@ export class AudioEngine implements AudioBackend {
   }
 
   play(patch: Patch, sceneId: string): void {
+    const preparationStart = performance.now();
     this.stop();
     this.droppedEvents = 0; this.lateEvents = 0;
+    this.blockedTracks.clear(); this.schedulerMaxMs = 0; this.slowSchedulerCalls = 0;
     this.sceneOccurrence = 0;
     const ctx = this.ensureCtx();
     this.noiseBuffer = makeNoiseBuffer(ctx, patch.performanceSeed);
@@ -568,9 +585,27 @@ export class AudioEngine implements AudioBackend {
     this.manualMode = !patch.followChain;
     const pos = patch.chain.findIndex((it) => it.sceneId === this.sceneId);
     this.chainPos = pos >= 0 ? pos : 0;
-    this.startAt = ctx.currentTime + 0.1;
     this.liveBpm = patch.followChain ? patch.chain[this.chainPos]?.bpm ?? patch.bpm : patch.bpm;
     const scene = this.scene();
+    const audible = audibleSet(patch, scene);
+    for (const track of patch.tracks) {
+      const pattern = patternInScene(track, scene);
+      if (!pattern || !audible.has(pattern.id) || this.chains.has(track.id)) continue;
+      const eff = effectiveParams(track, pattern);
+      try {
+        const chain = makeChain(ctx, { ...stOf(patch, track), ...eff }, this.master!.input, this.liveBpm, patch.performanceSeed, null);
+        this.chains.set(track.id, chain);
+      } catch (e) {
+        if (!(e instanceof ChainBudgetError)) {
+          for (const chain of this.chains.values()) disposeChain(chain);
+          this.chains.clear(); throw e;
+        }
+        this.blockedTracks.add(track.id);
+      }
+    }
+    this.preparationMs = performance.now() - preparationStart;
+    this.startAt = ctx.currentTime + .1;
+    for (const chain of this.chains.values()) startChain(chain, this.startAt);
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
       this.clocks.set(track.id, {
@@ -589,11 +624,13 @@ export class AudioEngine implements AudioBackend {
     // (getter playing смотрит на таймер). Раньше шум не начинался на play,
     // а включался при первой правке патча — например, смене темпа.
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
+    this.armSceneExit(this.sceneAdvanceTime);
     this.applyMasterFx(patch);
     this.scheduler();
   }
 
   stop(): void {
+    this.blockedTracks.clear();
     this.pendingNotes.clear();
     this.voiceBudget.stop(this.ctx?.currentTime ?? 0);
     ++this.previewRequest;
@@ -911,13 +948,17 @@ export class AudioEngine implements AudioBackend {
         this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
         return;
       }
+      let failedChain: TrackChain | undefined;
       try {
         // Audition has its own complete chain: it must not inherit the old
         // track's filters/FX or alter its running notes.
         const pseudo = makeChain(ctx, st, this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
+        failedChain = pseudo;
         const pattern = patternInScene(st, this.scene());
         const stepSec = stepDuration(st, patch.bpm, pattern);
         const notes = [makeNote(noteRow, 0.9, 1)];
+        this.voiceBudget.prune(ctx.currentTime);
+        if (!this.voiceBudget.allows(st, notes.length)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
         const voice = triggerVoice(
           ctx,
           pseudo,
@@ -931,10 +972,12 @@ export class AudioEngine implements AudioBackend {
           (id) => this.sampleCache.get(id) ?? null,
           randomFor(patch.performanceSeed, 'preview', st.id, noteRow),
         );
+        this.voiceBudget.add(voice, st, notes.length);
         let cleaned = false;
         const cleanup = () => {
           if (cleaned) return;
           cleaned = true;
+          voice.stopAt = Math.min(voice.stopAt, ctx.currentTime + .03);
           voice.amp.gain.cancelScheduledValues(ctx.currentTime);
           voice.amp.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
           window.setTimeout(() => {
@@ -946,6 +989,7 @@ export class AudioEngine implements AudioBackend {
         const tail = Math.max(0.1, ...(st.effects ?? []).map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
         const timeout = window.setTimeout(cleanup, Math.max(0, voice.stopAt - ctx.currentTime + tail) * 1000);
         this.previewCleanup = () => { window.clearTimeout(timeout); cleanup(); };
+        failedChain = undefined; // cleanup now owns this graph and reservation
         // Голос живёт своей огибающей; хвост подчищаем по stopAt.
         const src = voice.sources[0];
         try {
@@ -954,6 +998,7 @@ export class AudioEngine implements AudioBackend {
           /* уже остановлен */
         }
       } catch (e) {
+        if (failedChain) disposeChain(failedChain);
         this.warnSink?.(
           `Нота не прозвучала: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -1054,6 +1099,16 @@ export class AudioEngine implements AudioBackend {
   }
 
   private scheduler(): void {
+    const started = performance.now();
+    try { this.runScheduler(); }
+    finally {
+      const elapsed = performance.now() - started;
+      this.schedulerMaxMs = Math.max(this.schedulerMaxMs, elapsed);
+      if (elapsed > LOOKAHEAD_MS) this.slowSchedulerCalls++;
+    }
+  }
+
+  private runScheduler(): void {
     const ctx = this.ctx;
     const patch = this.patch;
     if (!ctx || !patch || !this.noiseBuffer) return;
@@ -1088,7 +1143,7 @@ export class AudioEngine implements AudioBackend {
     const audible = audibleSet(patch, scene);
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
-      if (!pattern) continue;
+      if (!pattern) { this.blockedTracks.delete(track.id); continue; }
       const st = stOf(patch, track);
       // Трек, добавленный на ходу, вливается с ближайшего мгновения —
       // лайв-джем: набросал дорожку поверх играющего микса.
@@ -1100,15 +1155,27 @@ export class AudioEngine implements AudioBackend {
       }
       const eff = effectiveParams(track, pattern);
       let chain = this.chains.get(track.id);
-      if (!chain && this.master) {
-        chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, patch.performanceSeed, Math.max(ctx.currentTime,clock.resetTime));
-        this.chains.set(track.id, chain);
-        // Свежая цепочка: планируем ей вход (старт игры / вливание на ходу)
-        // и, если граница сцен известна, переходный выход.
-        this.armSceneExit(this.sceneAdvanceTime);
+      const trackAudible = audible.has(pattern.id);
+      if (!trackAudible) {
+        if (chain) { this.retireChain(chain, Math.max(ctx.currentTime, clock.resetTime)); this.chains.delete(track.id); chain = undefined; }
+        this.blockedTracks.delete(track.id);
+      } else {
+        try {
+          if (!chain && this.master) {
+            chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, patch.performanceSeed, Math.max(ctx.currentTime,clock.resetTime));
+            this.chains.set(track.id, chain);
+            this.armSceneExit(this.sceneAdvanceTime);
+          }
+          if (chain) chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
+          this.blockedTracks.delete(track.id);
+        } catch (e) {
+          if (!(e instanceof ChainBudgetError)) throw e;
+          // Retire the old graph rather than playing a new instrument through
+          // effects that no longer match the patch. Retry after tails release.
+          if (chain) { this.retireChain(chain, ctx.currentTime); this.chains.delete(track.id); chain = undefined; }
+          this.blockedTracks.add(track.id);
+        }
       }
-      if (!chain) continue;
-      chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
       const stepDur = stepDuration(track, this.liveBpm, pattern);
       let g = 0;
       // Read up to 50 ms earlier for negative microtiming, but never read
@@ -1116,10 +1183,11 @@ export class AudioEngine implements AudioBackend {
       const planningEnd = Math.min(horizon + 0.05, this.sceneAdvanceTime ?? Infinity);
       while (clock.nextStepTime < planningEnd && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
-        if (audible.has(pattern.id)) {
+        if (trackAudible) {
           const ordinal = clock.eventOrdinal ?? 0;
           const events = planStepEvents(step, st, stepDur, randomFor(patch.performanceSeed, 'events', track.id, this.sceneOccurrence, ordinal));
           for (const [eventIndex, ev] of events.entries()) {
+            if (!chain) { this.droppedEvents++; continue; }
             const at = Math.max(clock.resetTime, clock.nextStepTime + ev.dt * stepDur + (ev.offsetSec ?? 0));
             if (at >= (this.sceneAdvanceTime ?? Infinity)) continue;
             if (!this.pendingNotes.push({ at, trackId: track.id, patternId: pattern.id,
@@ -1129,7 +1197,7 @@ export class AudioEngine implements AudioBackend {
           }
         }
         // Кривые партии: значение параметра на границе шага (v35).
-        if (pattern.automation?.length) {
+        if (chain && pattern.automation?.length) {
           const pos = clock.nextStepIndex / pattern.length;
           for (const c of pattern.automation) {
             const v = autoValue(c.points, pos);
@@ -1157,7 +1225,7 @@ export class AudioEngine implements AudioBackend {
       const track = patch.tracks.find(t => t.id === ev.trackId);
       if (!track || !audible.has(ev.patternId) || patternInScene(track, scene)?.id !== ev.patternId) continue;
       const chain = this.chains.get(track.id);
-      if (!chain) continue;
+      if (!chain) { this.droppedEvents++; continue; }
       const st = stOf(patch, track);
       if (!this.voiceBudget.allows(st, ev.notes.length)) { this.droppedEvents++; continue; }
       if (ev.at < ctx.currentTime) this.lateEvents++;

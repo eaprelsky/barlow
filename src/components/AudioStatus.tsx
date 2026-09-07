@@ -7,12 +7,16 @@ export function AudioStatus({ engine, playing }: { engine: AudioBackend; playing
     const timer = window.setInterval(() => setStatus(engine.diagnostics), 500);
     return () => window.clearInterval(timer);
   }, [engine]);
-  const details = `${status.activeNotes}/128 нот, ${status.estimatedNodes}/8192 условных узлов, ${status.queuedEvents}/8192 событий в очереди. Оценка ресурсов, не загрузка CPU.`;
+  const details = `${status.activeNotes}/128 нот, ${status.estimatedNodes}/8192 условных узлов голосов, ${status.queuedEvents}/8192 событий. ` +
+    `Эффекты: ${status.chains}/192 цепочек, ${status.chainNodes}/8192 условных узлов, ${(status.chainBufferBytes / 1048576).toFixed(1)}/96 МиБ буферов (оценка). ` +
+    `Подготовка: ${status.preparationMs.toFixed(1)} мс. Планировщик JS: максимум ${status.schedulerMaxMs.toFixed(1)} мс, проходов дольше 25 мс: ${status.slowSchedulerCalls}. Это не измерение CPU аудиопотока.` +
+    (status.blockedTracks.length ? ` Не звучат: ${status.blockedTracks.join(', ')}.` : '');
   return <span className="audio-status" title={details}>
     {playing && <span aria-label="Активные ноты">♪ {status.activeNotes}</span>}
     <span role="status" aria-live="polite">
       {status.droppedEvents > 0 && ` · перегрузка: пропущено ${status.droppedEvents}`}
       {status.lateEvents > 0 && ` · опоздало ${status.lateEvents}`}
+      {status.blockedTracks.length > 0 && ` · бюджет FX: не звучат ${status.blockedTracks.length} тр.`}
     </span>
   </span>;
 }

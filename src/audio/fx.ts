@@ -8,6 +8,8 @@ import { modRateHz } from '../types';
 import { resolveMacros } from '../music/macros';
 import { randomFor, seedOf } from './random';
 import { effectId } from '../music/effectAddress';
+import { reserveChain, type ChainLease } from './chainBudget';
+import { ByteLru } from './byteLru';
 
 export interface ModNodes {
   src: AudioScheduledSourceNode;
@@ -32,6 +34,8 @@ export interface FxNodes {
 }
 
 export interface TrackChain {
+  resourceLease?: ChainLease;
+  deferredStart?: boolean;
   hp: BiquadFilterNode;
   filter: BiquadFilterNode;
   panner: StereoPannerNode;
@@ -65,22 +69,22 @@ const dryCurve = mixCurve(dryGain), wetCurve = mixCurve(wetGain);
 interface BoundedParam { source: ConstantSourceNode; scale: GainNode; clamp: WaveShaperNode }
 /** Bounds the sum of base + automation + audio-rate modulation, not just
  * the stored value. Feedback above unity otherwise creates a runaway loop. */
-export function makeBoundedParam(ctx: BaseAudioContext, param: AudioParam, value: number, min: number, max: number, startAt: number): BoundedParam {
+export function makeBoundedParam(ctx: BaseAudioContext, param: AudioParam, value: number, min: number, max: number, startAt: number | null): BoundedParam {
   const source = ctx.createConstantSource(), scale = ctx.createGain(), clamp = ctx.createWaveShaper();
   source.offset.value = Math.min(max, Math.max(min, value)); scale.gain.value = 1 / max;
   clamp.curve = Float32Array.from({ length: 2049 }, (_, i) => Math.min(max, Math.max(min, (i / 1024 - 1) * max)));
-  param.value = 0; source.connect(scale); scale.connect(clamp); clamp.connect(param); source.start(startAt);
+  param.value = 0; source.connect(scale); scale.connect(clamp); clamp.connect(param); if (startAt !== null) source.start(startAt);
   return { source, scale, clamp };
 }
 /** One normalized control signal drives both equal-power branches. Manual,
  * automation and audio-rate modulation all meet at the same AudioParam. */
-export function makeMixControl(ctx: BaseAudioContext, dry: GainNode, wet: GainNode, value: number, startAt: number) {
+export function makeMixControl(ctx: BaseAudioContext, dry: GainNode, wet: GainNode, value: number, startAt: number | null) {
   const mix = ctx.createConstantSource(); mix.offset.value = Math.min(1, Math.max(0, value));
   const mixDry = ctx.createWaveShaper(), mixWet = ctx.createWaveShaper();
   mixDry.curve = dryCurve; mixWet.curve = wetCurve;
   dry.gain.value = 0; wet.gain.value = 0;
   mix.connect(mixDry); mix.connect(mixWet);
-  mixDry.connect(dry.gain); mixWet.connect(wet.gain); mix.start(startAt);
+  mixDry.connect(dry.gain); mixWet.connect(wet.gain); if (startAt !== null) mix.start(startAt);
   return { mix, mixDry, mixWet };
 }
 export function fxParamOf(fx: FxNodes[], target: string, id?: string): AudioParam | null {
@@ -93,7 +97,8 @@ export function fxParamOf(fx: FxNodes[], target: string, id?: string): AudioPara
 
 // Процедурный impulse response для реверба: стереошумовое облако с
 // экспоненциальным затуханием. Кэш общий для live и offline контекстов.
-const irCache = new Map<string, AudioBuffer>();
+const irCache = new ByteLru<string, AudioBuffer>(32 * 1024 * 1024, 16);
+const bufferBytes = (b: AudioBuffer) => b.length * b.numberOfChannels * 4;
 export function getImpulse(ctx: BaseAudioContext, seconds: number, seed?: number): AudioBuffer {
   const random = randomFor(seed, "impulse", seconds);
   const key = `${ctx.sampleRate}:${seconds}:${seed ?? "legacy"}`;
@@ -107,8 +112,7 @@ export function getImpulse(ctx: BaseAudioContext, seconds: number, seed?: number
         d[i] = (random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
       }
     }
-    if (irCache.size >= 16) irCache.delete(irCache.keys().next().value!);
-    irCache.set(key, ir);
+    irCache.set(key, ir, bufferBytes(ir));
   }
   return ir;
 }
@@ -170,13 +174,12 @@ export function lofiCurve(bits: number): Float32Array<ArrayBuffer> {
 
 // S&H: кусочно-постоянные случайные значения, шаг = 1/rate. Луп бесшовный:
 // периодов целое число, стык значений не важен (скачок и есть суть S&H).
-const sahCache = new Map<string, AudioBuffer>();
+const sahCache = new ByteLru<string, AudioBuffer>(16 * 1024 * 1024, 64);
 function makeSahBuffer(ctx: BaseAudioContext, rate: number, seed?: number): AudioBuffer {
   const random = randomFor(seed, "sah", rate);
   const key = `${ctx.sampleRate}:${rate}:${seed ?? "legacy"}`;
   let buf = sahCache.get(key);
   if (buf) return buf;
-  if (sahCache.size > 64) sahCache.clear();
   const steps = 16;
   const len = Math.floor((steps / rate) * ctx.sampleRate);
   buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -188,19 +191,18 @@ function makeSahBuffer(ctx: BaseAudioContext, rate: number, seed?: number): Audi
     const to = Math.floor((i + 1) * period);
     for (let j = from; j < to; j++) d[j] = v;
   }
-  sahCache.set(key, buf);
+  sahCache.set(key, buf, bufferBytes(buf));
   return buf;
 }
 
 // Перлин (1D value noise): плавные холмы между случайными точками,
 // косинусная интерполяция; последняя точка равна первой — луп бесшовный.
-const perlinCache = new Map<string, AudioBuffer>();
+const perlinCache = new ByteLru<string, AudioBuffer>(16 * 1024 * 1024, 64);
 function makePerlinBuffer(ctx: BaseAudioContext, rate: number, seed?: number): AudioBuffer {
   const random = randomFor(seed, "perlin", rate);
   const key = `${ctx.sampleRate}:${rate}:${seed ?? "legacy"}`;
   let buf = perlinCache.get(key);
   if (buf) return buf;
-  if (perlinCache.size > 64) perlinCache.clear();
   const steps = 16;
   const len = Math.floor((steps / rate) * ctx.sampleRate);
   buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -217,7 +219,7 @@ function makePerlinBuffer(ctx: BaseAudioContext, rate: number, seed?: number): A
     const t = 0.5 - 0.5 * Math.cos(frac * Math.PI);
     d[i] = a + (b - a) * t;
   }
-  perlinCache.set(key, buf);
+  perlinCache.set(key, buf, bufferBytes(buf));
   return buf;
 }
 
@@ -238,7 +240,7 @@ function makeModSource(ctx: BaseAudioContext, m: Mod, seed?: number): AudioSched
 }
 
 // Мастер-шумы: длинные лупы, чтобы период не слушался.
-const masterNoiseCache = new Map<string, AudioBuffer>();
+const masterNoiseCache = new ByteLru<string, AudioBuffer>(16 * 1024 * 1024, 16);
 function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink', seed?: number): AudioBuffer {
   const random = randomFor(seed, 'master-noise', kind);
   const key = `${ctx.sampleRate}:${kind}:${seed ?? "legacy"}`;
@@ -264,8 +266,7 @@ function masterNoiseBuffer(ctx: BaseAudioContext, kind: 'white' | 'pink', seed?:
       b6 = w * 0.115926;
     }
   }
-  if (masterNoiseCache.size >= 16) masterNoiseCache.delete(masterNoiseCache.keys().next().value!);
-  masterNoiseCache.set(key, buf);
+  masterNoiseCache.set(key, buf, bufferBytes(buf));
   return buf;
 }
 
@@ -278,8 +279,25 @@ export interface MasterNodes {
   setPan: (v: number, at: number) => void;
 }
 
-export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt = 0): TrackChain {
+export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt: number | null = 0): TrackChain {
   track = resolveMacros(track);
+  const lease = reserveChain(ctx, track);
+  try { return { ...makeChainGraph(ctx, track, dest, bpm, seed, startAt), resourceLease: lease, deferredStart: startAt === null }; }
+  catch (e) { lease.release(); throw e; }
+}
+
+/** Expensive graph construction can precede the transport anchor without
+ * advancing LFO phase or starting control signals. Idempotent for live setup. */
+export function startChain(chain: TrackChain, at: number): void {
+  if (!chain.deferredStart) return;
+  chain.deferredStart = false;
+  for (const m of chain.mods) m.src.start(at);
+  for (const f of chain.fx) {
+    f.mix.start(at); f.timeControl?.source.start(at); f.feedbackControl?.source.start(at); f.lfo?.start(at);
+  }
+}
+
+function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm: number, seed: number | undefined, startAt: number | null): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
   hp.frequency.value = track.filterLow;
@@ -348,7 +366,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
       sway.connect(delay.delayTime);
       node.connect(delay);
       delay.connect(wet);
-      lfo.start(startAt);
+      if (startAt !== null) lfo.start(startAt);
       fx.push({ ...control, dry, wet, delay, lfo });
     } else {
       const conv = ctx.createConvolver();
@@ -371,7 +389,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
     else if (m.target === 'filterFreq') param = filter.frequency;
     else if (m.target.startsWith('fx')) param = fxParamOf(fx, m.target, m.fxId);
     if (param) depth.connect(param);
-    src.start(startAt);
+    if (startAt !== null) src.start(startAt);
     return { src, depth };
   });
   return {
@@ -388,6 +406,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
 }
 
 export function disposeChain(chain: TrackChain): void {
+  chain.resourceLease?.release();
   for (const m of chain.mods) {
     try {
       m.src.stop();
