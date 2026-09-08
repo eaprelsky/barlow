@@ -11,6 +11,7 @@ import { resolveMacros } from '../music/macros';
 import { sampleZoneAt } from '../music/sampleZones';
 import type { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { randomFor } from './random';
+import type { PitchGlide, PitchMemory } from './pitchMemory';
 
 export const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -148,6 +149,7 @@ function scheduleGrainCloud(
   regStart: number,
   regEnd: number,
   random: () => number,
+  pitch?: { attach: (param: AudioParam) => void; maxRatio: number },
 ): number {
   const dur = Math.max(0.01, baseLenSec);
   const sizeSec = clampNum((track.grainSizeMs ?? 120) / 1000, 0.01, sample.duration);
@@ -192,13 +194,14 @@ function scheduleGrainCloud(
       const k = uniN > 1 ? (Math.floor(random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
       const rate = ratio * Math.pow(2, (k * uniDet) / 1200);
       const center = clampNum(pos + (random() * 2 - 1) * scatter * 0.5, 0, 1);
-      const maxRate = Math.max(1e-6, rate * Math.max(1, track.pitchDrop) + Math.max(0, track.vibratoDepth ?? 0) / 1200);
+      const maxRate = Math.max(1e-6, rate * Math.max(1, track.pitchDrop) + Math.max(0, track.vibratoDepth ?? 0) / 1200) * (pitch?.maxRatio ?? 1);
       const windowSec = Math.min(sizeSec, (regEnd - regStart) / maxRate);
       // Окно должно поместиться в обрезанный кусок с учётом скорости.
       const room = Math.max(0, regEnd - regStart - windowSec * maxRate - 0.001);
       const offset = regStart + center * room;
       const src = ctx.createBufferSource();
       src.buffer = sample;
+      pitch?.attach(src.detune);
       if (track.pitchDrop > 1 && track.pitchTime > 0) {
         src.playbackRate.setValueAtTime(rate * track.pitchDrop, at);
         src.playbackRate.exponentialRampToValueAtTime(rate, at + track.pitchTime);
@@ -258,6 +261,7 @@ export function triggerVoice(
   random: () => number = Math.random,
   roundRobin?: SampleRoundRobin,
   roundRobinOwner = track.id,
+  performance?: { pitchMemory?: PitchMemory; allowGlide?: boolean },
 ): Voice {
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
@@ -265,6 +269,9 @@ export function triggerVoice(
   track = resolveMacros(track);
   if (track.waveform === 'wave') track = { ...track, wave: normalizeWave(track.wave) };
   const rows = scaleOf(track);
+  const canGlide = performance?.allowGlide !== false && !!track.mono && (track.portamentoSec ?? 0) > 0 && notes.length === 1
+    && notes[0].vel > 0 && !(track.waveform === 'sample' && track.sampleMode === 'scratch');
+  if (!canGlide) performance?.pitchMemory?.forget(roundRobinOwner);
   const voices = notes.filter(nt => nt.vel > 0 && (track.waveform !== 'sample' || !nt.sliceId || track.sampleSlices?.some(s => s.id === nt.sliceId))).map(nt => {
     const slice = track.waveform === 'sample' && nt.sliceId ? track.sampleSlices?.find(s => s.id === nt.sliceId) : undefined;
     const sliced = slice ? { ...track, sampleId: slice.sampleId, sampleStart: slice.start, sampleEnd: slice.end } : track;
@@ -275,7 +282,10 @@ export function triggerVoice(
     const selected = variant ? { ...locked, sampleId: variant.sampleId, rootHz: variant.rootHz, keyTracking: true } : locked;
     const assetId = slice?.sampleId ?? variant?.sampleId;
     const buffer = assetId ? sampleById?.(assetId) ?? (assetId === track.sampleId ? sample : null) : sample;
-    return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec, random);
+    const glide = canGlide && (track.waveform !== 'sample' || buffer)
+      ? performance?.pitchMemory?.next(roundRobinOwner,
+        track.waveform === 'sample' && !selected.keyTracking ? hz / track.freq * 440 : hz, time, track.portamentoSec!) : undefined;
+    return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec, random, glide);
   });
   return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };
 }
@@ -293,6 +303,7 @@ function triggerNoteVoice(
   // сетка (noteSteps × шаг) или огибающая, гейт ноты умножает сверху.
   durSec?: number,
   random: () => number = Math.random,
+  glide?: PitchGlide,
 ): Voice {
   if (notes.length === 0) return { amp: ctx.createGain(), sources: [], stopAt: time };
   const rows = scaleOf(track);
@@ -361,6 +372,22 @@ function triggerNoteVoice(
   // Реальная длина голоса: vibBus ниже замыкается на эту переменную,
   // значение присваивается после расчёта огибающей (до первого вызова).
   let stopAt = time + 0.05;
+  let pitchSource: ConstantSourceNode | undefined;
+  const attachPitch = (param: AudioParam): void => {
+    if (!glide) return;
+    if (!pitchSource) {
+      pitchSource = ctx.createConstantSource();
+      pitchSource.offset.setValueAtTime(1200 * Math.log2(glide.fromHz / glide.toHz), time);
+      pitchSource.offset.linearRampToValueAtTime(0, time + glide.seconds);
+      pitchSource.start(time);
+      sources.push(pitchSource);
+    }
+    pitchSource.connect(param);
+  };
+  const finish = (): Voice => {
+    pitchSource?.stop(stopAt);
+    return { amp, sources, stopAt };
+  };
 
   // Вибрато: один LFO на голос, ветки с нужным масштабом (центы — на
   // detune осцилляторов; доли скорости — на playbackRate сэмплов).
@@ -436,8 +463,10 @@ function triggerNoteVoice(
   }
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return { amp, sources, stopAt: time };
-    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd, random);
-    return { amp, sources, stopAt: lastEnd };
+    const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd, random,
+      glide ? { attach: attachPitch, maxRatio: Math.max(1, glide.fromHz / glide.toHz) } : undefined);
+    stopAt = lastEnd;
+    return finish();
   }
   // Атака не бывает длиннее самой ноты: иначе план огибающей строится
   // «назад во времени» (спад раньше конца атаки, осциллятор стопается
@@ -474,7 +503,6 @@ function triggerNoteVoice(
     amp.gain.linearRampToValueAtTime(0.00002, time + voiceLen);
   }
   stopAt = time + Math.max(voiceLen, fallEnd - time) + 0.05;
-  const finish = (): Voice => ({ amp, sources, stopAt });
 
   // Шумовой источник (прежде waveform 'noise') — теперь строка «шум»
   // в таблице волны: миграция v39 собирает её в wave.
@@ -542,6 +570,7 @@ function triggerNoteVoice(
             track.sampleLoop ? track.loopCrossfadeMs ?? 10 : 0)
           : null;
         src.buffer = prepared?.buffer ?? sample;
+        attachPitch(src.detune);
         src.loop = track.sampleLoop === true;
         if (prepared && src.loop) {
           src.loopStart = prepared.loopStart;
@@ -651,6 +680,7 @@ function triggerNoteVoice(
           if (pw) {
             const osc = ctx.createOscillator();
             osc.setPeriodicWave(pw);
+            attachPitch(osc.detune);
             if (det !== 0) osc.detune.value = det;
             if (drop) {
               osc.frequency.setValueAtTime(f * track.pitchDrop, time);
@@ -686,6 +716,7 @@ function triggerNoteVoice(
             }
             const osc = ctx.createOscillator();
             osc.type = oscType(p.type);
+            attachPitch(osc.detune);
             if (det !== 0) osc.detune.value = det;
             const pf = f * p.ratio;
             if (drop) {
@@ -744,6 +775,7 @@ function triggerNoteVoice(
         noiseAt.push(0);
         const osc = ctx.createOscillator();
         osc.type = p.type === 'saw' ? 'sawtooth' : p.type;
+        attachPitch(osc.detune);
         const pf = f * p.ratio;
         if (drop) {
           osc.frequency.setValueAtTime(pf * track.pitchDrop, time);

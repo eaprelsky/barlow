@@ -5,6 +5,7 @@ const spec = (owner: Owner, label: string, min: number, max: number, step: numbe
   ({ owner, label, min, max, step, initial, unit, scale });
 
 export const PARAMETERS = {
+  'track.portamentoSec': spec('track', 'portamento', 0, 4, 0.01, 0, 'с'),
   'effect.mix': spec('effect', 'микс эффекта', 0, 1, 0.01, 0.3, '%'),
   'effect.timeSec': spec('effect', 'время эха', 0.01, 2, 0.01, 0.28, 'с', 'log'),
   'effect.feedback': spec('effect', 'повторы эха', 0, 0.9, 0.01, 0.35, '%'),

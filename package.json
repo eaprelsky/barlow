@@ -28,6 +28,7 @@
     "test:binary": "node scripts/binary.test.mjs && node scripts/binary-contract.mjs",
     "test:locks": "node scripts/note-edits.test.mjs && node scripts/locks-contract.mjs",
     "test:restart": "node scripts/restart-contract.mjs",
+    "test:portamento": "node scripts/portamento-contract.mjs",
     "test:slices": "node scripts/slices-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
     "smoke-bridge": "node scripts/smoke-bridge.mjs"

@@ -39,7 +39,7 @@ export const CATEGORY_ORDER = [
 const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
   ...SOUND_FIELDS,
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
-  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
+  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono', 'portamentoSec',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'unisonVoices', 'unisonDetune', 'unisonSpread',
@@ -57,7 +57,9 @@ export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): s
   // Свои — первыми: перезаписанный юзером пресет важнее встроенного тёзки.
   for (const p of [...loadUserPresets(), ...INSTRUMENT_PRESETS]) {
     const preset: Partial<Track & Instrument> = p.track;
-    if (MATCH_FIELDS.every((f) => preset[f] === undefined || (f === 'effects'
+    if (MATCH_FIELDS.every((f) => f === 'portamentoSec'
+      ? sameValue(preset[f] ?? 0, track[f] ?? 0)
+      : preset[f] === undefined || (f === 'effects'
       ? JSON.stringify(preset[f], (key, value) => key === 'id' ? undefined : value) === JSON.stringify(track[f], (key, value) => key === 'id' ? undefined : value)
       : sameValue(preset[f], track[f])))) {
       return p.name;
@@ -827,7 +829,7 @@ export const USER_PRESETS_EVENT = 'barlow:user-presets';
 const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
   ...SOUND_FIELDS,
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
-  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono',
+  'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono', 'portamentoSec',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay', 'scratchPoints', 'mods',
   'unisonVoices', 'unisonDetune', 'unisonSpread',

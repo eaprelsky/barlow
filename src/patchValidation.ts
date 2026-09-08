@@ -43,6 +43,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   const instrumentIds = new Set(instruments.map(i => i.id));
   const patterns = new Map<string, Set<string>>();
   for (const t of value.tracks) {
+    if (t.portamentoSec !== undefined && (typeof t.portamentoSec !== 'number' || !Number.isFinite(t.portamentoSec) || t.portamentoSec < 0 || t.portamentoSec > 4)) return false;
     if (t.chokeGroup !== undefined && (!Number.isInteger(t.chokeGroup) || (t.chokeGroup as number) < 1 || (t.chokeGroup as number) > 16)) return false;
     if (t.chokePriority !== undefined && (!Number.isInteger(t.chokePriority) || (t.chokePriority as number) < 0 || (t.chokePriority as number) > 16)) return false;
     if (t.effects !== undefined) {

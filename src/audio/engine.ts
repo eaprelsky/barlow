@@ -24,6 +24,7 @@ import { renderMemoryBudget, renderMemoryBytes, RENDER_MEMORY_LIMIT } from './re
 import { autoToParam, autoValue, makeNote, modRateHz, patternInScene, slotMuted } from '../types';
 import { planStepEvents } from './eventPlan';
 import { MonoVoices } from './monoVoices';
+import { PitchMemory, monophonicAttacks } from './pitchMemory';
 import { randomFor } from './random';
 import { EventQueue } from './eventQueue';
 import { planRender, RENDER_LIMITS } from './renderPlan';
@@ -198,6 +199,7 @@ export class AudioEngine implements AudioBackend {
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new MonoVoices();
   private chokeVoices = new MonoVoices();
+  private pitchMemory = new PitchMemory();
   private sceneId = '';
   // Живой темп: база из шапки или bpm текущего пункта цепочки (v35).
   private liveBpm = 120;
@@ -312,7 +314,7 @@ export class AudioEngine implements AudioBackend {
       this.noiseBuffer = makeNoiseBuffer(this.ctx, patch.performanceSeed);
       this.stopNoiseLayer();
       for (const chain of this.chains.values()) this.retireChain(chain,this.ctx.currentTime);
-      this.chains.clear(); this.lastVoices.clear(); this.chokeVoices.clear();
+      this.chains.clear(); this.lastVoices.clear(); this.chokeVoices.clear(); this.pitchMemory.clear();
     }
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
@@ -679,7 +681,7 @@ export class AudioEngine implements AudioBackend {
     }
     this.stopNoiseLayer();
     this.clocks.clear();
-    this.lastVoices.clear(); this.chokeVoices.clear();
+    this.lastVoices.clear(); this.chokeVoices.clear(); this.pitchMemory.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
     // Detach this generation immediately: the next Play builds fresh LFO/FX.
@@ -1301,6 +1303,7 @@ export class AudioEngine implements AudioBackend {
       return { trackId: track.id, group: this.chains.has(track.id) ? track.chokeGroup : undefined,
         priority: track.chokePriority, order: patch.tracks.indexOf(track) };
     });
+    const soloAttacks = monophonicAttacks(selected, ev => ({ owner: ev.trackId, at: ev.at, noteCount: ev.notes.length }));
     for (const ev of selected) {
       const track = patch.tracks.find(t => t.id === ev.trackId);
       if (!track || !audible.has(ev.patternId) || patternInScene(track, scene)?.id !== ev.patternId) continue;
@@ -1312,7 +1315,7 @@ export class AudioEngine implements AudioBackend {
       const at = Math.max(ctx.currentTime + 0.001, ev.at);
       const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null,
         st, ev.notes, at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin, track.id);
+        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin, track.id, { pitchMemory: this.pitchMemory, allowGlide: soloAttacks.has(ev) });
       voice.amp.gain.value *= ev.gain;
       this.voiceBudget.add(voice, st, ev.notes);
       if (track.mono) this.lastVoices.register(track.id, voice, at);
@@ -1409,6 +1412,8 @@ export class AudioEngine implements AudioBackend {
       const chokeVoices = new MonoVoices();
       const voiceBudget = new VoiceBudget();
       const roundRobin = new SampleRoundRobin();
+      const pitchMemory = new PitchMemory();
+      const soloAttacks = monophonicAttacks(plan.events, ev => ({ owner: ev.part.track.id, at: ev.at, noteCount: ev.notes.length }));
       for (const ev of plan.events) {
         const { track, st, itemIndex } = ev.part;
         voiceBudget.prune(ev.at);
@@ -1417,7 +1422,7 @@ export class AudioEngine implements AudioBackend {
         const chain = chainsByKey.get(ev.part.key)!;
         const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
           st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex), roundRobin, track.id);
+          randomFor(patch.performanceSeed, 'voice', track.id, itemIndex, ev.ordinal, ev.eventIndex), roundRobin, track.id, { pitchMemory, allowGlide: soloAttacks.has(ev) });
         voice.amp.gain.value *= ev.gain ?? 1;
         voiceBudget.add(voice, st, ev.notes);
         monoVoices.prune(ev.at);

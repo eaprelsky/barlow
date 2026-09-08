@@ -343,6 +343,8 @@ export interface Track {
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
+  // Constant-time glide between single-note mono attacks, seconds (0 = off).
+  portamentoSec?: number;
   chokeGroup?: number;
   chokePriority?: number;
   // Мастер-выключатель дорожки: false — молчит во всех сценах, с любым
@@ -581,7 +583,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 48;
+export const PATCH_VERSION = 49;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -692,6 +694,7 @@ export function makeTrackWithInstrument(
     mods: partial.mods ?? [],
     arp: partial.arp,
     mono: partial.mono,
+    portamentoSec: partial.portamentoSec,
     chokeGroup: partial.chokeGroup,
     chokePriority: partial.chokePriority,
     effects: normalizeEffects(partial.effects),
@@ -1206,6 +1209,7 @@ export function normalizePatch(p: Patch): Patch {
         mods: normalizeMods((t as { mods?: unknown }).mods),
         arp: normalizeArp((t as { arp?: unknown }).arp),
         mono: !!t.mono,
+        portamentoSec: normalizeParameter('track.portamentoSec', t.portamentoSec),
         chokeGroup: t.chokeGroup ? Math.round(clamp(t.chokeGroup, 1, 16, 1)) : undefined,
         chokePriority: Math.round(clamp(t.chokePriority ?? 0, 0, 16, 0)),
         enabled: t.enabled === false ? false : undefined,

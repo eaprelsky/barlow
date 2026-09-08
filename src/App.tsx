@@ -762,6 +762,7 @@ export default function App() {
           ...(empty && t.freq !== undefined ? { freq: t.freq } : {}),
           ...instantiateEffects(t.effects, t.mods),
           mono: t.mono,
+          portamentoSec: t.portamentoSec,
         };
         // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
         const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);
@@ -790,7 +791,7 @@ export default function App() {
       const inst = instrumentOfFields(preset.track, uid('i'), preset.name);
       const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
       const freq = empty ? preset.track.freq ?? track.freq : track.freq;
-      engine.previewSounding({ ...track, ...inst, freq, effects: preset.track.effects ?? [], mods: preset.track.mods ?? [], mono: preset.track.mono });
+      engine.previewSounding({ ...track, ...inst, freq, effects: preset.track.effects ?? [], mods: preset.track.mods ?? [], mono: preset.track.mono, portamentoSec: preset.track.portamentoSec });
     },
     [patch.tracks, engine],
   );

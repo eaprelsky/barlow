@@ -9,7 +9,7 @@ function noteCost(st: SoundingTrack): number {
   const body = st.waveform === 'sample'
     ? st.sampleMode === 'grain' ? 4 * (st.grainCount ?? 10) : 12
     : 8 * Math.max(1, st.wave?.partials.length ?? 1) * (st.unisonVoices ?? 1);
-  return 20 + body + 2 * (st.formants?.length ?? 0);
+  return 20 + (st.mono && (st.portamentoSec ?? 0) > 0 ? 1 : 0) + body + 2 * (st.formants?.length ?? 0);
 }
 export function estimateVoiceNodes(st: SoundingTrack, notes: number | readonly Note[]): number {
   return 1 + (typeof notes === 'number' ? notes * noteCost(st)

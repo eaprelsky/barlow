@@ -1304,10 +1304,12 @@ export const TrackRow = memo(function TrackRow({
           </div>
           <div className="track-voicing">
             <label><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> новая нота глушит предыдущую</label>
+            {track.mono && <label title="Плавное скольжение между одиночными нотами. 0 — выключено; первая нота и аккорды без скольжения.">portamento, мс <NumField value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
             <label>группа глушения <select aria-label="Группа глушения" value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
               <option value={0}>нет</option>{Array.from({ length: 16 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
             </select></label>
             {track.chokeGroup && <label>приоритет <NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
+            {track.mono && (track.portamentoSec ?? 0) > 0 && <span>{inst.waveform === 'sample' && inst.sampleMode === 'scratch' ? 'Portamento не действует на скрэтч: высоту задаёт жест.' : 'Одиночные ноты скользят от предыдущей высоты, в том числе после паузы. Атака огибающей повторяется.'}</span>}
             <span>В группе новая атака глушит прежние. Одновременно: больший приоритет, затем нижний трек.</span>
           </div>
           <div className="panel-row">
