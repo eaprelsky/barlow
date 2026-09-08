@@ -442,6 +442,8 @@ export interface Instrument {
   // Применимо ко всем режимам сэмплера, включая скрэтч.
   sampleStart?: number;
   // Тоника исходного сэмпла; mapping включается отдельно (legacy = ratio).
+  /** Recommended audition register; does not retune existing notes. */
+  recommendedHz?: number;
   rootHz?: number;
   keyTracking?: boolean;
   sampleEnd?: number;
@@ -510,7 +512,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
+  'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -583,7 +585,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 49;
+export const PATCH_VERSION = 50;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -627,6 +629,7 @@ export function makeInstrument(
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
+    recommendedHz: partial.recommendedHz,
     rootHz: partial.rootHz,
     keyTracking: partial.keyTracking,
     sampleEnd: partial.sampleEnd,
@@ -975,6 +978,7 @@ function normalizeInstrument(
     sustain: clamp(t.sustain ?? 0, 0, 1, 0),
     sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
+    recommendedHz: typeof t.recommendedHz === 'number' ? clamp(t.recommendedHz, 20, 9000, 220) : undefined,
     rootHz: typeof t.rootHz === 'number' ? clamp(t.rootHz, 1, 24000, 440) : 440,
     keyTracking: t.keyTracking === true,
     sampleZones: normalizeSampleZones(t.sampleZones),

@@ -511,8 +511,8 @@ export const GUIDES: Guide[] = [
       },
       {
         target: '[data-ob="inst-cards"] .inst-card',
-        say: 'Клик по пресету применяет его к дорожке из селектора «в дорожку». ▶ — послушать до применения.',
-        hint: '«Стартовые» — архетипы с рецептом в подсказке.',
+        say: '▶ слушает характерный звук пресета. Нажми название, чтобы применить его к выбранной дорожке.',
+        hint: 'В написанной партии её частоты сохраняются, поэтому после применения регистр может отличаться.',
         expect: 'click',
         side: 'top',
       },
@@ -722,6 +722,17 @@ export const GUIDES: Guide[] = [
       },
     ],
   },
+  {
+    id: 'audition', title: 'подготовить звук для библиотеки',
+    goal: 'Сравнить звучание в партии и выбрать регистр своего пресета', section: 'more',
+    steps: [
+      { target: '[data-ob="mode-inst"]', say: 'Открой «инструмент» у нужной дорожки.', expect: 'click', side: 'bottom' },
+      { target: '[data-ob="recommended-hz"]', say: 'Задай частоту, на которой тембр звучит характерно: для баса обычно нужен низкий регистр.', side: 'bottom' },
+      { target: '[data-ob="preview-timbre"]', say: 'Жми «▶ тембр» — проверишь звук для библиотеки.', expect: 'click', side: 'bottom' },
+      { target: '[data-ob="preview-in-track"]', say: 'Жми «▶ в партии», чтобы сравнить со строем своей дорожки.', expect: 'click', side: 'bottom' },
+      { target: '[data-ob="save-inst"]', say: 'Сохрани инструмент: выбранная частота прослушивания запомнится вместе с ним.', side: 'bottom' },
+    ],
+  },
 ];
 
 export const guideById = (id: string): Guide | undefined => GUIDES.find((g) => g.id === id);
@@ -786,6 +797,7 @@ export const markGuideSeen = (id: string): void => {
 
 export interface GuideStart {
   scope?: string;
+  /** Zero-based index in Guide.steps; UI labels display index + 1. */
   step?: number;
 }
 

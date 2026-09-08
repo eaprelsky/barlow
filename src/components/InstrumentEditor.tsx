@@ -1,3 +1,4 @@
+import { recommendedHz } from '../music/audition';
 import type { SamplePCM } from '../audio/pcm';
 // Большой редактор инструмента дорожки: «раздвинутый» режим карточки
 // (остальные треки съёживаются). Пресет из панели инструментов
@@ -76,7 +77,7 @@ interface Props {
   getPCM: (id?: string) => Promise<SamplePCM | null>;
   onPreviewRegion: (inst: Instrument, fromSec: number, toSec: number) => void;
   /** Превью ноты тембром (карточка сольёт с дорожкой). */
-  onPreviewNote: (i: Instrument) => void;
+  onPreviewNote: (i: Instrument, audition?: boolean) => void;
   onTransformSample: (trackId: string, prompt: string, strength: number, duration?: number) => void;
   onGenerateSample: (trackId: string, prompt: string, seconds: number) => void;
   busy: boolean;
@@ -290,7 +291,7 @@ export function InstrumentEditor({
     const suggested = current === 'своя настройка' ? track.name : current;
     const name = await promptDialog({
       title: 'сохранить инструмент',
-      text: 'Пресет появится в панели инструментов, категория «мои»',
+      text: dirty && !isSample ? 'Сохраним прослушанный черновик в «мои». Чтобы он зазвучал в партии, нажми «применить» в редакторе волны.' : 'Пресет появится в панели инструментов, категория «мои»',
       okLabel: 'сохранить',
       input: { value: suggested },
     });
@@ -306,7 +307,7 @@ export function InstrumentEditor({
       if (!ok) return;
     }
     try {
-      saveUserPreset(n, st);
+      saveUserPreset(n, dirty && !isSample ? { ...st, waveform: 'wave', wave: normalizeWave(wave) } : st);
       bumpInstruments((v) => v + 1);
     } catch (error) {
       await confirmDialog({ title: 'не удалось сохранить инструмент', text: String(error), okLabel: 'понятно', onlyOk: true });
@@ -405,27 +406,6 @@ export function InstrumentEditor({
           </span>
         )}
         <span className="spacer" />
-        <button
-          className="env-listen"
-          title="Прослушать ноту тоники — черновиком, если он не применён"
-          onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}
-        >
-          ▶ нота
-        </button>
-        <button
-          className="save-inst"
-          data-ob="save-inst"
-          title="Сохранить звук дорожки как свой пресет — появится в панели инструментов, категория «мои»"
-          aria-label="сохранить инструмент"
-          onClick={() => void saveInstrumentAs()}
-        >
-          {/* дискета: контур со срезом, жалюзи, окошко */}
-          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-            <path d="M1.7 1.7h8.2l2.4 2.4v8.2H1.7z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-            <path d="M4.2 1.7v3.6h4.6V1.7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-            <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-          </svg>
-        </button>
         <HelpHint guide="sound" scope={scope} label="Гид: настроить звук дорожки" />
         <button
           className="we-close"
@@ -437,6 +417,32 @@ export function InstrumentEditor({
         </button>
       </div>
 
+      <div className="instrument-audition">
+        <button
+          className="env-listen"
+          title="Проверить звук в регистре и строе этой дорожки" data-ob="preview-in-track"
+          onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}
+        >
+          ▶ в партии
+        </button>
+        <label data-ob="recommended-hz">для библиотеки <NumField value={recommendedHz(st)} min={20} max={9000} step={1} w={65} ariaLabel="Частота прослушивания, Гц" onChange={recommendedHz => onChangeInst({ recommendedHz })} /> Гц</label>
+        <button data-ob="preview-timbre" title="Послушать на частоте для библиотеки, без влияния строя дорожки" onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst, true)}>▶ тембр</button>
+        <button
+          className="save-inst"
+          data-ob="save-inst"
+          title="Сохранить текущий тембр, включая черновик волны, в категорию «мои»"
+          aria-label="сохранить инструмент"
+          onClick={() => void saveInstrumentAs()}
+        >
+          {/* дискета: контур со срезом, жалюзи, окошко */}
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M1.7 1.7h8.2l2.4 2.4v8.2H1.7z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+            <path d="M4.2 1.7v3.6h4.6V1.7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+            <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg> сохранить
+        </button>
+        <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
+      </div>
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
       {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}
         title="Остановить загрузку и применение результата. Уже отправленное задание провайдер может выполнить и списать оплату">прекратить ожидание</button></div>}

@@ -27,6 +27,7 @@ import {
 import type { Track } from '../types';
 import { WAVEFORM_LABELS } from '../types';
 import { sampleAssets } from '../music/sampleZones';
+import { recommendedHz } from '../music/audition';
 import { isDesktop, saveBlob } from '../platform';
 import { alertDialog, confirmDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
@@ -45,7 +46,7 @@ interface Props {
   tab: 'inst' | 'smp';
   onTab: (t: 'inst' | 'smp') => void;
   onApply: (trackId: string, preset: InstrumentPreset) => void;
-  /** Слушать тембр пресета на тонике целевой дорожки (без применения). */
+  /** Слушать тембр в рекомендуемом регистре (без применения). */
   onAudition: (trackId: string, preset: InstrumentPreset) => void;
   /** Сэмпл — в инструмент дорожки (волна «сэмпл»). */
   onAssignSample: (trackId: string, meta: SampleMeta) => void;
@@ -274,11 +275,12 @@ export function SoundBrowser({
         </button>
         <button
           className="sb-audition"
+          data-ob="preset-audition"
           aria-label={`прослушать ${p.name}`}
           title={
             needsSample
               ? 'Слушать нечего: сэмпл ещё не выбран — примени пресет и выбери сэмпл на вкладке «сэмплы»'
-              : 'Послушать тембр (нота тоники дорожки) — без применения'
+              : `Послушать тембр: ${recommendedHz(p.track)} Гц — без изменения дорожки`
           }
           onClick={(e) => {
             e.stopPropagation();
@@ -289,7 +291,7 @@ export function SoundBrowser({
           ▶
         </button>
         {star(presetFavoriteId(p), p.name)}
-        {user && (
+        {user ? (
           <button
             className="inst-del"
             aria-label={`удалить пресет ${p.name}`}
@@ -301,7 +303,7 @@ export function SoundBrowser({
           >
             ✕
           </button>
-        )}
+        ) : <span className="sb-delete-space" aria-hidden="true" />}
       </>
     );
     return (
@@ -321,7 +323,7 @@ export function SoundBrowser({
     <aside className="dock" data-ob="library-panel">
       <div className="sb-head">
         <span className="scenes-label">инструменты</span>
-        <HelpHint guide="tracks" step={1} label="Гид: добавить инструмент" />
+        <HelpHint guide="browser" step={1} label="Гид: найти и выбрать звук" />
         <span className="spacer" />
         <button onClick={onClose} title="Скрыть панель">скрыть</button>
       </div>
@@ -368,7 +370,7 @@ export function SoundBrowser({
         )}
       </div>
       <div className="sb-filters">
-        {tab === 'inst' && <label>пакет <select aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
+        {tab === 'inst' && <label className="sb-pack">пакет <select aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
           <option value="">все пакеты</option>
           {SOUND_PACKS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetPackOf(s) === p.id).length})</option>)}
         </select></label>}

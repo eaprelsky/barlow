@@ -40,6 +40,7 @@ import { putSample, getSampleBlob } from './audio/library';
 import type { SampleMeta } from './audio/library';
 import type { InstrumentPreset } from './music/instrumentPresets';
 import { instrumentNameOf } from './music/instrumentPresets';
+import { soundForAudition, recommendedHz } from './music/audition';
 import { clip } from './music/clip';
 import { exportProject, importProject, looksLikeZip } from './audio/project';
 import { loadAutosave, saveAutosave, autosaveStatus, subscribeAutosave, flushAutosave, loadRecovery, resumeAutosave } from './storage';
@@ -263,6 +264,7 @@ export default function App() {
   const startGuide = useCallback((guideId: string, opts?: { scope?: string; step?: number }) => {
     markInvited(); // любой запуск гасит пульс-приглашение на «?»
     setShowHelpMenu(false);
+    setPointHelp(false);
     setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope });
   }, []);
   useEffect(() => registerGuideStarter(startGuide), [startGuide]);
@@ -755,11 +757,11 @@ export default function App() {
         const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
         if (!track || !inst) return p;
         const t = preset.track;
-        const merged = instrumentOfFields(t, inst.id, preset.name);
+        const merged = instrumentOfFields({ ...t, recommendedHz: recommendedHz(t) }, inst.id, preset.name);
         const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
         const updTrack: Track = {
           ...track,
-          ...(empty && t.freq !== undefined ? { freq: t.freq } : {}),
+          ...(empty ? { freq: recommendedHz(t) } : {}),
           ...instantiateEffects(t.effects, t.mods),
           mono: t.mono,
           portamentoSec: t.portamentoSec,
@@ -780,18 +782,11 @@ export default function App() {
     [setPatchStep],
   );
 
-  /** Слушать пресет в библиотеке: нота тоники дорожки, тембр пресета —
-   *  без применения (тот же triggerVoice, что будет в паттерне). ▶ честен
-   *  с тем, что применится: пустому треку пресет принесёт и свою несущую
-   *  (регистр), сыгранному — только тембр. */
+  /** Library audition uses the preset's own register, independent of the target. */
   const auditionPreset = useCallback(
     (trackId: string, preset: InstrumentPreset) => {
       const track = patch.tracks.find((t) => t.id === trackId);
-      if (!track) return;
-      const inst = instrumentOfFields(preset.track, uid('i'), preset.name);
-      const empty = !track.patterns.some((pt) => pt.steps.some((s) => s.notes.length > 0));
-      const freq = empty ? preset.track.freq ?? track.freq : track.freq;
-      engine.previewSounding({ ...track, ...inst, freq, effects: preset.track.effects ?? [], mods: preset.track.mods ?? [], mono: preset.track.mono, portamentoSec: preset.track.portamentoSec });
+      if (track) engine.previewSounding(soundForAudition(track, preset));
     },
     [patch.tracks, engine],
   );

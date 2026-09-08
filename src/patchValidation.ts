@@ -70,6 +70,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
     }
   }
   for (const inst of instruments) {
+    if (inst.recommendedHz !== undefined && (typeof inst.recommendedHz !== 'number' || inst.recommendedHz < 20 || inst.recommendedHz > 9000)) return false;
     if (!validSampleSlices(inst.sampleSlices)) return false;
     if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;
     if (inst.sampleZones !== undefined) {

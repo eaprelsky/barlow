@@ -18,7 +18,7 @@ export function SampleSliceEditor({ inst, duration, selection, onChange, onPrevi
     onChange([...slices, ...Array.from({ length: parts }, (_, i) => ({ id: uid('cut'), name: `фрагмент ${slices.length + i + 1}`,
       sampleId: inst.sampleId!, sampleName: inst.sampleName, start: start + (end - start) * i / parts, end: start + (end - start) * (i + 1) / parts }))], true);
   };
-  return <details className="sample-slices"><summary>нарезка сэмплов ({slices.length})</summary>
+  return <details className="sample-slices" data-ob="sample-slices"><summary>нарезка сэмплов ({slices.length})</summary>
     <p>Фрагменты выбираются у отдельных нот. Исходные файлы сохраняются. Удалённый фрагмент оставляет ноту без звука, пока ты не выберешь другой или «обычный источник».</p>
     <div className="slice-actions">
       <button disabled={!inst.sampleId || !selection || selection[1] - selection[0] < .001 || selection[1] > 3600 || slices.length >= SAMPLE_SLICE_LIMIT}

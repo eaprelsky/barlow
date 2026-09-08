@@ -27,6 +27,7 @@ import { bakeModToPoints } from '../music/modCurve';
 import { effectId, effectIndex, sameAddress } from '../music/effectAddress';
 import { modRateHz } from '../types';
 import { parseRatio } from '../parameters';
+import { soundForAudition } from '../music/audition';
 import { PatternChips } from './PatternChips';
 import { RollTools } from './RollTools';
 import { LevelBar } from './LevelBar';
@@ -1260,7 +1261,9 @@ export const TrackRow = memo(function TrackRow({
           onLoadSampleFile={loadSampleFile}
           getPCM={onGetSamplePCM}
           onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i, id: track.id }, a, b)}
-          onPreviewNote={(i) => onPreviewNote({ ...st, ...i })}
+          onPreviewNote={(i, audition) => onPreviewNote(audition
+            ? soundForAudition(track, { name: i.name, category: 'мои', track: { ...i, freq: track.freq, effects: track.effects, mods: track.mods, mono: track.mono, portamentoSec: track.portamentoSec } })
+            : { ...st, ...i })}
           onTransformSample={onTransformSample}
           onGenerateSample={onGenerateSample}
           busy={genBusy}
@@ -1302,9 +1305,9 @@ export const TrackRow = memo(function TrackRow({
                   и к «ноте» (время партии); здесь только микс-общее. */}
             </div>
           </div>
-          <div className="track-voicing">
+          <div className="track-voicing" data-ob="track-voicing">
             <label><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> новая нота глушит предыдущую</label>
-            {track.mono && <label title="Плавное скольжение между одиночными нотами. 0 — выключено; первая нота и аккорды без скольжения.">portamento, мс <NumField value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
+            {track.mono && <label data-ob="portamento" title="Плавное скольжение между одиночными нотами. 0 — выключено; первая нота и аккорды без скольжения.">portamento, мс <NumField value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
             <label>группа глушения <select aria-label="Группа глушения" value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
               <option value={0}>нет</option>{Array.from({ length: 16 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
             </select></label>

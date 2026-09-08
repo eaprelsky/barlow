@@ -5,6 +5,7 @@ import type { Instrument, Track } from '../types';
 import { INSTRUMENT_FIELDS } from '../types';
 import { recipeForLegacy } from './waveRecipes';
 import { IDM_BANK } from './idmBank';
+import { recommendedHz } from './audition';
 const SOUND_FIELDS = INSTRUMENT_FIELDS.filter((f): f is Exclude<typeof f, 'fmRatio' | 'fmIndex' | 'voiceMorph' | 'ksLife'> =>
   !['fmRatio', 'fmIndex', 'voiceMorph', 'ksLife'].includes(f));
 
@@ -33,12 +34,11 @@ export const CATEGORY_ORDER = [
 ];
 
 // Поля, которые переносит применение пресета (applyPreset в App): по ним
-// и опознаём текущий пресет. Несущая (freq) — пресетная, но применяется
-// только пустому треку (регистр — часть тембра); шкала — интервальный
-// строй — всегда пользователя и на совпадение не влияет.
+// и опознаём текущий пресет. Тоника и строй партии не меняют его имя.
+// recommendedHz — метаданные прослушивания, также не часть сравнения.
 const MATCH_FIELDS: (keyof (Track & Instrument))[] = [
-  ...SOUND_FIELDS,
-  'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
+  ...SOUND_FIELDS.filter(f => f !== 'recommendedHz'),
+  'waveform', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono', 'portamentoSec',
   'vibratoRate', 'vibratoDepth', 'vibratoDelay',
   'sampleMode', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
@@ -810,7 +810,8 @@ const convertPresetV39 = (p: {
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [...RAW_PRESETS.map((p, index) => ({
   ...convertPresetV39(p), id: `factory-v39-${String(index + 1).padStart(3, '0')}`,
   tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'], packId: 'core-v39',
-})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' }))];
+})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' }))].map(p => ({ ...p,
+  track: { ...p.track, recommendedHz: recommendedHz(p.track) } }));
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр
 // с несущей под своим именем, в браузере инструментов категорией «мои».
@@ -870,8 +871,9 @@ export function saveUserPreset(
   name: string,
   track: Partial<Track> & Partial<Instrument>,
 ): void {
+  const withRegister = { ...track, recommendedHz: recommendedHz(track) };
   const sound = Object.fromEntries(
-    SAVE_FIELDS.filter((f) => track[f] !== undefined).map((f) => [f, track[f]]),
+    SAVE_FIELDS.filter((f) => withRegister[f] !== undefined).map((f) => [f, withRegister[f]]),
   ) as Partial<Track & Instrument>;
   const existing = loadUserPresets();
   const list = existing.filter((p) => p.name !== name);

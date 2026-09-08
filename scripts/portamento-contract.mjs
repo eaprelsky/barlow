@@ -16,7 +16,7 @@ try{
  const result=await page.evaluate(async()=>{
   const {PitchMemory,monophonicAttacks}=await import('/src/audio/pitchMemory.ts');
   const {defaultPatch}=await import('/src/music/defaultPatch.ts');
-  const {normalizePatch,isPatch}=await import('/src/types.ts');
+  const {normalizePatch,isPatch,PATCH_VERSION}=await import('/src/types.ts');
   const {triggerVoice,duckVoice,ensureScratchModule}=await import('/src/audio/voices.ts');
   const {AudioEngine}=await import('/src/audio/engine.ts');
   const {saveUserPreset,loadUserPresets,instrumentNameOf,INSTRUMENT_PRESETS}=await import('/src/music/instrumentPresets.ts');
@@ -35,7 +35,7 @@ try{
     patterns:[{id:'p',name:'glide',length:4,rate:1,steps:[{notes:[{n:0,vel:.7,prob:1,len:2}]},{notes:[{n:2,vel:.7,prob:1,len:2}]},{notes:[{n:1,vel:.7,prob:1,len:2}]},{notes:[]}]}]}];
   patch.instruments=[{...patch.instruments.find(i=>i.id===original.instrumentId),waveform:'wave',wave:{partials:[{type:'sine',ratio:1,amp:1}]},attack:.005,decay:.1,sustain:1,pitchDrop:1,filterEnvAmount:0,unisonVoices:1,vibratoDepth:0,formants:[]}];
   patch.scenes=[{id:'s',name:'glide',slots:{[original.id]:{patternId:'p'}}}];patch.chain=[];patch=normalizePatch(patch);
-  check('JSON version and normalization preserve glide seconds',patch.version===49&&patch.tracks[0].portamentoSec===.8&&isPatch(patch));
+  check('JSON version and normalization preserve glide seconds',patch.version===PATCH_VERSION&&patch.tracks[0].portamentoSec===.8&&isPatch(patch));
   for(const bad of [-1,4.1,'0.2',Infinity]){const p=structuredClone(patch);p.tracks[0].portamentoSec=bad;check('invalid glide rejected '+bad,!isPatch(p));}
   const old=structuredClone(patch);old.version=48;delete old.tracks[0].portamentoSec;check('old patch remains glide-off',normalizePatch(old).tracks[0].portamentoSec===0);
   const restored=await importProject(await exportProject(patch));check('ZIP roundtrip preserves performance parameter',restored.tracks[0].portamentoSec===.8);

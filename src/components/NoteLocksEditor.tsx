@@ -12,7 +12,7 @@ export function NoteLocksEditor({ note, sounding, onChange }: {
   const remove = (field: NoteLockParameter) => {
     const next = { ...values }; delete next[field]; onChange(Object.keys(next).length ? next : undefined, true);
   };
-  return <details className="note-locks" data-note-locks={note.n}>
+  return <details data-ob="note-locks" className="note-locks" data-note-locks={note.n}>
     <summary>тембр этой ноты{fields.length ? ` (${fields.length})` : ''}</summary>
     <p>Значения действуют только на эту ноту и её повторы. После неё звучит обычный инструмент. До {NOTE_LOCK_LIMIT} параметров; FX и фильтр дорожки остаются общими.</p>
     <div className="note-lock-list">

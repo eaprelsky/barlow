@@ -22,9 +22,19 @@ const SIDES: Record<string, string[]> = {
   top: ['top', 'right', 'left', 'bottom'],
 };
 
+/** Inner guide anchors may have no card; use the nearest documented control. */
+function helpTarget(target: Element | null): Element | null {
+  let element = target?.closest('[data-ob]');
+  while (element) {
+    if (cardOf(element.getAttribute('data-ob'))) return element;
+    element = element.parentElement?.closest('[data-ob]');
+  }
+  return null;
+}
+
 export function PointHelp({ onExit }: { onExit: () => void }) {
-  const [hover, setHover] = useState<{ key: string; rect: Rect } | null>(null);
-  const [sel, setSel] = useState<{ key: string; rect: Rect } | null>(null);
+  const [hover, setHover] = useState<{ key: string; rect: Rect; element: Element } | null>(null);
+  const [sel, setSel] = useState<{ key: string; rect: Rect; element: Element } | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [cardSize, setCardSize] = useState<Rect>({ left: 0, top: 0, width: 360, height: 140 });
 
@@ -37,7 +47,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
   // не реагирует, режим тихий.
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      const el = (e.target as Element | null)?.closest?.('[data-ob]');
+      const el = helpTarget(e.target instanceof Element ? e.target : null);
       const key = el?.getAttribute('data-ob') ?? null;
       const card = cardOf(key);
       if (!el || !card) {
@@ -46,7 +56,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
       }
       setHover((prev) => {
         const rect = rectOf(el);
-        return prev && prev.key === key ? prev : { key: key as string, rect };
+        return prev && prev.element === el ? prev : { key: key as string, rect, element: el };
       });
     };
     document.addEventListener('mousemove', onMove);
@@ -65,10 +75,10 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
       if (inCard(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const el = (e.target as Element | null)?.closest?.('[data-ob]');
+      const el = helpTarget(e.target instanceof Element ? e.target : null);
       const key = el?.getAttribute('data-ob') ?? null;
       if (el && cardOf(key)) {
-        setSel({ key: key as string, rect: rectOf(el) });
+        setSel({ key: key as string, rect: rectOf(el), element: el });
       } else {
         onExit();
       }
@@ -110,13 +120,13 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
     const place = () => {
       setHover((h) => {
         if (!h) return h;
-        const el = document.querySelector(`[data-ob="${h.key}"]`);
-        return el ? { ...h, rect: rectOf(el) } : h;
+        const el = h.element.isConnected ? h.element : null;
+        return el ? { ...h, rect: rectOf(el) } : null;
       });
       setSel((s) => {
         if (!s) return s;
-        const el = document.querySelector(`[data-ob="${s.key}"]`);
-        return el ? { ...s, rect: rectOf(el) } : s;
+        const el = s.element.isConnected ? s.element : null;
+        return el ? { ...s, rect: rectOf(el) } : null;
       });
     };
     window.addEventListener('resize', place);
@@ -139,8 +149,9 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
 
   const showGuide = useCallback((card: HelpCard) => {
     if (!card.guide) return;
-    launchGuide(card.guide.id, card.guide.step === undefined ? undefined : { step: card.guide.step });
-  }, []);
+    const trackId = sel?.element.closest('[data-track-id]')?.getAttribute('data-track-id');
+    launchGuide(card.guide.id, { step: card.guide.step, scope: trackId ? `[data-track-id="${CSS.escape(trackId)}"]` : undefined });
+  }, [sel]);
 
   const card = sel ? cardOf(sel.key) : null;
   const pos = sel ? cardPosition(sel.rect, cardSize, SIDES.bottom) : null;
