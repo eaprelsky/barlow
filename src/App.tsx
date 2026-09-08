@@ -1931,8 +1931,9 @@ export default function App() {
                     e.dataTransfer.setData('text/plain', String(i));
                   }}
                 >
-                  <span className="drag-dots" aria-hidden="true">⠿</span><span>{i + 1}</span>
+                  <span className="drag-dots" aria-hidden="true">⠿</span>
                 </span>
+                <span className="chain-number" data-help="chain-order">{i + 1}</span>
                 <select className="chain-scene" data-help="chain-scene" aria-label={`Сцена в позиции ${i + 1}`}
                   title={patch.scenes.find(s => s.id === it.sceneId)?.name}
                   value={it.sceneId}

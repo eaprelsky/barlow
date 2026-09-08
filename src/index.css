@@ -3784,10 +3784,13 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .mix-panel { padding-top:6px; }
 .ai-panel > .section-heading, .ai-panel .seed-controls, .ai-panel .bridge-settings { flex-basis:100%; }
 .settings-group-label { color:var(--text-dim); font-size:11px; }
-.chain-item { grid-template-columns:28px minmax(0,1fr) 22px; }
-.chain-item .chain-grip { display:flex; flex-direction:column; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:4px; padding:2px; line-height:14px; }
+.chain-item { grid-template-columns:12px 14px minmax(0,1fr) 22px; column-gap:4px; width:212px; }
+.chain-item .chain-grip { grid-column:1; grid-row:1 / 3; display:flex; align-items:center; justify-content:center; align-self:stretch; border:0; padding:0; line-height:1; }
+.chain-item .chain-number { align-self:center; text-align:center; color:var(--text-dim); font-variant-numeric:tabular-nums; }
+.chain-item .chain-parameters { grid-column:2 / -1; gap:6px; }
+.chain-item .chain-tempo select { width:70px; }
 .chain-grip .drag-dots { font-size:19px; color:var(--text-dim); }
-.chain-item .chain-grip:hover { color:var(--accent); border-color:var(--accent); }
+.chain-item .chain-grip:hover .drag-dots { color:var(--accent); }
 .track-navigation { padding-top:12px; }
 
 .eq-editor { display:grid; grid-template-columns:minmax(240px,1fr) 220px; gap:12px; width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; }
