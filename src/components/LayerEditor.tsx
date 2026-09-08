@@ -7,7 +7,7 @@ import { MsegEditor } from './MsegEditor';
 import { NumField } from './NumField';
 import { Knob } from './Knob';
 
-export function LayerEditor({ inst, onChange }: { inst: Instrument; onChange: (patch: Partial<Instrument>, command?: boolean) => void }) {
+export function LayerEditor({ inst, onChange, onEditSource }: { inst: Instrument; onChange: (patch: Partial<Instrument>, command?: boolean) => void; onEditSource: (id: string) => void }) {
   const [selected, select] = useState('');
   const layers = inst.layers ?? [], layer = layers.find(l => l.id === selected);
   const presets = [...loadUserPresets(), ...INSTRUMENT_PRESETS].filter(p => p.track.waveform !== 'sample' || p.track.sampleId || p.track.sampleZones?.length || p.track.sampleSlices?.length);
@@ -26,6 +26,7 @@ export function LayerEditor({ inst, onChange }: { inst: Instrument; onChange: (p
       {presets.map((p, i) => <option key={p.id ?? i} value={i}>{p.category} · {p.name}</option>)}
     </select></div>
     {layer && <div className="layer-detail">
+      <button data-help="layer-source-editor" onClick={() => onEditSource(layer.id)}>редактировать источник…</button>
       <div className="mseg-toolbar"><strong>{layer.name}</strong><select data-help="layer-source" aria-label="Заменить источник слоя" value="" onChange={e => { const p = presets[+e.target.value]; update(layer.id, { name: p.name, sound: voiceSnapshot(instrumentOfFields(p.track, 'snapshot', p.name)) }, true); }}><option value="" disabled>заменить тембр…</option>{presets.map((p, i) => <option key={p.id ?? i} value={i}>{p.category} · {p.name}</option>)}</select>
       <select data-help="envelope-mode" aria-label="Огибающая слоя" value={layer.sound.ampMseg ? 'points' : 'classic'} onChange={e => update(layer.id, { sound: { ...layer.sound, ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined } }, true)}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
       {layer.sound.ampMseg ? <MsegEditor value={layer.sound.ampMseg} onChange={ampMseg => update(layer.id, { sound: { ...layer.sound, ampMseg } })} /> : <div className="layer-envelope">

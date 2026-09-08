@@ -4,11 +4,11 @@ import { SAMPLE_SLICE_LIMIT, type SampleSlice } from '../music/sampleSlices';
 import { NumField } from './NumField';
 import { useEditGesture } from './editGesture';
 
-export function SampleSliceEditor({ inst, duration, selection, onChange, onPreview, onCreatePattern, canCreatePattern }: {
+export function SampleSliceEditor({ inst, duration, selection, onChange, onPreview, onCreatePattern, canCreatePattern, hidePatternAction = false }: {
   inst: Instrument; duration: number; selection: [number, number] | null;
   onChange: (slices: SampleSlice[], command: boolean) => void;
   onPreview: (inst: Instrument, start: number, end: number) => void;
-  onCreatePattern: () => void; canCreatePattern: boolean;
+  onCreatePattern: () => void; canCreatePattern: boolean; hidePatternAction?: boolean;
 }) {
   const [count, setCount] = useState(8), slices = inst.sampleSlices ?? [];
   const nameGesture = useEditGesture();
@@ -27,7 +27,7 @@ export function SampleSliceEditor({ inst, duration, selection, onChange, onPrevi
       <button data-help="slice-all" disabled={!inst.sampleId || duration / count < .001 || slices.length + count > SAMPLE_SLICE_LIMIT}
         onClick={() => add(count, 0, Math.min(duration, 3600))}>нарезать весь сэмпл</button>
       <span>до {SAMPLE_SLICE_LIMIT} фрагментов; границы — в первых 3600 с файла</span>
-      <button data-help="slice-pattern" disabled={!slices.length || !canCreatePattern} onClick={onCreatePattern}>новый эскиз: фрагменты по порядку</button>
+      {!hidePatternAction && <button data-help="slice-pattern" disabled={!slices.length || !canCreatePattern} onClick={onCreatePattern}>новый эскиз: фрагменты по порядку</button>}
     </div>
     {slices.map((slice, index) => <fieldset key={slice.id}><legend>фрагмент {index + 1}</legend>
       <label>имя <input data-help="slice-name" aria-label={`Имя фрагмента ${index + 1}`} value={slice.name} maxLength={160} onChange={e => update(slice.id, { name: e.target.value })}

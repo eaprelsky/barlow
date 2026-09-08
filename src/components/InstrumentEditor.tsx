@@ -64,7 +64,11 @@ const TABS: [InstEditorTab, string][] = [
  *  в модуле — переживает перемонтирование редактора. */
 const LAST_WAVE = new Map<string, WaveDef>();
 
-interface Props {
+export interface InstrumentEditorProps {
+  /** Voice context reuses source controls without track-wide actions. */
+  layerSource?: boolean;
+  onEditLayer?: (id: string) => void;
+  onPreviewSolo?: (i: Instrument) => void;
   track: Track;
   inst: Instrument;
   pattern: Pattern;
@@ -114,6 +118,7 @@ function clampSec(v: number, lo: number, hi: number): number {
 }
 
 export function InstrumentEditor({
+  layerSource = false, onEditLayer, onPreviewSolo,
   track,
   inst,
   pattern,
@@ -139,7 +144,7 @@ export function InstrumentEditor({
   onScratchPreview,
   onScratchSave,
   onScratchPeaks,
-}: Props) {
+}: InstrumentEditorProps) {
   // Слитый вид: дорожка + инструмент — для чтения звука и превью.
   const [fileBusy, setFileBusy] = useState(false);
   const st: SoundingTrack = { ...inst, ...track };
@@ -377,7 +382,7 @@ export function InstrumentEditor({
   const scratchMode = isSample && (st.sampleMode ?? 'plain') === 'scratch';
 
   /** Закрытие с неприменённым черновиком волны — сперва спросить. */
-  const tryClose = async () => {
+  const settleDraft = async () => {
     if (dirty) {
       const ok = await confirmDialog({
         title: 'волна не применена',
@@ -388,11 +393,12 @@ export function InstrumentEditor({
       if (ok) applyDraft();
     }
     setPoints(null);
-    onClose();
   };
+  const tryClose = async () => { await settleDraft(); onClose(); };
 
   return (
     <div className="wave-editor inst-editor" data-ob="inst-panel">
+      {layerSource && <div className="layer-source-heading" data-help="layer-source-editor"><strong>Слой: {inst.name}</strong><span>источник голоса</span></div>}
       <div className="we-head">
         <span className="tabs we-tabs" data-ob="we-tabs">
           {TABS.map(([id, title]) => (
@@ -417,11 +423,11 @@ export function InstrumentEditor({
         <HelpHint guide="sound" scope={scope} label="Гид: настроить звук дорожки" />
         <button
           className="we-close"
-          title="Закрыть редактор инструмента"
-          aria-label="закрыть редактор инструмента"
+          title={layerSource ? "Вернуться к составу инструмента" : "Закрыть редактор инструмента"}
+          aria-label={layerSource ? "Вернуться к инструменту" : "закрыть редактор инструмента"}
           onClick={() => void tryClose()}
         >
-          ✕
+          {layerSource ? '← к инструменту' : '✕'}
         </button>
       </div>
 
@@ -431,8 +437,10 @@ export function InstrumentEditor({
           title="Проверить звук в регистре и строе этой дорожки" data-ob="preview-in-track"
           onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}
         >
-          ▶ в партии
+          {layerSource ? '▶ в составе' : '▶ в партии'}
         </button>
+        {layerSource && <button data-help="layer-audition-solo" onClick={() => onPreviewSolo?.(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}>▶ только слой</button>}
+        {!layerSource && <>
         <label data-ob="recommended-hz">для библиотеки <NumField value={recommendedHz(st)} min={20} max={9000} step={1} w={65} ariaLabel="Частота прослушивания, Гц" onChange={recommendedHz => onChangeInst({ recommendedHz })} /> Гц</label>
         <button data-ob="preview-timbre" title="Послушать на частоте для библиотеки, без влияния строя дорожки" onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst, true)}>▶ тембр</button>
         <button
@@ -458,8 +466,9 @@ export function InstrumentEditor({
           finally { setFileBusy(false); }
         }}>{fileBusy?'сохраняем…':'в файл'}</button>
         <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
+        </>}
       </div>
-      <LayerEditor inst={inst} onChange={onChangeInst} />
+      {!layerSource && <LayerEditor inst={inst} onChange={onChangeInst} onEditSource={async id => { await settleDraft(); onEditLayer?.(id); }} />}
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
       {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}
         title="Остановить загрузку и применение результата. Уже отправленное задание провайдер может выполнить и списать оплату">прекратить ожидание</button></div>}
@@ -926,7 +935,7 @@ export function InstrumentEditor({
                   />
                 </label>
               </div>
-              <div className="we-row ai-transform">
+              {!layerSource && <div className="we-row ai-transform">
                 <input
                   className="gen-prompt"
                   placeholder="преобразовать по описанию: темнее, с реверберацией, замедленно…"
@@ -950,7 +959,7 @@ export function InstrumentEditor({
                 >
                   {busy ? 'преобразую…' : 'преобразовать'}
                 </button>
-              </div>
+              </div>}
             </>
           ))}
 
@@ -982,7 +991,7 @@ export function InstrumentEditor({
             </label>
           )}
           {isSample && <SampleZoneEditor key={inst.sampleId ?? 'empty'} zones={inst.sampleZones} onChange={(sampleZones) => onChangeInst({sampleZones})} />}
-          {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={track.patterns.length < 128} />}
+          {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={!layerSource && track.patterns.length < 128} hidePatternAction={layerSource} />}
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
             <div className="inline sampler-tuning">
               <label><input data-help="sample-reverse" type="checkbox" checked={inst.sampleReverse ?? false}
@@ -1036,7 +1045,7 @@ export function InstrumentEditor({
             </>
           )}
 
-          {isSample && (
+          {isSample && !layerSource && (
             <div className="gen-bar" data-ob="gen-bar">
               <label
                 className="gen-label"
@@ -1077,14 +1086,14 @@ export function InstrumentEditor({
           {scratchMode && (
             <div className={'scratch-bar' + (scratchArmed || scratchLive ? ' recording' : '')} data-ob="scratch-bar">
               <div className="scratch-actions">
-                <button
+                {!layerSource && <button
                   className={scratchArmed || scratchLive ? 'on' : ''}
                   data-ob="scratch-rec"
                   title="Нажми — и проведи мышью по пэду: путь запишется жестом (до 48 сглаженных точек). Отпустишь — запись закончится сама"
                   onClick={() => setScratchArmed((v) => !v)}
                 >
                   {scratchArmed || scratchLive ? '● веди по пэду…' : '● записать жест'}
-                </button>
+                </button>}
                 {(st.scratchPoints ?? []).length > 0 && (
                   <button
                     title="Стереть жест: пэд станет пустым (границы куска не трогаются)"
@@ -1105,7 +1114,7 @@ export function InstrumentEditor({
                 >
                   {scratchPlaying ? '▶ играет…' : '▶ послушать'}
                 </button>
-                <button
+                {!layerSource && <button
                   disabled={scratchSaving}
                   data-ob="scratch-save"
                   title="Назвать и заморозить жест: справа появится поле имени — «ок» отрендерит WAV в библиотеку сэмплов, готовый скрэтч без пэда и точек"
@@ -1115,7 +1124,7 @@ export function InstrumentEditor({
                   }}
                 >
                   {scratchSaving ? 'рендер…' : 'в сэмпл'}
-                </button>
+                </button>}
                 {scratchNaming && !scratchSaving && (
                   <>
                     <input
@@ -1470,24 +1479,24 @@ export function InstrumentEditor({
               тембра рядом с таблицей операторов, а не вкладка фильтров. */}
           <div className="group sub knob-row" data-ob="timbre-tab">
             <span className="sub-cap">фильтры</span>
-            <Knob help="instrument.filterLow"
+            {!layerSource && <Knob help="instrument.filterLow"
               label="низ"
               title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай. Двойной клик — точное число"
               value={st.filterLow} min={20} max={4000} step={10} log
               onChange={(filterLow) => onChangeInst({ filterLow })}
-            />
-            <Knob help="instrument.filterFreq"
-              label="верх"
-              title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"
+            />}
+            <Knob help={layerSource ? "layer-filter-base" : "instrument.filterFreq"}
+              label={layerSource ? "база огиб., Гц" : "верх"}
+              title={layerSource ? "Частота, к которой приходит фильтровая огибающая слоя; действует при ненулевом размахе. Двойной клик — точное число" : "Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"}
               value={st.filterFreq} min={60} max={12000} step={10} log
               onChange={(filterFreq) => onChangeInst({ filterFreq })}
             />
-            <Knob help="instrument.filterQ"
+            {!layerSource && <Knob help="instrument.filterQ"
               label="резонанс"
               title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе. Двойной клик — точное число"
               value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
               onChange={(filterQ) => onChangeInst({ filterQ })}
-            />
+            />}
             <Knob help="instrument.filterEnvAmount"
               label="огиб. ↑↓"
               bipolar
@@ -1502,7 +1511,7 @@ export function InstrumentEditor({
               onChange={(filterEnvTime) => onChangeInst({ filterEnvTime })}
             />
           </div>
-          <div className="group sub" data-ob="arp-group">
+          {!layerSource && <div className="group sub" data-ob="arp-group">
             <div className="sub-head">
               <span className="sub-cap">арпеджиатор</span>
               <span className="scope-cap" title="Арпеджиатор — свойство дорожки: общий для всех её инструментов и эскизов">дорожка</span>
@@ -1551,7 +1560,7 @@ export function InstrumentEditor({
                 </label>
               </>
             )}
-          </div>
+          </div>}
         </div>
       )}
 

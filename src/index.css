@@ -3689,3 +3689,9 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .scene-chip-input { width: 150px; min-width: 80px; }
 
 .sb-transfer { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 11px; }
+
+/* A source occupies the existing editor width; no nested editor columns. */
+.layer-source-heading { display: flex; align-items: baseline; gap: 12px; padding: 8px 12px 0; min-width: 0; }
+.layer-source-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-source-heading span { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+.layer-detail > button { margin: 4px 0; }

@@ -35,7 +35,8 @@ import { NumField } from './NumField';
 import { NoteLocksEditor } from './NoteLocksEditor';
 import { SliderField } from './SliderField';
 import { Knob } from './Knob';
-import { InstrumentEditor, type InstEditorTab } from './InstrumentEditor';
+import type { InstEditorTab } from './InstrumentEditor';
+import { InstrumentWorkspace } from './InstrumentWorkspace';
 import { AutoLane } from './AutoLane';
 import { alertDialog } from './dialogs';
 import { SamplePicker } from './SamplePicker';
@@ -1246,7 +1247,7 @@ export const TrackRow = memo(function TrackRow({
       </div>
 
       {editorOpen && (
-        <InstrumentEditor
+        <InstrumentWorkspace
           track={track}
           inst={inst}
           pattern={pattern}
