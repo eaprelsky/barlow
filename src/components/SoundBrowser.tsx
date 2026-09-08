@@ -1,3 +1,4 @@
+import { prepareInstrument, installInstrument } from '../audio/instrumentFile';
 // Левая док-панель «инструменты»: дерево пресетов (категории
 // схлопываются, свои пресеты, поиск) + сэмплы. Клик по пресету применяет
 // его к целевой дорожке (селектор в шапке), ▶ — слушает тембр до
@@ -28,8 +29,8 @@ import type { Track } from '../types';
 import { WAVEFORM_LABELS } from '../types';
 import { sampleAssets } from '../music/sampleZones';
 import { recommendedHz } from '../music/audition';
-import { isDesktop, saveBlob } from '../platform';
-import { alertDialog, confirmDialog } from './dialogs';
+import { isDesktop, saveBlob, pickInstrumentFile } from '../platform';
+import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
 import { SOUND_PACKS, presetPackOf, presetMatches, soundMatches, presetFavoriteId, sampleFavoriteId, loadSoundFavorites, saveSoundFavorites, FAVORITES_KEY, FAVORITES_EVENT } from '../music/soundSearch';
 
@@ -74,6 +75,25 @@ export function SoundBrowser({
   onAddTrack,
   onClose,
 }: Props) {
+  const [transfer, setTransfer] = useState<'reading'|'installing'|null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
+  const importGeneration = useRef(0);
+  useEffect(() => () => { importGeneration.current++; }, []);
+  const readInstrument = async (file: File) => {
+    const request=++importGeneration.current;setTransfer('reading');
+    try {
+      const prepared=await prepareInstrument(file);
+      if(request!==importGeneration.current) return;
+      const name=await promptDialog({title:'добавить инструмент из файла',
+        text:`${prepared.preset.name} · записей: ${prepared.samples.length}. Появится в «Мои инструменты». Текущая партия не изменится.`,
+        input:{value:prepared.preset.name,placeholder:'Имя инструмента'},okLabel:'добавить'});
+      if(name===null || request!==importGeneration.current) return;
+      setTransfer('installing');const saved=await installInstrument(prepared,name);
+      setQuery(saved);setPack('user');setFavoritesOnly(false);onTab('inst');
+      setClosed(prev=>{const next=new Set(prev);next.delete(USER_CATEGORY);return next;});
+    } catch(error) { if(request===importGeneration.current) await alertDialog(String(error),'не удалось импортировать инструмент'); }
+    finally { if(request===importGeneration.current) setTransfer(null); }
+  };
   const [query, setQuery] = useState('');
   const [pack, setPack] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -369,6 +389,13 @@ export function SoundBrowser({
           </button>
         )}
       </div>
+      {tab === 'inst' && <div className="sb-transfer" data-help="instrument-import">
+        <input ref={importInput} type="file" hidden accept=".zip,.barlow-instrument.zip" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void readInstrument(file);}} />
+        <button disabled={!!transfer} onClick={async()=>{try { const file=await pickInstrumentFile(()=>importInput.current?.click());if(file) await readInstrument(file); }
+          catch(error) { await alertDialog(String(error),'не удалось открыть файл'); }}}>из файла…</button>
+        {transfer && <span role="status">{transfer==='reading'?'проверяем…':'добавляем…'}</span>}
+        {transfer==='reading' && <button data-help="instrument-import-cancel" onClick={()=>{importGeneration.current++;setTransfer(null);}}>отмена</button>}
+      </div>}
       <div className="sb-filters">
         {tab === 'inst' && <label className="sb-pack">пакет <select data-help="library-pack" aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
           <option value="">все пакеты</option>

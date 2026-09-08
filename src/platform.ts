@@ -53,3 +53,10 @@ export const nativeSamples = isDesktop ? {
     return result?.data ?? null;
   },
 } : null;
+
+
+/** One picker contract for portable instruments; native project dialogs accept ZIP. */
+export async function pickInstrumentFile(openBrowserPicker: () => void): Promise<File | null> {
+  if (!isDesktop) { openBrowserPicker(); return null; }
+  return pickProjectFile();
+}

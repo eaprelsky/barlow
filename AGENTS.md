@@ -70,5 +70,6 @@ docs/gotchas.md — там пойманные грабли.
 - docs/synthesis-v53.md — wavetable/VA, ring/fold/comb и границы качества.
 - docs/scene-transitions.md — общий live/WAV переход и фаза.
 - docs/coverage-review-v53.md — проверка спецификаций/справки перед этапом 5.
+- docs/instrument-file.md — перенос одного тембра вместе с записями.
 - docs/roadmap.md — что готово, что дальше, планы (i18n, рефакторинг).
 - docs/UX-AUDIT.md — аудит интерфейса.

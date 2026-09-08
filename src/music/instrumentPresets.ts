@@ -836,7 +836,7 @@ export const USER_CATEGORY = 'мои';
  *  перечитывает localStorage — иначе кешированный список протухает. */
 export const USER_PRESETS_EVENT = 'barlow:user-presets';
 
-const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
+export const SAVE_FIELDS: (keyof (Track & Instrument))[] = [
   ...SOUND_FIELDS,
   'waveform', 'freq', 'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
   'filterLow', 'filterFreq', 'filterQ', 'effects', 'mono', 'portamentoSec',
@@ -875,20 +875,27 @@ export function loadUserPresets(): InstrumentPreset[] {
   }
 }
 
-/** Записать (или перезаписать по имени) пресет из звуковых полей трека. */
-export function saveUserPreset(
-  name: string,
-  track: Partial<Track> & Partial<Instrument>,
-): void {
+/** Portable sound snapshot: musical phrases and scene state are excluded. */
+export function presetFields(track: Partial<Track> & Partial<Instrument>): InstrumentPreset['track'] {
   const withRegister = { ...track, recommendedHz: recommendedHz(track) };
   const sound = Object.fromEntries(
     SAVE_FIELDS.filter((f) => withRegister[f] !== undefined).map((f) => [f, withRegister[f]]),
   ) as Partial<Track & Instrument>;
+  return sound;
+}
+
+/** Записать (или перезаписать по имени) пресет из звуковых полей трека. */
+export function saveUserPreset(
+  name: string,
+  track: Partial<Track> & Partial<Instrument>,
+  metadata?: {hint?:string;tags?:string[]},
+): void {
+  const sound = presetFields(track);
   const existing = loadUserPresets();
   const list = existing.filter((p) => p.name !== name);
   list.push({ id: existing.find((p) => p.name === name)?.id ?? `user:${crypto.randomUUID()}`,
-    name, category: USER_CATEGORY, packId: 'user', tags: existing.find(p => p.name === name)?.tags ?? ['user'],
-    hint: existing.find(p => p.name === name)?.hint, track: sound });
+    name, category: USER_CATEGORY, packId: 'user', tags: metadata?.tags ?? existing.find(p => p.name === name)?.tags ?? ['user'],
+    hint: metadata?.hint ?? existing.find(p => p.name === name)?.hint, track: sound });
   localStorage.setItem(USER_KEY, JSON.stringify(list));
   window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }

@@ -252,7 +252,7 @@ export function AutoLane({
     });
 
   return (
-    <svg
+    <svg data-help="automation-mods"
       className="auto-lane"
       viewBox={`0 0 ${W} ${H}`}
       width={W}
@@ -309,7 +309,7 @@ export function AutoLane({
       )}
       {points.length < 2 && (
         <text x={W / 2} y={(V_PAD + yb) / 2 + 3} textAnchor="middle" className="env-text dim">
-          пусто — клик поставит точку на границе шага, параметр держится на ручке
+          {points.length === 0 ? 'Нет точек' : 'Одна точка'}
         </text>
       )}
       {points.length >= 2 && <polyline points={line} className="env-amp" />}

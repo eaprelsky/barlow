@@ -19,7 +19,7 @@ export function SampleSliceEditor({ inst, duration, selection, onChange, onPrevi
       sampleId: inst.sampleId!, sampleName: inst.sampleName, start: start + (end - start) * i / parts, end: start + (end - start) * (i + 1) / parts }))], true);
   };
   return <details className="sample-slices" data-ob="sample-slices"><summary>нарезка сэмплов ({slices.length})</summary>
-    <p>Фрагменты выбираются у отдельных нот. Исходные файлы сохраняются. Удалённый фрагмент оставляет ноту без звука, пока ты не выберешь другой или «обычный источник».</p>
+
     <div className="slice-actions">
       <button data-help="slice-selection" disabled={!inst.sampleId || !selection || selection[1] - selection[0] < .001 || selection[1] > 3600 || slices.length >= SAMPLE_SLICE_LIMIT}
         onClick={() => selection && add(1, selection[0], selection[1])}>добавить выделение</button>

@@ -5,6 +5,12 @@
 
 ## Патч и хранение
 
+- Перенос инструмента: `audio/instrumentFile.ts`, docs/instrument-file.md.
+  При подъёме PATCH_VERSION обеспечить миграцию уже выпущенных файлов
+  инструмента; совместимость v1/schema 53 закреплена отдельной JSON-фикстурой.
+  Не расширять SAVE_FIELDS полями партии без пересмотра контракта переноса.
+
+
 - localStorage ключ патча — `barlow.patch.v12` (storage.ts; «v5» в старых
   заметках — история). При смене схемы патча поднимай PATCH_VERSION в
   types.ts и обновляй `normalizePatch`.

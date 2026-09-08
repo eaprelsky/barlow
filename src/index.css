@@ -3685,3 +3685,7 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .track-navigation { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
 .track-navigation > .add-track { margin: 0; }
 .track-navigation > .track-filters { flex: 1; padding: 0; }
+
+.scene-chip-input { width: 150px; min-width: 80px; }
+
+.sb-transfer { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 11px; }

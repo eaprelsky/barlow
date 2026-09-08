@@ -1392,3 +1392,17 @@ function normalizeLayers(raw: unknown): InstrumentLayer[] | undefined {
     return [{ id, name: typeof l.name === 'string' ? l.name.slice(0, 160) : 'слой', gain: clamp(l.gain, 0, 1, .5), ratio: clamp(l.ratio, .125, 8, 1), sound }];
   });
 }
+
+
+/** Versioned portable timbre; scenes, notes and performance state are excluded. */
+export interface InstrumentFile {
+  format: 'barlow-instrument';
+  version: 1;
+  patchVersion: number;
+  name: string;
+  sourceId?: string;
+  hint?: string;
+  tags?: string[];
+  sound: Partial<Track & Instrument>;
+  samples: { id: string; name: string; mime: string }[];
+}

@@ -1,3 +1,5 @@
+import { saveBlob as saveInstrumentBlob } from '../platform';
+import { exportInstrument } from '../audio/instrumentFile';
 import { WavetableEditor } from './WavetableEditor';
 import { tableRecipe } from '../music/wavetable';
 import { LayerEditor } from './LayerEditor';
@@ -139,6 +141,7 @@ export function InstrumentEditor({
   onScratchPeaks,
 }: Props) {
   // Слитый вид: дорожка + инструмент — для чтения звука и превью.
+  const [fileBusy, setFileBusy] = useState(false);
   const st: SoundingTrack = { ...inst, ...track };
   const scope = `[data-track-id="${track.id}"]`;
 
@@ -446,6 +449,14 @@ export function InstrumentEditor({
             <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
           </svg> сохранить
         </button>
+        <button disabled={fileBusy} data-help="instrument-export" onClick={async () => {
+          setFileBusy(true);
+          const sound=structuredClone(dirty && !isSample ? {...st,waveform:'wave' as const,wave:normalizeWave(wave)} : st);
+          try { const file=await exportInstrument({name:inst.name,category:'мои',track:sound});
+            await saveInstrumentBlob(file,`${inst.name.replace(/[<>:"/\\|?*]/g,'-')}.barlow-instrument.zip`);
+          } catch(error) { await confirmDialog({title:'не удалось сохранить файл',text:String(error),okLabel:'понятно',onlyOk:true}); }
+          finally { setFileBusy(false); }
+        }}>{fileBusy?'сохраняем…':'в файл'}</button>
         <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
       </div>
       <LayerEditor inst={inst} onChange={onChangeInst} />

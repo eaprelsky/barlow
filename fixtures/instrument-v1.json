@@ -1,0 +1,16 @@
+{
+  "format": "barlow-instrument",
+  "version": 1,
+  "patchVersion": 53,
+  "name": "Совместимость v1",
+  "sound": {
+    "waveform": "wave",
+    "wave": { "partials": [{ "type": "sine", "ratio": 1, "amp": 1 }] },
+    "freq": 55,
+    "recommendedHz": 55,
+    "attack": 0.025,
+    "decay": 0.55,
+    "sustain": 0.8
+  },
+  "samples": []
+}

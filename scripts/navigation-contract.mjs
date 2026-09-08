@@ -44,6 +44,17 @@ try{
  assert.equal(await rows.count(),2); // copied scene clears scene mute, filter still applies
  await page.locator('[data-ob="scene-add"]').click();
  assert.equal(await page.locator('.scene-btn.on').textContent(),'сцена 3');
+ const scene=page.locator('.scene-btn.on');await scene.dblclick();
+ const sceneName=page.getByRole('textbox',{name:'Название сцены',exact:true});await sceneName.fill('развязка');await page.setViewportSize({width:1024,height:1000});
+ await page.screenshot({path:root+'/tmp/scene-rename-1024.png'});await sceneName.press('Enter');
+ assert.equal(await page.locator('.scene-btn.on').textContent(),'развязка');
+ await page.locator('.scene-btn.on').focus();await page.keyboard.press('F2');await sceneName.fill('не сохранять');await sceneName.press('Escape');
+ assert.equal(await page.locator('.scene-btn.on').textContent(),'развязка');
+ await page.locator('[data-ob="chain-btn"]').click();assert.ok(await page.locator('[data-ob="chain-panel"]').isVisible());
+ await page.locator('[data-ob="chain-btn"]').click();assert.equal(await page.locator('[data-ob="chain-panel"]').count(),0);
+ await page.getByRole('button',{name:'Удалить текущую сцену',exact:true}).click();
+ assert.equal(await page.locator('[data-ob="scene-edit"]').count(),2);
+ await page.keyboard.press('Control+z');assert.equal(await page.locator('[data-ob="scene-edit"]').count(),3);
  await page.getByRole('button',{name:'Сбросить',exact:true}).click();assert.equal(await rows.count(),3);
  const help=page.locator('[data-ob="help"]');
  await help.click();assert.equal(await help.getAttribute('aria-pressed'),'true');

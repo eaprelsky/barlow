@@ -15,6 +15,8 @@
     "test:audio": "node scripts/audio-contract.mjs",
     "test:history": "node scripts/history.test.mjs",
     "test:ui": "node scripts/ui-contract.mjs",
+    "test:instrument-ui": "node scripts/instrument-file-ui.mjs",
+    "test:instrument-file": "node scripts/instrument-file-contract.mjs",
     "test:navigation": "node scripts/navigation-contract.mjs",
     "test:curation": "node scripts/curation-contract.mjs",
     "test:bank": "node scripts/bank-contract.mjs",

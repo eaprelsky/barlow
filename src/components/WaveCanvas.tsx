@@ -302,7 +302,7 @@ export function WaveCanvas({
   }, [view, data, cycles, sampleRate]);
 
   return (
-    <div className="wave-canvas-wrap">
+    <div className="wave-canvas-wrap" data-help="wave-gesture">
       <div className="wc-toolbar" data-help="wave-view">
         {toolBtn('−', 'Отдалить', () => zoomBy(1.6))}
         {toolBtn('+', 'Приблизить', () => zoomBy(1 / 1.6))}
@@ -319,9 +319,7 @@ export function WaveCanvas({
         {sel !== null && sel !== undefined && toolBtn('⤢ к выделению', 'Показать только выделение', zoomToSel)}
         {toolBtn('весь', 'Показать всё', () => setView([0, 1]))}
         <span className="wc-zoom">{zoomLabel}</span>
-        <span className="wc-hint">
-          {editable ? 'рисование — протяни · зум — колесо' : 'выделение — протяни · зум — колесо'}
-        </span>
+
       </div>
       <div
         ref={wrapRef}

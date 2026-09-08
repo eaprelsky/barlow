@@ -1913,17 +1913,9 @@ export const TrackRow = memo(function TrackRow({
                   >
                     + модуляция
                   </button>
-                  <span className="auto-hint">
-                    клик по дорожке — точка на границе шага (Shift — свободно)
-                  </span>
+
                 </div>
-                <div className="group mods-group" data-ob="mods-list">
-                  {laneMods.length === 0 && (
-                    <span className="auto-hint">
-                      модуляций «{AUTO_TARGET_LABELS[laneTarget]}» нет — «+ модуляция» заведёт
-                      авторучку (LFO или шум), её ход виден штрихом на дорожке кривой
-                    </span>
-                  )}
+                <div className="group mods-group" data-ob="mods-list" data-help="automation-mods">
                   {laneMods.map(({ m, i }) => (
                     <div className="mod-row" key={i} {...rowDropProps('mod', i, moveMod)}>
                       {rowGrip('mod', i)}

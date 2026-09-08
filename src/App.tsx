@@ -243,6 +243,8 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [ui, setUi] = useState(loadUiState);
+  const [sceneRename, setSceneRename] = useState<{id: string; name: string} | null>(null);
+  const cancelSceneRename = useRef(false);
   const [sceneId, setSceneId] = useState(() => patch.scenes[0]?.id ?? '');
   const [showChain, setShowChain] = useState(false);
   const [ai, setAi] = useState<AiSettings>(loadAiSettings);
@@ -1563,19 +1565,6 @@ export default function App() {
         <span className="spacer" />
         <span className="tb-sep" />
         <button
-          className={showChain ? 'on' : ''}
-          data-ob="chain-btn"
-          onClick={() => setShowChain((v) => !v)}
-          title="Цепочка: порядок сцен и их длины — арранжмент от начала до конца"
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-            {/* два звена цепочки */}
-            <path d="M5.6 8.4 8.4 5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <path d="M4.2 6.3 2.9 7.6a2.5 2.5 0 0 0 3.5 3.5l1.3-1.3M9.8 7.7l1.3-1.3a2.5 2.5 0 0 0-3.5-3.5L6.3 4.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          цепочка
-        </button>
-        <button
           className={showMix ? 'on' : ''}
           data-ob="mixer-btn"
           onClick={() => setShowMix((v) => !v)}
@@ -1866,7 +1855,15 @@ export default function App() {
       )}
       <div className="scenes" data-ob="scenes">
         <span className="scenes-label">сцены</span>
-        {patch.scenes.map((s) => (
+        {patch.scenes.map((s) => sceneRename?.id === s.id ? (
+          <input key={s.id} className="scene-name-input scene-chip-input" data-help="scene-name" aria-label="Название сцены"
+            autoFocus value={sceneRename.name} onFocus={e => e.currentTarget.select()}
+            onChange={e => setSceneRename({id:s.id,name:e.target.value})}
+            onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+              if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelSceneRename.current=true; setSceneRename(null); } }}
+            onBlur={() => { const name=sceneRename.name.trim(); if(!cancelSceneRename.current && name && name!==s.name)
+              setPatchStep(p=>({...p,scenes:p.scenes.map(sc=>sc.id===s.id?{...sc,name}:sc)})); setSceneRename(null); }} />
+        ) : (
           <button
             key={s.id}
             className={`scene-btn${s.id === sceneId ? ' on' : ''}${
@@ -1874,8 +1871,11 @@ export default function App() {
             }`}
             title={
               (playing && engine.currentSceneId === s.id ? 'звучит сейчас · ' : '') +
-              'Клик — играть эту сцену (квант к такту). Правый клик — удалить. Перетащи — поменять порядок'
+              'Клик — играть эту сцену (квант к такту). Двойной клик или F2 — переименовать. Правый клик — удалить. Перетащи — поменять порядок'
             }
+            data-ob="scene-edit" data-help="scene-chip"
+            onDoubleClick={() => { cancelSceneRename.current=false; setSceneRename({id:s.id,name:s.name}); }}
+            onKeyDown={e => { if(e.key==='F2') { e.preventDefault(); cancelSceneRename.current=false; setSceneRename({id:s.id,name:s.name}); } }}
             onClick={() => selectScene(s.id)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -1914,6 +1914,11 @@ export default function App() {
           </button>
         ))}
         <button className="scene-btn add" data-ob="scene-add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
+        <button className="scene-btn remove" data-help="scene-delete" aria-label="Удалить текущую сцену"
+          disabled={patch.scenes.length<=1} title={patch.scenes.length<=1?'Единственную сцену удалить нельзя':'Удалить текущую сцену'}
+          onClick={() => currentScene && removeScene(currentScene.id)}>×</button>
+        <button className={showChain?'on':''} data-ob="chain-btn" data-help="scene-chain" aria-pressed={showChain}
+          onClick={() => setShowChain(v=>!v)}>цепочка {showChain?'▴':'▾'}</button>
         <span className="spacer" />
         <span
           className="seg"
@@ -1927,31 +1932,6 @@ export default function App() {
             цепочка
           </button>
         </span>
-        {currentScene && (
-          <span className="scene-edit" data-ob="scene-edit" title="Переименуй или удали текущую сцену">
-            <span className="mini-info">название сцены</span>
-            <input
-              className="scene-name-input"
-              value={currentScene.name}
-              onChange={(e) =>
-                setPatch((p) => ({
-                  ...p,
-                  scenes: p.scenes.map((sc) =>
-                    sc.id === currentScene.id ? { ...sc, name: e.target.value } : sc,
-                  ),
-                }))
-              }
-            />
-            <button
-              className="remove"
-              title={patch.scenes.length <= 1 ? 'Единственную сцену удалить нельзя' : 'Удалить текущую сцену'}
-              disabled={patch.scenes.length <= 1}
-              onClick={() => removeScene(currentScene.id)}
-            >
-              удалить сцену
-            </button>
-          </span>
-        )}
         <HelpHint guide="arrangement" label="Гид: собрать пьесу из сцен" />
       </div>
       </div>
