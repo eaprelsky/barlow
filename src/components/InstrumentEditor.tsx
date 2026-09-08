@@ -4,7 +4,7 @@ import { WavetableEditor } from './WavetableEditor';
 import { tableRecipe } from '../music/wavetable';
 import { LayerEditor } from './LayerEditor';
 import { MsegEditor } from './MsegEditor';
-import { MSEG_SHAPES } from '../music/mseg';
+import { MSEG_SHAPES, msegDuration } from '../music/mseg';
 import { recommendedHz } from '../music/audition';
 import type { SamplePCM } from '../audio/pcm';
 // Большой редактор инструмента дорожки: «раздвинутый» режим карточки
@@ -371,10 +371,11 @@ export function InstrumentEditor({
 
   // Длительность ноты, с — как её посчитает triggerVoice: сетка
   // («нота», шагов × шаг эскиза) или огибающая (атака + спад).
-  const noteSec =
+  const noteGateSec =
     st.noteSteps && st.noteSteps > 0
       ? st.noteSteps * (pattern.rate ?? track.rate) * tickDuration(bpm)
-      : Math.max(st.attack, 0.0005) + st.decay;
+      : st.ampMseg?.seconds ?? Math.max(st.attack, 0.0005) + st.decay;
+  const noteSec = st.ampMseg ? msegDuration(st.ampMseg, noteGateSec) : noteGateSec;
 
   const hasNoise = wave.partials.some((p) => p.type === 'noise');
   const sampleFileRef = useRef<HTMLInputElement>(null);
@@ -1395,7 +1396,7 @@ export function InstrumentEditor({
         <div className="we-body">
           <div className="env-tab" data-ob="env-tab">
             <div className="mseg-toolbar" data-ob="envelope-mode"><span>громкость ноты</span><select aria-label="Режим огибающей" value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
-            {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={ampMseg => onChangeInst({ ampMseg })} /> : <>
+            {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={(ampMseg, command) => onChangeInst({ ampMseg }, command)} /> : <>
             <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
             <NoteGraph
               attack={st.attack}

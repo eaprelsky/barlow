@@ -1,3 +1,4 @@
+import { msegDuration } from '../music/mseg';
 import { combTail } from './voiceColor';
 import { instrumentVoices } from '../music/layers';
 import { withNoteLocks } from '../music/noteLocks';
@@ -18,6 +19,7 @@ export function voiceLifetimeBound(st: SoundingTrack, notes: Note[], stepSec: nu
       ? Math.min(64, Math.max(.05, Math.min(64, Math.max(.05, nt.len)) * stepSec / Math.max(base, 1e-6)))
       : Math.min(4, Math.max(.1, nt.gate ?? 1));
     let len = durSec ?? base * gate;
+    if (sound.ampMseg) len = msegDuration(sound.ampMseg, len);
     if (!sound.ampMseg && durSec === undefined && !sound.noteSteps && nt.len === undefined && (sound.sustain ?? 0) >= .99) len = Math.max(len, 16);
     const body = Math.max(len + .05, attack + Math.max(sound.decay, .01)) + .05;
     const partials = attack + Math.max(0, ...(sound.wave?.partials ?? []).map(p => p.decay ?? 0)) + .05;

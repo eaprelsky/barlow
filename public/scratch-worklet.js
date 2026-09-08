@@ -14,9 +14,11 @@ class ScratchProcessor extends AudioWorkletProcessor {
     ];
   }
 
-  constructor() {
+  constructor(options) {
     super();
-    this.buffer = null;
+    // Initial audio must exist before the first render quantum; a port message
+    // can arrive after an OfflineAudioContext has already rendered the note.
+    this.buffer = options?.processorOptions?.samples ?? null;
     this.pos = 0; // сглаженная позиция иглы
     this.coef = 1 - Math.exp(-1 / (SMOOTH_TAU * sampleRate));
     this.port.onmessage = (e) => {

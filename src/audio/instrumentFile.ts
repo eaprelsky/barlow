@@ -7,6 +7,8 @@ import { presetFields, SAVE_FIELDS, loadUserPresets, saveUserPreset } from '../m
 import type { InstrumentPreset } from '../music/instrumentPresets';
 
 const MiB = 1024 * 1024;
+// Released schemas remain readable when PATCH_VERSION advances.
+const readableSchemas = new Set([53, 54]);
 const pathPattern = /^samples\/([a-f0-9]{64})$/;
 const allowed = new Set<string>(SAVE_FIELDS);
 const hash = async (bytes: Uint8Array<ArrayBuffer>) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -77,7 +79,7 @@ export async function prepareInstrument(file: Blob): Promise<PreparedInstrument>
   let manifest: InstrumentFile;
   try { manifest=JSON.parse(strFromU8(entries['instrument.json'])) as InstrumentFile; }
   catch { throw new Error('Настройки в файле инструмента повреждены'); }
-  check(manifest?.format==='barlow-instrument' && manifest.version===1 && manifest.patchVersion===PATCH_VERSION,
+  check(manifest?.format==='barlow-instrument' && manifest.version===1 && readableSchemas.has(manifest.patchVersion),
     'Неподдерживаемая версия инструмента. Обнови barlow.');
   check(typeof manifest.name==='string' && manifest.name.trim().length>0 && manifest.name.length<=160,'Некорректное имя инструмента');
   check(manifest.hint===undefined || typeof manifest.hint==='string' && manifest.hint.length<=600,'Некорректное пояснение');

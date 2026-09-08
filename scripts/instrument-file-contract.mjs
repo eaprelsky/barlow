@@ -21,7 +21,7 @@ try {
   browser = await chromium.launch({ executablePath: process.env.BARLOW_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${port}/tmp/audio-contract.html`);
-  const result = await page.evaluate(async (compatibilityFixture) => {
+  const result = await page.evaluate(async (compatibilityFixtures) => {
     const {exportInstrument,prepareInstrument,installInstrument}=await import('/src/audio/instrumentFile.ts');
     const {INSTRUMENT_PRESETS,loadUserPresets,presetFields}=await import('/src/music/instrumentPresets.ts');
     const {soundForAudition}=await import('/src/music/audition.ts');
@@ -34,8 +34,10 @@ try {
     const {audioBufferToWav}=await import('/src/audio/wav.ts');
     const {unzipSync,zipSync,strFromU8,strToU8}=await import('/node_modules/fflate/esm/browser.js');
     const checks=[],check=(name,pass,details)=>checks.push({name,pass:!!pass,details});
-    const compatible=await prepareInstrument(new Blob([zipSync({'instrument.json':strToU8(JSON.stringify(compatibilityFixture))})]));
-    check('read released v1 schema 53 fixture',compatible.preset.track.recommendedHz===55);
+    for (const compatibilityFixture of compatibilityFixtures) {
+      const compatible=await prepareInstrument(new Blob([zipSync({'instrument.json':strToU8(JSON.stringify(compatibilityFixture))})]));
+      check('read released v1 schema '+compatibilityFixture.patchVersion+' fixture',compatible.preset.track.recommendedHz===55&&JSON.stringify(compatible.preset.track.ampMseg)===JSON.stringify(compatibilityFixture.sound.ampMseg));
+    }
     const target=defaultPatch().tracks[0];
     async function render(preset,buffer=null) {
       const ctx=new OfflineAudioContext(1,88200,44100),st=soundForAudition(target,preset);
@@ -78,7 +80,7 @@ try {
     const unpacked=unzipSync(new Uint8Array(await sampled.arrayBuffer()));
     const manifest=JSON.parse(strFromU8(unpacked['instrument.json']));
     for(const [label,mutate] of [
-      ['future version',m=>m.version=999],['unknown sound field',m=>m.sound.unimplementedOscillator=true],
+      ['future version',m=>m.version=999],['future patch schema',m=>m.patchVersion=999],['unknown sound field',m=>m.sound.unimplementedOscillator=true],
       ['invalid frequency',m=>m.sound.recommendedHz=-1],['missing asset',m=>m.samples=[]],
     ]) {
       const changed=structuredClone(manifest);mutate(changed);
@@ -93,7 +95,7 @@ try {
     let failed=false;try{await installInstrument(ready);}catch{failed=true;}finally{Storage.prototype.setItem=oldSet;}
     check('storage failure does not publish a preset',failed&&localStorage.getItem('barlow.instruments.v1')===current);
     return checks;
-  }, JSON.parse(readFileSync(root+'/fixtures/instrument-v1.json','utf8')));
+  }, ['instrument-v1.json','instrument-v1-schema54.json'].map(name=>JSON.parse(readFileSync(root+'/fixtures/'+name,'utf8'))));
   writeFileSync(root+'/tmp/instrument-file-qa.json',JSON.stringify(result,null,2));
   for(const r of result)console.log(`${r.pass?'PASS':'FAIL'} ${r.name} ${JSON.stringify(r.details??'')}`);
   if(result.some(r=>!r.pass))process.exitCode=1;

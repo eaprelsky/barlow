@@ -3,7 +3,7 @@ import { periodicFrames, scanFrame } from './wavetable';
 import { voiceColor } from './voiceColor';
 import { sampleTime } from './sampleTime';
 import { instrumentVoices } from '../music/layers';
-import { scheduleMseg } from '../music/mseg';
+import { scheduleMseg, msegDuration } from '../music/mseg';
 // Голоса: рождение ноты в Web Audio-графе. triggerVoice отвязан от
 // конкретного контекста — им пользуются и live-планировщик, и
 // оффлайн-рендер WAV (это же — точка сверки с Rust-движком по golden WAV).
@@ -91,7 +91,7 @@ function harmonicWave(ctx: BaseAudioContext, amps: number[]): PeriodicWave {
 const scratchLoaded = new WeakSet<BaseAudioContext>();
 export async function ensureScratchModule(ctx: BaseAudioContext): Promise<void> {
   if (scratchLoaded.has(ctx)) return;
-  await ctx.audioWorklet.addModule('/scratch-worklet.js');
+  await ctx.audioWorklet.addModule('/scratch-worklet.js?v=54');
   scratchLoaded.add(ctx);
 }
 
@@ -106,8 +106,9 @@ function monoChannel(buf: AudioBuffer): Float32Array {
 }
 
 export function makeScratchNode(ctx: BaseAudioContext, sample: AudioBuffer): AudioWorkletNode {
-  const node = new AudioWorkletNode(ctx, 'barlow-scratch', { outputChannelCount: [1] });
-  node.port.postMessage({ type: 'buffer', samples: monoChannel(sample) });
+  const node = new AudioWorkletNode(ctx, 'barlow-scratch', {
+    outputChannelCount: [1], processorOptions: { samples: monoChannel(sample) },
+  });
   return node;
 }
 
@@ -414,7 +415,7 @@ function triggerNoteVoice(
       // Replace legacy amplitude shaping; operator decay remains part of the timbre.
       amp.gain.cancelScheduledValues(time);
       amp.gain.setValueAtTime(peak, time);
-      scheduleMseg(msegGain.gain, track.ampMseg, time, voiceLen);
+      scheduleMseg(msegGain.gain, track.ampMseg, time, msegGate);
     }
     stopAt = color.finish(stopAt);
     if (pitchSource) stopSource(pitchSource, stopAt);
@@ -488,7 +489,8 @@ function triggerNoteVoice(
   let sus = Math.min(1, Math.max(0, track.sustain ?? 0));
   // Готовая длина арп-доли уже включает гейт; «тянуть до перебоя» —
   // только для обычных нот без сетки.
-  let voiceLen = durSec !== undefined ? durSec : baseLen * maxGate;
+  const msegGate = durSec !== undefined ? durSec : baseLen * maxGate;
+  let voiceLen = track.ampMseg ? msegDuration(track.ampMseg, msegGate) : msegGate;
   if (!track.ampMseg && durSec === undefined && !track.noteSteps && !notes.some(nt => nt.len !== undefined) && sus >= 0.99) {
     voiceLen = Math.max(voiceLen, 16);
     sus = 1 - 0.05 / voiceLen;
