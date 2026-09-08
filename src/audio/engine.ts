@@ -1,3 +1,4 @@
+import { selectChokeEvents } from './chokeEvents';
 // Аудио-движок: lookahead-планировщик (паттерн "A Tale of Two Clocks").
 // UI-поток каждые 25 мс планирует ноты на 120 мс вперёд по часам
 // AudioContext — стабильный тайминг без джиттера setInterval.
@@ -196,6 +197,7 @@ export class AudioEngine implements AudioBackend {
   }
   // Последний голос моно-трека — глушится при новой ноте.
   private lastVoices = new MonoVoices();
+  private chokeVoices = new MonoVoices();
   private sceneId = '';
   // Живой темп: база из шапки или bpm текущего пункта цепочки (v35).
   private liveBpm = 120;
@@ -310,7 +312,7 @@ export class AudioEngine implements AudioBackend {
       this.noiseBuffer = makeNoiseBuffer(this.ctx, patch.performanceSeed);
       this.stopNoiseLayer();
       for (const chain of this.chains.values()) this.retireChain(chain,this.ctx.currentTime);
-      this.chains.clear(); this.lastVoices.clear();
+      this.chains.clear(); this.lastVoices.clear(); this.chokeVoices.clear();
     }
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
@@ -677,7 +679,7 @@ export class AudioEngine implements AudioBackend {
     }
     this.stopNoiseLayer();
     this.clocks.clear();
-    this.lastVoices.clear();
+    this.lastVoices.clear(); this.chokeVoices.clear();
     this.pendingSceneId = '';
     this.sceneAdvanceTime = null;
     // Detach this generation immediately: the next Play builds fresh LFO/FX.
@@ -934,13 +936,13 @@ export class AudioEngine implements AudioBackend {
    *  цепочку трека, если транспорт стоит — прямо в мастер. */
   private regionRequest = 0;
   private regionCleanup: (() => void) | null = null;
-  previewSampleRegion(track: Track, fromSec: number, toSec: number): void {
+  previewSampleRegion(track: SoundingTrack, fromSec: number, toSec: number): void {
     const request = ++this.regionRequest;
     this.regionCleanup?.(); this.regionCleanup = null;
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
-      const st = stOf(patch, track);
+      const st = resolveMacros(track);
       const sample = await this.loadMainSample(st);
       if (request !== this.regionRequest) return;
       const ctx = this.ensureCtx();
@@ -1288,8 +1290,18 @@ export class AudioEngine implements AudioBackend {
       }
     }
     this.lastVoices.prune(ctx.currentTime);
+    this.chokeVoices.prune(ctx.currentTime);
     this.voiceBudget.prune(ctx.currentTime);
-    for (const ev of this.pendingNotes.drain(horizon)) {
+    const ready = this.pendingNotes.drain(horizon).filter(ev => {
+      const track = patch.tracks.find(t => t.id === ev.trackId);
+      return track && audible.has(ev.patternId) && patternInScene(track, scene)?.id === ev.patternId;
+    });
+    const selected = selectChokeEvents(ready, ev => {
+      const track = patch.tracks.find(t => t.id === ev.trackId)!;
+      return { trackId: track.id, group: this.chains.has(track.id) ? track.chokeGroup : undefined,
+        priority: track.chokePriority, order: patch.tracks.indexOf(track) };
+    });
+    for (const ev of selected) {
       const track = patch.tracks.find(t => t.id === ev.trackId);
       if (!track || !audible.has(ev.patternId) || patternInScene(track, scene)?.id !== ev.patternId) continue;
       const chain = this.chains.get(track.id);
@@ -1304,6 +1316,7 @@ export class AudioEngine implements AudioBackend {
       voice.amp.gain.value *= ev.gain;
       this.voiceBudget.add(voice, st, ev.notes);
       if (track.mono) this.lastVoices.register(track.id, voice, at);
+      if (track.chokeGroup) this.chokeVoices.register(String(track.chokeGroup), voice, at);
       this.noteSink?.(track.id, at, ev.notes);
       for (const rt of patch.tracks) {
         const sc = rt.sidechain;
@@ -1393,6 +1406,7 @@ export class AudioEngine implements AudioBackend {
       }
       // Globally ordered creation is required for mono/choke/voice budgets.
       const monoVoices = new MonoVoices();
+      const chokeVoices = new MonoVoices();
       const voiceBudget = new VoiceBudget();
       const roundRobin = new SampleRoundRobin();
       for (const ev of plan.events) {
@@ -1408,6 +1422,8 @@ export class AudioEngine implements AudioBackend {
         voiceBudget.add(voice, st, ev.notes);
         monoVoices.prune(ev.at);
         if (track.mono) monoVoices.register(track.id, voice, ev.at);
+        chokeVoices.prune(ev.at);
+        if (track.chokeGroup) chokeVoices.register(String(track.chokeGroup), voice, ev.at);
         for (const rt of patch.tracks) {
           const sc = rt.sidechain;
           const rc = chainsByKey.get(`${itemIndex}:${rt.id}`);

@@ -26,7 +26,7 @@ import {
   scaleOf,
   uid,
 } from './types';
-import type { Instrument, Patch, Pattern, SceneSlot, Track, WavRenderOptions } from './types';
+import type { Instrument, Patch, Pattern, SceneSlot, Track, SoundingTrack, WavRenderOptions } from './types';
 import { TrackRow } from './components/TrackRow';
 import type { InstEditorTab } from './components/InstrumentEditor';
 import { LevelBar } from './components/LevelBar';
@@ -359,7 +359,7 @@ export default function App() {
     [engine],
   );
   const previewSampleRegion = useCallback(
-    (t: Track, fromSec: number, toSec: number) => engine.previewSampleRegion(t, fromSec, toSec),
+    (t: SoundingTrack, fromSec: number, toSec: number) => engine.previewSampleRegion(t, fromSec, toSec),
     [engine],
   );
   const previewNote = useCallback((t: Track) => engine.previewNote(t), [engine]);
@@ -448,8 +448,8 @@ export default function App() {
   /** Правка инструмента дорожки. Инструмент — свойство дорожки: если он
    *  зачем-то оказался общим у нескольких (старый патч), правка с этой
    *  дорожки сначала отвязывает её — копия «на себя», соседей не задевает. */
-  const changeInst = useCallback((trackId: string, inst: Instrument) => {
-    setPatch((p) => {
+  const changeInst = useCallback((trackId: string, inst: Instrument, command = false) => {
+    (command ? setPatchStep : setPatch)((p) => {
       const t = p.tracks.find((x) => x.id === trackId);
       if (!t) return p;
       const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === t.instrumentId);
@@ -464,7 +464,7 @@ export default function App() {
           : p.instruments.map((x) => (x.id === instId ? inst : x)),
       };
     });
-  }, []);
+  }, [setPatch, setPatchStep]);
 
   // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
   // меняет все сцены, где он играет». Замьюченный слот не играет — его
@@ -1027,11 +1027,15 @@ export default function App() {
     [sceneId, setPatchStep],
   );
 
-  const addPattern = useCallback((trackId: string) => {
+  const addPattern = useCallback((trackId: string, fromSlices = false) => {
     setPatchStep((p) => {
       const track = p.tracks.find((t) => t.id === trackId);
-      if (!track) return p;
-      const pattern = makePattern(nextPatternName(track), track.patterns[0]?.length ?? 16, undefined, track.rate);
+      if (!track || track.patterns.length >= 128) return p;
+      const slices = fromSlices ? p.instruments.find(i => i.id === track.instrumentId)?.sampleSlices : undefined;
+      if (fromSlices && !slices?.length) return p;
+      const current = patternInScene(track, p.scenes.find(s => s.id === sceneId));
+      const pattern = makePattern(`${fromSlices ? 'нарезка ' : ''}${nextPatternName(track)}`, slices?.length ?? current?.length ?? 16,
+        slices?.map(slice => ({ notes: [{ ...makeNote(0, .8, 1, 1), sliceId: slice.id }] })), current?.rate ?? track.rate);
       return {
         ...p,
         tracks: p.tracks.map((t) =>
@@ -1042,14 +1046,14 @@ export default function App() {
         ),
       };
     });
-  }, [sceneId]);
+  }, [sceneId, setPatchStep]);
 
   const forkPattern = useCallback(
     (trackId: string, patternId: string) => {
       setPatchStep((p) => {
         const track = p.tracks.find((t) => t.id === trackId);
         const src = track?.patterns.find((pt) => pt.id === patternId);
-        if (!track || !src) return p;
+        if (!track || !src || track.patterns.length >= 128) return p;
         const copy = makePattern(
           `${src.name}′`,
           src.length,

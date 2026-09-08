@@ -15,7 +15,8 @@ export interface PlannedNoteEvent {
  * Random source is injected, so event fixtures do not patch global Math.random. */
 export function planStepEvents(step: Step | undefined, track: SoundingTrack, stepSec: number,
   random: () => number = Math.random): PlannedNoteEvent[] {
-  const notes = step?.notes.filter(note => random() < note.prob) ?? [];
+  const notes = step?.notes.filter(note => random() < note.prob)
+    .filter(note => track.waveform !== 'sample' || !note.sliceId || track.sampleSlices?.some(s => s.id === note.sliceId)) ?? [];
   if (!notes.length) return [];
   const noteLength = (note: Note) => {
     const st = withNoteLocks(track, note.locks);

@@ -31,6 +31,7 @@ import {
 import { Knob } from './Knob';
 import { MacroEditor } from './MacroEditor';
 import { SampleZoneEditor } from './SampleZoneEditor';
+import { SampleSliceEditor } from './SampleSliceEditor';
 import { NumField } from './NumField';
 import { WaveCanvas } from './WaveCanvas';
 import { NoteGraph } from './EnvGraph';
@@ -63,9 +64,10 @@ interface Props {
   tab: InstEditorTab;
   onTab: (t: InstEditorTab) => void;
   /** Частичный патч инструмента (копию при общем инструменте делает App). */
-  onChangeInst: (patch: Partial<Instrument>) => void;
+  onChangeInst: (patch: Partial<Instrument>, command?: boolean) => void;
   /** Правка дорожки — для арпеджиатора (свойство дорожки). */
   onChangeTrack: (patch: Partial<Track>) => void;
+  onSlicePattern: () => void;
   onClose: () => void;
   /** Модалка выбора сэмпла — живёт в карточке трека. */
   onPickSample: () => void;
@@ -112,6 +114,7 @@ export function InstrumentEditor({
   onTab,
   onChangeInst,
   onChangeTrack,
+  onSlicePattern,
   onClose,
   onPickSample,
   onLoadSampleFile,
@@ -952,6 +955,7 @@ export function InstrumentEditor({
             </label>
           )}
           {isSample && <SampleZoneEditor key={inst.sampleId ?? 'empty'} zones={inst.sampleZones} onChange={(sampleZones) => onChangeInst({sampleZones})} />}
+          {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={track.patterns.length < 128} />}
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
             <div className="inline sampler-tuning">
               <label><input type="checkbox" checked={inst.sampleReverse ?? false}

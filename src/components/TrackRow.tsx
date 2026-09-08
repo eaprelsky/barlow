@@ -121,7 +121,7 @@ interface Props {
   /** Инструмент дорожки: тембр, огибающая ноты, фильтры (v34). */
   inst: Instrument;
   /** Правка инструмента этой дорожки (App отвяжет копией, если он общий). */
-  onChangeInst: (trackId: string, inst: Instrument) => void;
+  onChangeInst: (trackId: string, inst: Instrument, command?: boolean) => void;
   pattern: Pattern;
   bpm: number;
   activeStep: number;
@@ -137,7 +137,7 @@ interface Props {
   /** Мьют слота текущей сцены (v38): тишина в этой сцене при живых часах. */
   slotMuted: boolean;
   onToggleSlotMute: (trackId: string) => void;
-  onAddPattern: (trackId: string) => void;
+  onAddPattern: (trackId: string, fromSlices?: boolean) => void;
   onForkPattern: (trackId: string, patternId: string) => void;
   onRemovePattern: (trackId: string, patternId: string) => void;
   /** Заполнение одной оси стана; клик по кнопке оси применяет её сразу. */
@@ -181,7 +181,7 @@ interface Props {
   onOpenEditor: (id: string, tab?: InstEditorTab) => void;
   onCloseEditor: () => void;
   onGetSamplePCM: (id?: string) => Promise<SamplePCM | null>;
-  onPreviewSampleRegion: (track: Track, fromSec: number, toSec: number) => void;
+  onPreviewSampleRegion: (track: SoundingTrack, fromSec: number, toSec: number) => void;
   onPreviewNote: (track: Track) => void;
   /** Открыть панель инструментов с применением к этой дорожке. */
   onOpenBrowser: (trackId: string, tab?: 'inst' | 'smp') => void;
@@ -330,8 +330,8 @@ export const TrackRow = memo(function TrackRow({
   }, [scaleRows.length]);
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
-  const changeInst = (patch: Partial<Instrument>) =>
-    onChangeInst(track.id, { ...inst, ...patch });
+  const changeInst = (patch: Partial<Instrument>, command?: boolean) =>
+    onChangeInst(track.id, { ...inst, ...patch }, command);
   // Слитый вид: дорожка + инструмент — для чтения звука и вызовов синтеза.
   const st: SoundingTrack = { ...inst, ...track };
   // Истинная длительность НОВОЙ ноты в клетках стана: по сетке (noteSteps)
@@ -1254,11 +1254,12 @@ export const TrackRow = memo(function TrackRow({
           onTab={onEditorTab}
           onChangeInst={changeInst}
           onChangeTrack={(patch) => change(patch)}
+          onSlicePattern={() => onAddPattern(track.id, true)}
           onClose={onCloseEditor}
           onPickSample={() => setShowPicker(true)}
           onLoadSampleFile={loadSampleFile}
           getPCM={onGetSamplePCM}
-          onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i }, a, b)}
+          onPreviewRegion={(i, a, b) => onPreviewSampleRegion({ ...st, ...i, id: track.id }, a, b)}
           onPreviewNote={(i) => onPreviewNote({ ...st, ...i })}
           onTransformSample={onTransformSample}
           onGenerateSample={onGenerateSample}
@@ -1300,6 +1301,14 @@ export const TrackRow = memo(function TrackRow({
               {/* Фаза и тоника переехали в тулбар стана — к шкале (строй)
                   и к «ноте» (время партии); здесь только микс-общее. */}
             </div>
+          </div>
+          <div className="track-voicing">
+            <label><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> новая нота глушит предыдущую</label>
+            <label>группа глушения <select aria-label="Группа глушения" value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
+              <option value={0}>нет</option>{Array.from({ length: 16 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
+            </select></label>
+            {track.chokeGroup && <label>приоритет <NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
+            <span>В группе новая атака глушит прежние. Одновременно: больший приоритет, затем нижний трек.</span>
           </div>
           <div className="panel-row">
             <div className="sub-head">
@@ -1721,7 +1730,7 @@ export const TrackRow = memo(function TrackRow({
                                   onPointerCancel={grabUp}
                                 />
                               </span>
-                              {nt!.locks && <span className="note-lock-marker" aria-hidden="true">◆</span>}
+                              {(nt!.locks || nt!.sliceId) && <span className="note-lock-marker" aria-hidden="true">◆</span>}
                               {nt!.prob < 0.995 && (
                                 <span
                                   className="pbar"
@@ -1821,6 +1830,13 @@ export const TrackRow = memo(function TrackRow({
               <button className="remove" title="Убрать эту ноту" onClick={() => removeNoteAt(selectedCol, nt.n)}>
                 ×
               </button>
+              {inst.waveform === 'sample' && (!!inst.sampleSlices?.length || !!nt.sliceId) && <label>фрагмент <select aria-label={`Фрагмент ноты ${nt.n + 1}`} value={nt.sliceId ?? ''}
+                onChange={e => onPatternCommand(track.id, pattern.id, { steps: pattern.steps.map((step, i) => i === selectedCol
+                  ? { ...step, notes: step.notes.map(n => n.n === nt.n ? { ...n, sliceId: e.target.value || undefined } : n) } : step) })}>
+                <option value="">обычный источник</option>
+                {nt.sliceId && !inst.sampleSlices?.some(s => s.id === nt.sliceId) && <option value={nt.sliceId}>фрагмент удалён — нота молчит</option>}
+                {inst.sampleSlices?.map(s => <option key={s.id} value={s.id}>{s.name} ({s.start.toFixed(3)}–{s.end.toFixed(3)} с)</option>)}
+              </select></label>}
               <NoteLocksEditor note={nt} sounding={{ ...track, ...inst }} onChange={(locks, command) => setNoteLocks(selectedCol, nt.n, locks, command)} />
             </div>
           ))}

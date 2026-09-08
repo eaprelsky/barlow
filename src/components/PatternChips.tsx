@@ -72,7 +72,7 @@ export function PatternChips({
           </button>
         );
       })}
-      <button className="chip add" data-ob="chip-add" title="Новый пустой эскиз" onClick={() => onAddPattern(track.id)}>
+      <button className="chip add" data-ob="chip-add" title="Новый пустой эскиз (до 128)" disabled={track.patterns.length >= 128} onClick={() => onAddPattern(track.id)}>
         +
       </button>
       {track.patterns.length > 1 && (

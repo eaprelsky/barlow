@@ -904,6 +904,15 @@ footer {
 
 .note-locks { flex: 1 0 100%; padding: 8px 0; border-top: 1px solid var(--border); }
 .note-locks > select { width: auto; min-width: 220px; max-width: 100%; }
+.note-panel > label > select { width: auto; min-width: 220px; max-width: 340px; }
+.track-voicing, .slice-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 10px 0; }
+.track-voicing label, .sample-slices label { display: flex; align-items: center; gap: 6px; }
+.track-voicing input[type="checkbox"] { width: auto; }
+.track-voicing > span, .sample-slices p, .slice-actions > span { color: var(--muted); }
+.sample-slices { margin: 16px 0; border-top: 1px solid var(--border); padding-top: 10px; }
+.sample-slices summary { cursor: pointer; color: var(--accent); }
+.sample-slices fieldset { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 8px 0; border: 1px solid var(--border); }
+.sample-slices input:not([type]) { width: 160px; }
 .note-locks summary { cursor: pointer; color: var(--accent, #ffb347); }
 .note-locks p { max-width: 80ch; color: var(--muted, #8d98a6); margin: 8px 0; }
 .note-lock-list { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 8px; }

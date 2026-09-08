@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {copySelection,moveSelection,pasteNotes} from '../src/music/noteEdits.ts';
-const a={n:0,vel:.7,prob:.8,len:2,ratchet:4,microTimingMs:-15,locks:{decay:.4,unisonVoices:3}};
+const a={n:0,vel:.7,prob:.8,len:2,ratchet:4,microTimingMs:-15,locks:{decay:.4,unisonVoices:3},sliceId:'cut-1'};
 const b={n:1,vel:.4,prob:1,len:.5};
 const steps=[{notes:[a]},{notes:[]},{notes:[b]},{notes:[]}],sel=new Set(['0:0','9:99']);
 const copied=copySelection(steps,sel);assert.equal(copied.length,1);assert.deepEqual(copied[0],{...a,col:0});

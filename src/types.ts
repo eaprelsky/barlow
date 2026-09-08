@@ -14,6 +14,7 @@ import { PARAMETERS, normalizeParameter, parameterAt, type ParameterId } from '.
 import { normalizeMacros, type SoundMacro } from './music/macros';
 import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
 import { normalizeNoteLocks } from './music/noteLocks';
+import { normalizeSampleSlices, type SampleSlice } from './music/sampleSlices';
 
 // v39: модели синтеза стали таблицей строк-операторов (см. WavePartial).
 // Источников два: своя волна (таблица) и сэмпл. Прежние модели (FM, колокол,
@@ -186,6 +187,8 @@ export interface Note {
   ratchet?: number;
   /** Bounded signed offset, independent of tempo/grid length. */
   microTimingMs?: number;
+  /** Named, non-destructive cut of a sample asset. */
+  sliceId?: string;
   // Индекс строки шкалы (см. scaleOf).
   n: number;
   // Громкость этой ноты 0..1.
@@ -340,6 +343,8 @@ export interface Track {
   // Моно: одна нота за раз, новая мягко глушит хвост предыдущей —
   // убирает фазовую интерференцию наложений (басам включать).
   mono?: boolean;
+  chokeGroup?: number;
+  chokePriority?: number;
   // Мастер-выключатель дорожки: false — молчит во всех сценах, с любым
   // эскизом. Не путать с мьютом партии (на эскизе).
   enabled?: boolean;
@@ -441,6 +446,7 @@ export interface Instrument {
   // Режим сэмплера: прямой, гранулярный (облако осколков) или скрэтч.
   sampleMode?: SampleMode;
   sampleZones?: SampleZone[];
+  sampleSlices?: SampleSlice[];
   macros?: SoundMacro[];
   /** Direct sampler: reverse the selected region, sustain by looping it. */
   sampleReverse?: boolean;
@@ -502,7 +508,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'macros', 'sampleZones', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
+  'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -575,7 +581,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 47;
+export const PATCH_VERSION = 48;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -626,6 +632,7 @@ export function makeInstrument(
     vibratoDepth: partial.vibratoDepth,
     sampleMode: partial.sampleMode,
     sampleZones: normalizeSampleZones(partial.sampleZones),
+    sampleSlices: normalizeSampleSlices(partial.sampleSlices),
     macros: normalizeMacros(partial.macros),
     sampleReverse: partial.sampleReverse,
     sampleLoop: partial.sampleLoop,
@@ -685,6 +692,8 @@ export function makeTrackWithInstrument(
     mods: partial.mods ?? [],
     arp: partial.arp,
     mono: partial.mono,
+    chokeGroup: partial.chokeGroup,
+    chokePriority: partial.chokePriority,
     effects: normalizeEffects(partial.effects),
     scaleOctUp: partial.scaleOctUp,
     scaleOctDown: partial.scaleOctDown,
@@ -870,6 +879,7 @@ function normalizeSteps(
           ratchet: Math.round(clamp(nt.ratchet ?? 1, 1, 8, 1)),
           microTimingMs: clamp(nt.microTimingMs ?? 0, -50, 50, 0),
           locks: normalizeNoteLocks(nt.locks),
+          sliceId: typeof nt.sliceId === 'string' && nt.sliceId.length <= 128 ? nt.sliceId || undefined : undefined,
           len:
             typeof nt.len === 'number' && nt.len > 0
               ? clamp(nt.len, 0.1, 64, 1)
@@ -965,6 +975,7 @@ function normalizeInstrument(
     rootHz: typeof t.rootHz === 'number' ? clamp(t.rootHz, 1, 24000, 440) : 440,
     keyTracking: t.keyTracking === true,
     sampleZones: normalizeSampleZones(t.sampleZones),
+    sampleSlices: normalizeSampleSlices(t.sampleSlices),
     macros: normalizeMacros(t.macros),
     sampleReverse: t.sampleReverse === true,
     sampleLoop: t.sampleLoop === true,
@@ -1195,6 +1206,8 @@ export function normalizePatch(p: Patch): Patch {
         mods: normalizeMods((t as { mods?: unknown }).mods),
         arp: normalizeArp((t as { arp?: unknown }).arp),
         mono: !!t.mono,
+        chokeGroup: t.chokeGroup ? Math.round(clamp(t.chokeGroup, 1, 16, 1)) : undefined,
+        chokePriority: Math.round(clamp(t.chokePriority ?? 0, 0, 16, 0)),
         enabled: t.enabled === false ? false : undefined,
         sidechain: (() => {
           const sc = t.sidechain;

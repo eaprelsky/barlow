@@ -1,3 +1,4 @@
+import type { SampleSlice } from './sampleSlices';
 export interface SampleVariant {
   sampleId: string;
   sampleName?: string;
@@ -41,9 +42,10 @@ export function sampleZoneAt(zones: SampleZone[] | undefined, hz: number, veloci
   return zones?.find(z => hz >= z.lowHz && (hz < z.highHz || z.highHz === 24000 && hz === 24000)
     && velocity >= z.lowVelocity && (velocity < z.highVelocity || z.highVelocity === 1 && velocity === 1));
 }
-export function sampleAssets(source: { sampleId?: string; sampleName?: string; sampleZones?: SampleZone[] }): { sampleId: string; sampleName?: string }[] {
+export function sampleAssets(source: { sampleId?: string; sampleName?: string; sampleZones?: SampleZone[]; sampleSlices?: SampleSlice[] }): { sampleId: string; sampleName?: string }[] {
   const result = new Map<string, { sampleId: string; sampleName?: string }>();
   if (source.sampleId) result.set(source.sampleId, { sampleId: source.sampleId, sampleName: source.sampleName });
+  for (const slice of source.sampleSlices ?? []) result.set(slice.sampleId, { sampleId: slice.sampleId, sampleName: slice.sampleName });
   for (const zone of source.sampleZones ?? []) result.set(zone.sampleId, { sampleId: zone.sampleId, sampleName: zone.sampleName });
   for (const zone of source.sampleZones ?? []) for (const v of zone.alternates ?? []) result.set(v.sampleId, { sampleId: v.sampleId, sampleName: v.sampleName });
   return [...result.values()];

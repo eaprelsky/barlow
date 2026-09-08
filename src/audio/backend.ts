@@ -72,7 +72,7 @@ export interface AudioBackend {
   /** Независимая копия PCM одной записи для канваса/FFT; не загружает патч. */
   getSamplePCM(id: string | undefined): Promise<SamplePCM | null>;
   /** Прослушать кусок сэмпла — проверка обрезки в редакторе. */
-  previewSampleRegion(track: Track, fromSec: number, toSec: number): void;
+  previewSampleRegion(track: SoundingTrack, fromSec: number, toSec: number): void;
   /** Прослушать одну ноту инструмента — проверка тембра в редакторе. */
   previewNote(track: Track, noteRow?: number): void;
   /** Прослушать тембр слитого трека (библиотека: пресет до применения). */

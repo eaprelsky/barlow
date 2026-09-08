@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright-core';
+const irScale = Number(process.env.BARLOW_STRESS_IR_SCALE ?? .25);
+assert.ok([1, .5, .25, .125].includes(irScale), 'BARLOW_STRESS_IR_SCALE must be 1, .5, .25 or .125');
+assert.ok(irScale !== 1 || process.env.CI === 'true', 'Full stress profile is disabled locally. Use the default reduced profile; full runs require a separate CI environment.');
+console.log(`stress profile: ${irScale === 1 ? 'full' : 'scaled contract'}; IR and buffer budgets x${irScale}`);
 const root = fileURLToPath(new URL('..', import.meta.url)), port = 5188;
 mkdirSync(root + '/tmp', {recursive:true}); writeFileSync(root + '/tmp/stress-contract.html','<!doctype html><title>Stress contract</title><button>Start audio test</button>');
 const vite = spawn(process.execPath,[root+'/node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:root,stdio:'ignore'});
@@ -13,19 +17,20 @@ try {
   browser=await chromium.launch({executablePath:process.env.BARLOW_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
   const page=await browser.newPage(); const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${port}/tmp/stress-contract.html`);await page.getByRole('button').click();
-  const result=await page.evaluate(async()=>{
+  const result=await page.evaluate(async(irScale)=>{
     const {defaultPatch}=await import('/src/music/defaultPatch.ts');
     const {normalizePatch}=await import('/src/types.ts');
     const {AudioEngine}=await import('/src/audio/engine.ts');
     const {planRender}=await import('/src/audio/renderPlan.ts');
-    const {chainBudgetOf,LIVE_CHAIN_LIMITS,resourcesFit,ChainBudgetError}=await import('/src/audio/chainBudget.ts');
+    const {chainBudgetOf,LIVE_CHAIN_LIMITS,OFFLINE_CHAIN_LIMITS,resourcesFit,ChainBudgetError}=await import('/src/audio/chainBudget.ts');
     const {makeChain,disposeChain,startChain}=await import('/src/audio/fx.ts');
     const {triggerVoice}=await import('/src/audio/voices.ts');
+    LIVE_CHAIN_LIMITS.bufferBytes *= irScale; OFFLINE_CHAIN_LIMITS.bufferBytes *= irScale;
     const checks=[];const check=(name,pass,details)=>checks.push({name,pass:!!pass,details});
     let patch=defaultPatch();patch.bpm=120;patch.followChain=false;patch.performanceSeed=5;patch.masterNoise='off';
     const original=patch.tracks[0];patch.instruments=[{...patch.instruments.find(i=>i.id===original.instrumentId),waveform:'wave',wave:{partials:[{type:'sine',ratio:1,amp:1}]},attack:.005,decay:.2,sustain:0,unisonVoices:1}];
     patch.tracks=Array.from({length:36},(_,i)=>({...structuredClone(original),id:`stress-${i}`,name:`stress-${i}`,enabled:i<12,volume:.02,arp:undefined,mods:[],phase:0,
-      effects:[{id:'a',type:'reverb',sizeSec:4,mix:.3},{id:'b',type:'reverb',sizeSec:4,mix:.3}],
+      effects:[{id:'a',type:'reverb',sizeSec:4*irScale,mix:.3},{id:'b',type:'reverb',sizeSec:4*irScale,mix:.3}],
       patterns:[{id:`p-${i}`,name:'stress',length:4,rate:1,steps:Array.from({length:4},(_,j)=>({notes:j===0?[{n:0,vel:.3,prob:1,len:1}]:[]}))}]}));
     patch.scenes=[{id:'s',name:'stress',slots:Object.fromEntries(patch.tracks.map(t=>[t.id,{patternId:t.patterns[0].id}]))}];patch.chain=[];patch=normalizePatch(patch);
     const excessive=structuredClone(patch);excessive.tracks.forEach(t=>t.enabled=true);
@@ -55,10 +60,10 @@ try {
       const before=chainBudgetOf(engine.ctx).usage;
       const firstChain=engine.chains.values().next().value;
       let resizeRejected=false;
-      try{firstChain.resourceLease.resize({effects:Array.from({length:16},()=>({type:'reverb',sizeSec:8,mix:1})),mods:[]});}catch(e){resizeRejected=e instanceof ChainBudgetError;}
+      try{firstChain.resourceLease.resize({effects:Array.from({length:16},()=>({type:'reverb',sizeSec:8*irScale,mix:1})),mods:[]});}catch(e){resizeRejected=e instanceof ChainBudgetError;}
       check('reverb resize fails atomically before replacing its impulse',resizeRejected&&JSON.stringify(chainBudgetOf(engine.ctx).usage)===JSON.stringify(before));
       let previewRejected=false;
-      try{makeChain(engine.ctx,{...patch.tracks[0],...patch.instruments[0],effects:Array.from({length:16},()=>({type:'reverb',sizeSec:8,mix:1}))},engine.ctx.destination);}catch(e){previewRejected=e instanceof ChainBudgetError;}
+      try{makeChain(engine.ctx,{...patch.tracks[0],...patch.instruments[0],effects:Array.from({length:16},()=>({type:'reverb',sizeSec:8*irScale,mix:1}))},engine.ctx.destination);}catch(e){previewRejected=e instanceof ChainBudgetError;}
       check('additional preview shares the same context budget',previewRejected&&JSON.stringify(chainBudgetOf(engine.ctx).usage)===JSON.stringify(before));
       const reduced=structuredClone(patch);reduced.tracks=reduced.tracks.slice(0,2);reduced.tracks.forEach(t=>t.effects=[]);engine.setPatch(reduced);
       await new Promise(r=>setTimeout(r,800));const recovered=engine.diagnostics;
@@ -77,16 +82,17 @@ try {
       check('stop releases all active and retiring graph reservations',chainBudgetOf(engine.ctx).usage.chains===0);
       await engine.ctx.close();
     }
-  });
+  },irScale);
   for(const c of result.checks)console.log(`${c.pass?'PASS':'FAIL'} ${c.name} ${JSON.stringify(c.details??'')}`);
-  writeFileSync(root+'/tmp/stress-qa.json',JSON.stringify({browser:'Edge',checks:result.checks,peak:result.peak,recovered:result.recovered},null,2));
+  writeFileSync(root+'/tmp/stress-qa.json',JSON.stringify({browser:'Edge',profile:irScale===1?'full':'scaled-contract',irScale,checks:result.checks,peak:result.peak,recovered:result.recovered},null,2));
   assert.ok(result.checks.every(c=>c.pass),'stress contract failed');assert.deepEqual(errors,[]);
   const ui=await browser.newPage({viewport:{width:1440,height:1000}});
   const overloaded=result.patch;overloaded.tracks=overloaded.tracks.slice(0,1);
-  overloaded.tracks[0].effects=Array.from({length:16},(_,i)=>({id:`r-${i}`,type:'reverb',sizeSec:8,mix:.3}));
+  overloaded.tracks[0].effects=Array.from({length:16},(_,i)=>({id:`r-${i}`,type:'reverb',sizeSec:8*irScale,mix:.3}));
   overloaded.scenes=[{id:'s',name:'stress',slots:{[overloaded.tracks[0].id]:{patternId:overloaded.tracks[0].patterns[0].id}}}];
   await ui.addInitScript(p=>{localStorage.setItem('barlow.patch.v12',JSON.stringify(p));localStorage.setItem('barlow.onboarding.v1',JSON.stringify({invited:true,seen:{main:true}}));},overloaded);
   ui.on('pageerror',e=>errors.push(e.message));await ui.goto(`http://127.0.0.1:${port}`);
+  await ui.evaluate(async scale => { const {LIVE_CHAIN_LIMITS}=await import('/src/audio/chainBudget.ts'); LIVE_CHAIN_LIMITS.bufferBytes *= scale; },irScale);
   await ui.getByRole('button',{name:'Играть',exact:true}).click();
   await ui.locator('.audio-status').filter({hasText:'бюджет FX: не звучат 1 тр.'}).waitFor();
   assert.match(await ui.locator('.audio-status').getAttribute('title'),/Не звучат: stress-0/);

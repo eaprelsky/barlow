@@ -120,11 +120,11 @@ export function duckVoice(v: Voice, t: number): void {
     if (typeof sched.stop !== 'function') {
       // worklet: гасим off-параметром — узел завершит себя
       const off = (s as AudioWorkletNode).parameters?.get('off');
-      if (off) off.setValueAtTime(1, t + 0.06);
+      if (off) off.setValueAtTime(1, v.stopAt);
       continue;
     }
     try {
-      sched.stop(t + 0.06);
+      sched.stop(v.stopAt);
     } catch {
       /* уже остановлен */
     }
@@ -192,8 +192,10 @@ function scheduleGrainCloud(
       const k = uniN > 1 ? (Math.floor(random() * uniN) / (uniN - 1)) * 2 - 1 : 0;
       const rate = ratio * Math.pow(2, (k * uniDet) / 1200);
       const center = clampNum(pos + (random() * 2 - 1) * scatter * 0.5, 0, 1);
+      const maxRate = Math.max(1e-6, rate * Math.max(1, track.pitchDrop) + Math.max(0, track.vibratoDepth ?? 0) / 1200);
+      const windowSec = Math.min(sizeSec, (regEnd - regStart) / maxRate);
       // Окно должно поместиться в обрезанный кусок с учётом скорости.
-      const room = Math.max(0, regEnd - regStart - sizeSec * rate - 0.001);
+      const room = Math.max(0, regEnd - regStart - windowSec * maxRate - 0.001);
       const offset = regStart + center * room;
       const src = ctx.createBufferSource();
       src.buffer = sample;
@@ -206,8 +208,8 @@ function scheduleGrainCloud(
       // Ханн-окно: линейные рампы вверх-вниз по половине зерна.
       const gAmp = ctx.createGain();
       gAmp.gain.setValueAtTime(0, at);
-      gAmp.gain.linearRampToValueAtTime(grainAmp, at + sizeSec / 2);
-      gAmp.gain.linearRampToValueAtTime(0, at + sizeSec);
+      gAmp.gain.linearRampToValueAtTime(grainAmp, at + windowSec / 2);
+      gAmp.gain.linearRampToValueAtTime(0, at + windowSec);
       if (vibG) vibG.connect(src.playbackRate);
       src.connect(gAmp);
       if (uniN > 1 && uniSpread > 0.001) {
@@ -218,10 +220,10 @@ function scheduleGrainCloud(
       } else {
         gAmp.connect(amp);
       }
-      src.start(at, offset, sizeSec * rate + 0.02);
-      src.stop(at + sizeSec + 0.02);
+      src.start(at, offset, Math.min(regEnd - offset, windowSec * maxRate + 0.02));
+      src.stop(at + windowSec + 0.02);
       sources.push(src);
-      lastEnd = Math.max(lastEnd, at + sizeSec);
+      lastEnd = Math.max(lastEnd, at + windowSec);
     }
   }
   // Огибающая облака ровная: форму дают сами Ханн-окна, от amp нужны
@@ -263,13 +265,16 @@ export function triggerVoice(
   track = resolveMacros(track);
   if (track.waveform === 'wave') track = { ...track, wave: normalizeWave(track.wave) };
   const rows = scaleOf(track);
-  const voices = notes.filter(nt => nt.vel > 0).map(nt => {
-    const locked = withNoteLocks(track, nt.locks);
+  const voices = notes.filter(nt => nt.vel > 0 && (track.waveform !== 'sample' || !nt.sliceId || track.sampleSlices?.some(s => s.id === nt.sliceId))).map(nt => {
+    const slice = track.waveform === 'sample' && nt.sliceId ? track.sampleSlices?.find(s => s.id === nt.sliceId) : undefined;
+    const sliced = slice ? { ...track, sampleId: slice.sampleId, sampleStart: slice.start, sampleEnd: slice.end } : track;
+    const locked = withNoteLocks(sliced, nt.locks);
     const hz = track.freq * (rows[Math.min(rows.length - 1, Math.max(0, Math.round(nt.n)))] ?? 1) * octMulOf(nt);
-    const zone = track.waveform === 'sample' ? sampleZoneAt(track.sampleZones, hz, nt.vel) : undefined;
+    const zone = track.waveform === 'sample' && !slice ? sampleZoneAt(track.sampleZones, hz, nt.vel) : undefined;
     const variant = zone ? roundRobin?.select(roundRobinOwner, zone) ?? zone : undefined;
     const selected = variant ? { ...locked, sampleId: variant.sampleId, rootHz: variant.rootHz, keyTracking: true } : locked;
-    const buffer = variant ? sampleById?.(variant.sampleId) ?? (variant.sampleId === track.sampleId ? sample : null) : sample;
+    const assetId = slice?.sampleId ?? variant?.sampleId;
+    const buffer = assetId ? sampleById?.(assetId) ?? (assetId === track.sampleId ? sample : null) : sample;
     return triggerNoteVoice(ctx, amp, noise, buffer, selected, [nt], time, stepSec, durSec, random);
   });
   return { amp, sources: voices.flatMap(v => v.sources), stopAt: Math.max(time, ...voices.map(v => v.stopAt)) };

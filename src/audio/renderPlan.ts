@@ -1,3 +1,4 @@
+import { selectChokeEvents } from './chokeEvents';
 import type { Patch, Pattern, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { patternInScene, slotMuted } from '../types';
 import { resolveMacros } from '../music/macros';
@@ -25,7 +26,8 @@ export interface RenderEvent extends PlannedNoteEvent {
  * loading assets. Repeated scene occurrences deliberately have distinct keys. */
 export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: number, options?: WavRenderOptions) {
   const items = patch.followChain && patch.chain.length ? patch.chain : [{ sceneId: fallbackSceneId, bars: fallbackBars }];
-  const parts: RenderPart[] = [], events: RenderEvent[] = [];
+  const parts: RenderPart[] = [];
+  let events: RenderEvent[] = [];
   let start = 0.05, steps = 0, nodes = 0;
   for (const [itemIndex, item] of items.entries()) {
     const bpm = item.bpm ?? patch.bpm;
@@ -55,8 +57,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
           for (const [eventIndex, event] of planned.entries()) {
             const time = Math.max(start, at + event.dt * stepDur + (event.offsetSec ?? 0));
             if (time >= end) continue;
-            nodes += estimateVoiceNodes(st, event.notes);
-            if (events.length >= RENDER_LIMITS.events || nodes > RENDER_LIMITS.estimatedNodes)
+            if (events.length >= RENDER_LIMITS.events)
               throw new Error('WAV: превышен бюджет синтеза (20 000 событий / 100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
             events.push({ ...event, at: time, part, stepDur, ordinal, eventIndex });
           }
@@ -67,6 +68,10 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     start = end;
   }
   events.sort((a, b) => a.at - b.at);
+  events = selectChokeEvents(events, ev => ({ trackId: ev.part.track.id, group: ev.part.track.chokeGroup,
+    priority: ev.part.track.chokePriority, order: patch.tracks.indexOf(ev.part.track) }));
+  nodes = events.reduce((total, ev) => total + estimateVoiceNodes(ev.part.st, ev.notes), 0);
+  if (nodes > RENDER_LIMITS.estimatedNodes) throw new Error('WAV: превышен бюджет синтеза (100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
   const sounding = new Set(events.map(ev => ev.part.key));
   const activeParts = parts.filter(part => sounding.has(part.key));
   const chainResources = activeParts.reduce((total, part) => addResources(total,

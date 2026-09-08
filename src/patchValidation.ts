@@ -1,6 +1,7 @@
 // Bounded validation before migrations or asset I/O; legacy versions retain
 // their own optional fields and are converted by normalizePatch afterwards.
 import { validNoteLocks } from './music/noteLocks.ts';
+import { validSampleSlices } from './music/sampleSlices.ts';
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128;
 
@@ -42,6 +43,8 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   const instrumentIds = new Set(instruments.map(i => i.id));
   const patterns = new Map<string, Set<string>>();
   for (const t of value.tracks) {
+    if (t.chokeGroup !== undefined && (!Number.isInteger(t.chokeGroup) || (t.chokeGroup as number) < 1 || (t.chokeGroup as number) > 16)) return false;
+    if (t.chokePriority !== undefined && (!Number.isInteger(t.chokePriority) || (t.chokePriority as number) < 0 || (t.chokePriority as number) > 16)) return false;
     if (t.effects !== undefined) {
       if (!Array.isArray(t.effects) || t.effects.length > 16) return false;
       const ids = new Set<string>();
@@ -61,11 +64,12 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       if ((value.version as number) < 37) continue; // old step shapes are migrated
       for (const step of p.steps) {
         if (!record(step) || !Array.isArray(step.notes) || step.notes.length > 128) return false;
-        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number' || !validNoteLocks(n.locks))) return false;
+        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number' || !validNoteLocks(n.locks) || n.sliceId !== undefined && !id(n.sliceId))) return false;
       }
     }
   }
   for (const inst of instruments) {
+    if (!validSampleSlices(inst.sampleSlices)) return false;
     if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;
     if (inst.sampleZones !== undefined) {
       if (!Array.isArray(inst.sampleZones) || !unique(inst.sampleZones, 64)) return false;
