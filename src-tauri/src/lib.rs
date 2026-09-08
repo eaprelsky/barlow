@@ -278,8 +278,10 @@ fn save_project(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Opti
 
 /// Empty binary response means cancellation; a selected empty file has a frame.
 #[tauri::command(async)]
-fn open_project(app: AppHandle) -> Result<tauri::ipc::Response, String> {
-    let Some(file) = app.dialog().file().add_filter("barlow: проект и патч", &["zip", "json"]).blocking_pick_file() else {
+fn open_project(app: AppHandle, audio: Option<bool>) -> Result<tauri::ipc::Response, String> {
+    let dialog = app.dialog().file();
+    let dialog = if audio.unwrap_or(false) { dialog.add_filter("Аудио", &["wav", "mp3", "ogg", "flac", "m4a", "webm"]) } else { dialog.add_filter("barlow: проект и патч", &["zip", "json"]) };
+    let Some(file) = dialog.blocking_pick_file() else {
         return Ok(tauri::ipc::Response::new(Vec::<u8>::new()));
     };
     let path = file.into_path().map_err(|e| e.to_string())?;

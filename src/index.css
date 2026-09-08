@@ -3832,3 +3832,23 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .pack-meta textarea { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--border); border-radius:5px; padding:6px; }
 .pack-list input[type="checkbox"] { width:auto; min-width:0; flex:0 0 auto; }
 .pack-list label { text-align:left; justify-content:flex-start; }
+
+.native-dialog.learning-studio { width:min(900px,calc(100vw - 64px));max-width:900px; }
+.studio-heading {display:flex;align-items:center;justify-content:space-between;padding-right:38px;gap:16px;}
+.studio-heading h3 {margin:0;}
+.learning-grid {display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;margin:16px 0;}
+.learning-grid nav {display:flex;flex-direction:column;gap:5px;}
+.learning-grid nav button {text-align:left;white-space:normal;}
+.learning-grid [aria-current=step],.learning-studio [aria-pressed=true] {border-color:var(--accent);color:var(--accent);}
+.learning-grid article h3,.learning-grid article h4 {margin:0 0 8px;}
+.learning-grid article p {line-height:1.55;margin:0 0 16px;}
+
+.native-dialog.sound-workshop {width:min(920px,calc(100vw - 64px));max-width:920px;}
+.sound-workshop .workshop-wave {width:100%;height:150px;background:var(--bg);border:1px solid var(--border);border-radius:8px;touch-action:none;cursor:crosshair;}
+.sound-workshop details {border-top:1px solid var(--border);padding:12px 0 0;margin-top:12px;}
+.sound-workshop .mseg-toolbar,.learning-studio .mseg-toolbar {margin-top:12px;flex-wrap:wrap;gap:10px;}
+.sound-workshop input:not([type=file]) {max-width:260px;}
+
+.learning-studio footer.mseg-toolbar {justify-content:flex-start;}
+.sound-workshop input:not([type=file]):not([type=number]) {width:220px;}
+.sound-workshop .mseg-toolbar label {display:inline-flex;align-items:center;gap:8px;}

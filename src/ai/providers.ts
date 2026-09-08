@@ -90,7 +90,7 @@ const FAL_T2S = 'fal-ai/stable-audio-3/small/sfx/text-to-sfx';
 
 /** Прогнать запрос через очередь fal: submit → поллинг статуса →
  *  результат. Сеть бывает моргает — статус перечитываем, не сдаёмся. */
-async function falRun(
+export async function falRun(
   apiKey: string,
   model: string,
   input: Record<string, unknown>,
@@ -109,14 +109,18 @@ async function falRun(
     const text = await sub.text().catch(() => '');
     throw new Error(`fal.ai ${sub.status}: ${text.slice(0, 200)}`);
   }
-  const queued = (await sub.json()) as { status_url?: string; response_url?: string };
+  const queued = (await sub.json()) as { status_url?: string; response_url?: string; cancel_url?: string };
   if (!queued.status_url || !queued.response_url) {
     throw new Error('fal.ai: очередь не вернула адреса результата');
   }
-  for (const url of [queued.status_url, queued.response_url]) {
+  for (const url of [queued.status_url, queued.response_url, ...(queued.cancel_url ? [queued.cancel_url] : [])]) {
     if (new URL(url).origin !== 'https://queue.fal.run') throw new Error('fal.ai: неожиданный адрес очереди');
   }
+  const cancelRemote = () => { if (queued.cancel_url && new URL(queued.cancel_url).origin === 'https://queue.fal.run') void fetch(queued.cancel_url,{method:'PUT',headers:auth,signal:AbortSignal.timeout(5000)}).catch(()=>{}); };
+  signal.addEventListener('abort',cancelRemote,{once:true});
+  if(signal.aborted)cancelRemote();
   const deadline = Date.now() + timeoutMs;
+  try {
   for (let i = 0; ; i++) {
     if (Date.now() > deadline) throw new Error('fal.ai: не дождались результата (таймаут)');
     await abortableDelay(i === 0 ? 400 : 800, signal);
@@ -137,10 +141,11 @@ async function falRun(
       throw new Error('fal.ai: модель не справилась с запросом');
     }
   }
+  } finally { signal.removeEventListener('abort',cancelRemote); }
 }
 
 /** Blob → data URI (FileReader: и бинарный WAV, и mp3 из библиотеки). */
-function toDataUri(blob: Blob): Promise<string> {
+export function toDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(String(fr.result));

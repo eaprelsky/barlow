@@ -145,7 +145,7 @@ export function normalizeWave(raw: unknown): WaveDef | undefined {
     partials.push(partial);
     if (partials.length >= 64) break;
   }
-  if (partials.length === 0) return undefined;
+  if (partials.length === 0 && !((raw as WaveDef).wavetable && validWavetable((raw as WaveDef).wavetable)) && !((raw as WaveDef).va && validVA((raw as WaveDef).va))) return undefined;
   // Только существующие осцилляторы; feedback требует отдельной модели.
   partials.forEach((p, i) => {
     if (p.mod !== undefined && (!Number.isInteger(p.mod) || p.mod < 0 || p.mod >= partials.length || p.mod === i || partials[p.mod]?.type === 'noise')) {
@@ -621,7 +621,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 57;
+export const PATCH_VERSION = 58;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>

@@ -41,6 +41,14 @@
 
 ## Движок и звук
 
+- VA/wavetable могут иметь пустые partials. И normalizeWave, и triggerNoteVoice
+  должны учитывать независимый источник; иначе валидная модель после импорта
+  терялась или молчала. Регрессия: learning-workshop-contract.mjs.
+- WAV-таблицы нельзя декодировать с пересчётом sampleRate: съедут границы
+  циклов. wavetableImport читает RIFF напрямую; обычные записи декодируются
+  через decodeAudioData.
+
+
 - Скрэтч: начальный сэмпл передаётся через processorOptions, не через
   postMessage после создания узла. Иначе OfflineAudioContext иногда
   успевал отрендерить часть ноты до получения буфера. URL worklet?v=54

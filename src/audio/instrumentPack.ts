@@ -45,7 +45,7 @@ export async function preparePack(file:Blob,job:PackJob={}):Promise<PreparedPack
    job.signal?.addEventListener('abort',abort,{once:true});if(job.signal?.aborted)abort();
  });tick(job,35);check(files['pack.json'],'Это не пак barlow');
  const m=JSON.parse(strFromU8(files['pack.json'])) as InstrumentPackFile;
- check(m?.format==='barlow-pack'&&m.version===1&&m.patchVersion===57,'Неподдерживаемая версия пака');
+ check(m?.format==='barlow-pack'&&m.version===1&&[57,58].includes(m.patchVersion),'Неподдерживаемая версия пака');
  check(validName(m.name)&&typeof m.description==='string'&&m.description.length<=2000,'Некорректное название или описание');
  check(Array.isArray(m.instruments)&&m.instruments.length>0&&m.instruments.length<=64,'В паке должно быть 1…64 инструмента');
  const presets=m.instruments.map(checkedPreset);check(new Set(presets.map(p=>p.id)).size===presets.length,'Повтор ID инструмента');

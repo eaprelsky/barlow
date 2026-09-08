@@ -2,9 +2,11 @@ import { useRef, useState, type PointerEvent } from 'react';
 import { tableFrame, type Wavetable } from '../music/wavetable';
 import { Knob } from './Knob';
 import { useEditGesture } from './editGesture';
+import { WavetableImport } from './WavetableImport';
 
 export function WavetableEditor({ value, onChange }: { value: Wavetable; onChange: (value: Wavetable, command?: boolean) => void }) {
   const [selected, select] = useState(0), drag = useRef(false), gesture = useEditGesture();
+  const [importing, setImporting] = useState(false);
   const last = useRef<{ n: number; v: number } | null>(null);
   const index = Math.min(selected, value.frames.length - 1);
   const replace = (frame: number[], command = false) => onChange({ ...value, frames: value.frames.map((f, i) => i === index ? frame : f) }, command);
@@ -16,6 +18,7 @@ export function WavetableEditor({ value, onChange }: { value: Wavetable; onChang
   };
   return <div className="wavetable-editor" data-ob="wavetable">
     <div className="mseg-toolbar">
+      <button data-help="wave-import" onClick={() => setImporting(true)}>Импорт WAV…</button>
       <label>кадр <select data-help="wave-frame" aria-label="Кадр wavetable" value={index} onChange={e => select(+e.target.value)}>{value.frames.map((_, i) => <option key={i} value={i}>{i + 1}</option>)}</select></label>
       <select data-help="wave-frame-shape" aria-label="Форма кадра" value="" onChange={e => replace(tableFrame(e.target.value as 'sine'), true)}><option value="" disabled>форма кадра…</option><option value="sine">синус</option><option value="triangle">треугольник</option><option value="saw">пила</option><option value="pulse">импульс</option></select>
       <button data-help="wave-frame-add" disabled={value.frames.length >= 8} onClick={() => { onChange({ ...value, frames: [...value.frames, [...value.frames[index]]] }, true); select(value.frames.length); }}>+ копия кадра</button>
@@ -45,5 +48,6 @@ export function WavetableEditor({ value, onChange }: { value: Wavetable; onChang
         </>}
       </div>
     </div>
+    {importing && <WavetableImport onClose={() => setImporting(false)} onApply={frames => { onChange({ ...value, frames }, true); select(0); }} />}
   </div>;
 }

@@ -6,7 +6,9 @@ export function periodicFrames(ctx: BaseAudioContext, wave: WaveDef): PeriodicWa
   let entries = cache.get(ctx); if (!entries) { entries = new Map(); cache.set(ctx, entries); }
   const key = JSON.stringify(wave.va ?? wave.wavetable?.frames);
   const found = entries.get(key); if (found) return found;
-  const spectra = wave.va ? [vaSpectrum(wave.va)] : wave.wavetable!.frames.map(tableSpectrum);
+  const spectra = wave.va ? wave.va.shape === 'pulse' && wave.va.pwmDepth
+    ? Array.from({ length: 8 }, (_, i) => vaSpectrum({ ...wave.va!, pulseWidth: .05 + .9 * i / 7 }))
+    : [vaSpectrum(wave.va)] : wave.wavetable!.frames.map(tableSpectrum);
   const frames = spectra.map(s => ctx.createPeriodicWave(s.real, s.imag, { disableNormalization: true }));
   if (entries.size >= 32) entries.delete(entries.keys().next().value!);
   entries.set(key, frames); return frames;

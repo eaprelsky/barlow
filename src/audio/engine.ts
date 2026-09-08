@@ -924,6 +924,10 @@ export class AudioEngine implements AudioBackend {
    *  звуков слушает пресеты ещё до применения; previewNote — обёртка
    *  для трека из текущего патча. Тот же triggerVoice, что и в
    *  планировщике — слышим ровно то, что будет в паттерне. */
+  stopAudition(): void {
+    ++this.previewRequest; this.previewCleanup?.(); this.previewCleanup = null;
+    ++this.regionRequest; this.regionCleanup?.(); this.regionCleanup = null;
+  }
   previewSounding(st: SoundingTrack, noteRow = 0): void {
     st = resolveMacros(st);
     const request = ++this.previewRequest;

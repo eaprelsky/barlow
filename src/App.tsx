@@ -1,3 +1,5 @@
+import { SoundWorkshop } from './components/SoundWorkshop';
+import { LearningStudio } from './components/LearningStudio';
 import { Knob } from './components/Knob';
 import { PackManager } from './components/PackManager';
 import { MainMenu } from './components/MainMenu';
@@ -168,6 +170,8 @@ const nextPatternName = (track: Track): string => {
 
 export default function App() {
   const [showPacks,setShowPacks]=useState(false);
+  const [showLearning,setShowLearning]=useState(false);
+  const [showWorkshop,setShowWorkshop]=useState(false);
   const [history] = useState(() => createHistory(loadPatch()));
   const historyState = useSyncExternalStore(history.subscribe, history.snapshot);
   const patch = historyState.present;
@@ -1487,6 +1491,7 @@ export default function App() {
           {label:'Сохранить проект…',help:'file-menu',action:()=>{void exportZip();}},
           {label:'Открыть демо',help:'file-menu',action:resetPatch},
           {label:'Импортировать инструмент…',help:'instrument-import',separator:true,action:()=>{void pickInstrumentFile(()=>instrumentFileRef.current?.click()).then(f=>{if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}).catch(e=>void alertDialog(errText(e),'импорт'));}},
+          {label:'Мастерская звука…',help:'sound-workshop',action:()=>{stopTransport();setShowWorkshop(true);}},
           {label:'Паки инструментов…',help:'portable-packs',action:()=>setShowPacks(true)},
           {label:'Экспортировать WAV…',help:'file-menu',disabled:rendering,action:()=>setWavExport({patch,sceneId})},
           {label:'Экспортировать патч JSON…',help:'file-menu',action:exportPatch},
@@ -1505,6 +1510,7 @@ export default function App() {
         ]},
         {label:'Справка',help:'help-guides',items:[
           {label:'Найти в справке…',help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},
+          {label:'Учебная студия…',help:'learning-studio',action:()=>setShowLearning(true)},
           {label:'Пошаговые гиды…',help:'help-guides',action:()=>setShowHelpMenu(true)},
           {label:'Объяснить элемент',help:'point-help',shortcut:'F1',action:()=>{setObRun(null);setPointHelp(v=>!v);}},
           {label:'Горячие клавиши и словарь…',help:'help-guides',action:()=>setShowHelp(true)},
@@ -2105,6 +2111,8 @@ export default function App() {
 
       {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId} backend={engine}
         onClose={() => setWavExport(null)} onExport={renderWav} />}
+      {showWorkshop && <SoundWorkshop onStop={()=>engine.stopAudition()} apiKey={ai.keys.fal ?? ''} onPreview={preset=>{const {track}=makeTrackWithInstrument({id:'workshop-preview',name:preset.name});engine.previewSounding(soundForAudition(track,preset));}} onClose={()=>setShowWorkshop(false)} />}
+      {showLearning && <LearningStudio patch={patch} onProject={p=>{stopTransport();setPatchStep(p);setSceneId(p.scenes[0]?.id ?? '');}} onClose={()=>setShowLearning(false)} />}
       {showPacks && <PackManager onClose={()=>setShowPacks(false)} />}
       <DialogHost />
       {showHelpSearch && <HelpSearch onClose={()=>setShowHelpSearch(false)} onNavigate={navigateHelp} tracks={patch.tracks.map(t=>({id:t.id,name:t.name}))} initialTrack={editorActive??patch.tracks[0]?.id??''} />}

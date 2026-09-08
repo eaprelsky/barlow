@@ -4,7 +4,7 @@ export interface Wavetable {
   scan?: { cycles: number };
   positionLfo?: { shape: 'sine' | 'triangle'; rateHz: number; depth: number; phase: number };
 }
-export interface VirtualAnalog { shape: 'saw' | 'pulse' | 'triangle'; pulseWidth: number }
+export interface VirtualAnalog { shape: 'saw' | 'pulse' | 'triangle'; pulseWidth: number; pwmRateHz?: number; pwmDepth?: number; driftCents?: number }
 export const TABLE_SIZE = 128;
 export function validWavetable(raw: unknown): boolean {
   if (raw === undefined) return true;
@@ -22,7 +22,10 @@ export function validWavetable(raw: unknown): boolean {
 export function validVA(raw: unknown): boolean {
   if (raw === undefined) return true;
   const v = raw as VirtualAnalog;
-  return !!v && ['saw', 'pulse', 'triangle'].includes(v.shape) && Number.isFinite(v.pulseWidth) && v.pulseWidth >= .05 && v.pulseWidth <= .95;
+  return !!v && ['saw', 'pulse', 'triangle'].includes(v.shape) && Number.isFinite(v.pulseWidth) && v.pulseWidth >= .05 && v.pulseWidth <= .95
+    && (v.pwmRateHz === undefined || Number.isFinite(v.pwmRateHz) && v.pwmRateHz >= .05 && v.pwmRateHz <= 20)
+    && (v.pwmDepth === undefined || Number.isFinite(v.pwmDepth) && v.pwmDepth >= 0 && v.pwmDepth <= .45)
+    && (v.driftCents === undefined || Number.isFinite(v.driftCents) && v.driftCents >= 0 && v.driftCents <= 10);
 }
 export function tableFrame(shape: 'sine' | 'saw' | 'pulse' | 'triangle', width = .5): number[] {
   return Array.from({ length: TABLE_SIZE }, (_, i) => {

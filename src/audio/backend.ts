@@ -77,6 +77,7 @@ export interface AudioBackend {
   previewNote(track: Track, noteRow?: number): void;
   /** Прослушать тембр слитого трека (библиотека: пресет до применения). */
   previewSounding(st: SoundingTrack, noteRow?: number): void;
+  stopAudition(): void;
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов сцены. */
   estimateWav(patch: Patch, sceneId: string, bars: number, options: WavRenderOptions): WavEstimate;

@@ -44,6 +44,8 @@
     "test:guide-placement": "node scripts/guide-placement-contract.mjs",
     "test:packs": "node scripts/pack-contract.mjs",
     "test:transitions-record": "node scripts/transitions-record-contract.mjs",
+    "test:wavetable-import-ui": "node scripts/wavetable-learning-ui.mjs",
+    "test:learning-workshop": "node scripts/learning-workshop-contract.mjs",
     "test:eq": "node scripts/eq-contract.mjs",
     "test:panel-layout": "node scripts/panel-layout-contract.mjs",
     "test:menu-audit": "node scripts/menu-audit-contract.mjs",

@@ -60,3 +60,10 @@ export async function pickInstrumentFile(openBrowserPicker: () => void): Promise
   if (!isDesktop) { openBrowserPicker(); return null; }
   return pickProjectFile();
 }
+
+/** Audio import uses the same bounded native binary transport as projects. */
+export async function pickAudioFile(openBrowserPicker: () => void): Promise<File | null> {
+  if (!isDesktop) { openBrowserPicker(); return null; }
+  const res = decodeBinaryFile(await invoke<ArrayBuffer>('open_project', { audio: true }), BINARY_LIMITS.project);
+  return res ? new File([res.data], res.name) : null;
+}
