@@ -4,10 +4,10 @@
 // пойти не туда. Шаг-чтение: листается «далее», клик мимо карточки —
 // мгновенный выход. Esc и ✕ закрывают всегда.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSyncExternalStore, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GUIDES, guideById, isGuideSeen, launchGuide, markInvited } from './guides';
 import type { Guide } from './guides';
-import { requestPointHelp } from './helpMode';
+import { requestPointHelp, subscribePointHelp, pointHelpSnapshot } from './helpMode';
 
 export interface GuideRun {
   guideId: string;
@@ -335,11 +335,12 @@ export function HelpHint({
   scope?: string;
   label?: string;
 }) {
+  const active = useSyncExternalStore(subscribePointHelp, pointHelpSnapshot);
   return (
     <button
       className="ob-hint"
       title="Что это? Выбери элемент, чтобы открыть объяснение (F1)"
-      data-help="point-help" data-guide-id={guide} data-guide-step={step} data-guide-scope={scope} data-guide-label={label}
+      data-help="point-help" data-help-toggle aria-pressed={active} data-guide-id={guide} data-guide-step={step} data-guide-scope={scope} data-guide-label={label}
       aria-label="гид"
       onClick={(e) => {
         e.stopPropagation();

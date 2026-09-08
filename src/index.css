@@ -3672,3 +3672,16 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 
 .ph-card .ob-say { font-weight: 400; }
 .ph-card:focus-visible { outline: none; border-color: var(--accent-2); }
+
+/* Compact desktop track navigation; filters affect visibility only. */
+.track-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0 12px; font-size: 12px; }
+.track-name-filter, .track-mute-filter { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.track-name-filter input { width: 170px; min-width: 100px; }
+.track-mute-filter input { margin: 0; width: auto; }
+.track-filter-count { opacity: .65; white-space: nowrap; margin-left: auto; }
+.track-filter-empty { padding: 18px; text-align: center; opacity: .7; }
+.ob-hint[aria-pressed="true"], .modal-point-help[aria-pressed="true"] { background: var(--accent-2); color: var(--bg); }
+
+.track-navigation { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.track-navigation > .add-track { margin: 0; }
+.track-navigation > .track-filters { flex: 1; padding: 0; }

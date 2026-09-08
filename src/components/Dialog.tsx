@@ -1,4 +1,4 @@
-import { requestPointHelp } from '../onboarding/helpMode';
+import { HelpToggle } from '../onboarding/HelpToggle';
 // Хост глобальных диалогов в эстетике приложения — рендерится один раз
 // в App. Логика очереди живёт в dialog.ts (там же confirmDialog/alertDialog).
 
@@ -46,7 +46,7 @@ export function DialogHost() {
         if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) closeDialog(first, !!req.onlyOk);
       }}
     >
-        <button className="modal-point-help" type="button" data-help="point-help" aria-label="Что это?" onClick={requestPointHelp}>?</button>
+        <HelpToggle />
         <h3 id={titleId}>{req.title}</h3>
         {req.text && <p id={textId}>{req.text}</p>}
         {req.input && (

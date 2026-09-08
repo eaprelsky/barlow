@@ -1,4 +1,4 @@
-import { requestPointHelp } from '../onboarding/helpMode';
+import { HelpToggle } from '../onboarding/HelpToggle';
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { trapModalTab } from './modalFocus';
@@ -19,5 +19,5 @@ export function Modal({ label, className = '', onClose, children }: {
     onMouseDown={e => {
       const r = e.currentTarget.getBoundingClientRect();
       if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) onClose();
-    }}><button className="modal-point-help" type="button" data-help="point-help" aria-label="Что это?" onClick={requestPointHelp}>?</button>{children}</dialog>;
+    }}><HelpToggle />{children}</dialog>;
 }

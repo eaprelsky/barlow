@@ -64,7 +64,7 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
   // подавляет совместимые mouse-события, так что это единственная
   // точка, где клик виден целиком. Остальное — чистый swallow.
   useEffect(() => {
-    const inCard = (e: Event) => e.target instanceof Element && !!e.target.closest('.ph-card,.ph-badge');
+    const inCard = (e: Event) => e.target instanceof Element && !!e.target.closest('.ph-card,.ph-badge,[data-help-toggle]');
     const onPointerDown = (e: PointerEvent) => {
       if (inCard(e)) return;
       e.preventDefault();

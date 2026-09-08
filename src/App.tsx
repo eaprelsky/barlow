@@ -51,7 +51,7 @@ import { slugify } from './utils/slug';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
 import { PointHelp } from './onboarding/PointHelp';
-import { HELP_MODE_EVENT } from './onboarding/helpMode';
+import { HELP_MODE_EVENT, publishPointHelp } from './onboarding/helpMode';
 import type { GuideRun } from './onboarding/Onboarding';
 import {
   guideById,
@@ -259,10 +259,13 @@ export default function App() {
   const [pointHelp, setPointHelp] = useState(false);
   const [obRun, setObRun] = useState<GuideRun | null>(null);
   useEffect(() => {
-    const enter = () => { setObRun(null); setShowHelpMenu(false); setPointHelp(true); };
-    window.addEventListener(HELP_MODE_EVENT, enter);
-    return () => window.removeEventListener(HELP_MODE_EVENT, enter);
+    const toggleHelp = () => { setObRun(null); setShowHelpMenu(false); setPointHelp(v => !v); };
+    window.addEventListener(HELP_MODE_EVENT, toggleHelp);
+    return () => window.removeEventListener(HELP_MODE_EVENT, toggleHelp);
   }, []);
+  useEffect(() => { publishPointHelp(pointHelp); }, [pointHelp]);
+  const [trackQuery, setTrackQuery] = useState('');
+  const [hideSceneMuted, setHideSceneMuted] = useState(false);
   const [helpInvite, setHelpInvite] = useState(needsInvite);
   const obRef = useRef<GuideRun | null>(null);
   obRef.current = obRun;
@@ -445,6 +448,11 @@ export default function App() {
   }, [playing, engine, sceneId]);
 
   const currentScene = patch.scenes.find((s) => s.id === sceneId) ?? patch.scenes[0];
+  const visibleTracks = patch.tracks.filter(t =>
+    (!hideSceneMuted || !currentScene?.slots[t.id]?.muted) &&
+    t.name.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е').includes(
+      trackQuery.trim().normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е')));
+
 
   // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
   // меняет все сцены, где он играет». Стабильная ссылка — треки не
@@ -664,7 +672,7 @@ export default function App() {
       const from = p.scenes.find((s) => s.id === sceneId) ?? p.scenes[0];
       const scene = {
         id: freshId,
-        name: uniqueName('сцена', p.scenes.map((s) => s.name)),
+        name: `сцена ${Math.max(0, ...p.scenes.map(s => Number(/^сцена\s+(\d+)$/i.exec(s.name.trim())?.[1] ?? 0))) + 1}`,
         // Снимок ансамбля: какие эскизы играют. Мьют и соло — живые
         // состояния прослушивания СЦЕНЫ, в новую не переносятся: новая
         // сцена начинается со звуком (v38).
@@ -932,6 +940,8 @@ export default function App() {
    *  звукоряд. Нет треков — западные 12 полутонов. Встаёт ПЕРВЫМ:
    *  добавил — и работаешь с ним, не скролля. */
   const addTrack = useCallback(() => {
+    setTrackQuery('');
+    setHideSceneMuted(false);
     // id — снаружи апдейтера: StrictMode прогоняет апдейтер дважды, id
     // должен остаться тем же (и он нужен, чтобы открыть библиотеку).
     const id = uid('t');
@@ -1216,7 +1226,7 @@ export default function App() {
       ro.disconnect();
       window.removeEventListener('resize', compute);
     };
-  }, [patch.tracks, editorActive]);
+  }, [patch.tracks, editorActive, trackQuery, hideSceneMuted, currentScene]);
 
   const saveAi = useCallback((next: Partial<AiSettings>) => {
     setAi((prev) => {
@@ -1512,7 +1522,7 @@ export default function App() {
           <button
             className={(pointHelp ? 'on ' : '') + (helpInvite ? 'help-btn pulse' : 'help-btn')}
             onClick={() => { setShowHelpMenu(false); setObRun(null); setPointHelp(v => !v); }}
-            aria-label="Что это?" aria-pressed={pointHelp} data-help="point-help"
+            aria-label="Что это?" aria-pressed={pointHelp} data-help="point-help" data-help-toggle
             title="Что это? Выбрать элемент и узнать о нём (F1)"
             data-ob="help"
           >
@@ -2026,6 +2036,7 @@ export default function App() {
             <path key={l.key} d={l.d} className="sc-link" />
           ))}
         </svg>
+        <div className="track-navigation" data-help="track-filters">
         {/* Кнопка строго над треками: нажал — новый трек появился сразу под ней */}
         <button
           className="add-track"
@@ -2035,7 +2046,22 @@ export default function App() {
         >
           + трек
         </button>
-        {patch.tracks.map((t) => (
+        <div className="track-filters" data-help="track-filters" role="group" aria-label="Фильтры дорожек">
+          <label className="track-name-filter" data-help="track-filter-name">
+            <span>Найти трек</span>
+            <input type="search" aria-label="Фильтр по названию трека" placeholder="Название…"
+              value={trackQuery} onChange={e => setTrackQuery(e.target.value)} />
+          </label>
+          <label className="track-mute-filter" data-help="track-filter-muted">
+            <input type="checkbox" checked={hideSceneMuted} onChange={e => setHideSceneMuted(e.target.checked)} />
+            Скрыть мьют в этой сцене
+          </label>
+          <span className="track-filter-count" aria-live="polite">{visibleTracks.length} из {patch.tracks.length}</span>
+          {(trackQuery || hideSceneMuted) && <button data-help="track-filter-reset" onClick={() => { setTrackQuery(''); setHideSceneMuted(false); }}>Сбросить</button>}
+        </div>
+        </div>
+        {patch.tracks.length > 0 && visibleTracks.length === 0 && <div className="track-filter-empty" data-help="track-filters">Нет треков по этим фильтрам. Измени название или сбрось фильтры.</div>}
+        {visibleTracks.map((t) => (
           <TrackRow
             key={t.id}
             track={t}
