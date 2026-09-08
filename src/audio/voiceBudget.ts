@@ -11,7 +11,7 @@ function noteCost(st: SoundingTrack): number {
   const body = st.waveform === 'sample'
     ? st.sampleMode === 'grain' ? 4 * (st.grainCount ?? 10) : 12
     : 8 * Math.max(1, st.wave?.wavetable?.frames.length ?? (st.wave?.va ? 1 : st.wave?.partials.length) ?? 1) * (st.unisonVoices ?? 1);
-  return 20 + (st.ringMix ? 6 : 0) + (st.foldDrive ? 2 : 0) + (st.combMix ? 7 : 0) + (st.ampMseg ? 1 : 0) + (st.mono && (st.portamentoSec ?? 0) > 0 ? 1 : 0) + body + 2 * (st.formants?.length ?? 0);
+  return 20 + (st.ringMix ? 6 : 0) + (st.foldDrive ? 2 : 0) + (st.combMix ? 7 : 0) + (st.ampMseg ? 1 : 0) + (st.pitchMseg ? 1 : 0) + (st.filterMseg ? 1 : 0) + (st.mono && (st.portamentoSec ?? 0) > 0 ? 1 : 0) + body + 2 * (st.formants?.length ?? 0);
 }
 export function estimateVoiceNodes(st: SoundingTrack, notes: number | readonly Note[]): number {
   if (st.layers?.length || st.baseVoiceGain !== undefined) return 1 + instrumentVoices(st).filter(v => v.gain > 0).reduce((n, v) => n + estimateVoiceNodes(v.sound, notes), 0);

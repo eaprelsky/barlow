@@ -1,7 +1,7 @@
 import { validWavetable, validVA } from './music/wavetable.ts';
 // Bounded validation before migrations or asset I/O; legacy versions retain
 // their own optional fields and are converted by normalizePatch afterwards.
-import { validMseg } from './music/mseg.ts';
+import { validMseg, validControlMseg } from './music/mseg.ts';
 import { validNoteLocks } from './music/noteLocks.ts';
 import { validSampleSlices } from './music/sampleSlices.ts';
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -90,7 +90,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       const v = inst[field]; if (v !== undefined && (typeof v !== 'number' || v < lo || v > hi)) return false;
     }
     if (inst.synthQuality !== undefined && inst.synthQuality !== '2x' && inst.synthQuality !== '4x') return false;
-    if (!validMseg(inst.ampMseg)) return false;
+    if (!validMseg(inst.ampMseg) || !validControlMseg(inst.pitchMseg) || !validControlMseg(inst.filterMseg, true)) return false;
     if (inst.recommendedHz !== undefined && (typeof inst.recommendedHz !== 'number' || inst.recommendedHz < 20 || inst.recommendedHz > 9000)) return false;
     if (!validSampleSlices(inst.sampleSlices)) return false;
     if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;

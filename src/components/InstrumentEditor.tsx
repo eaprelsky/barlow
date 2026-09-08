@@ -3,6 +3,7 @@ import { exportInstrument } from '../audio/instrumentFile';
 import { WavetableEditor } from './WavetableEditor';
 import { tableRecipe } from '../music/wavetable';
 import { LayerEditor } from './LayerEditor';
+import { ControlEnvelopeEditor } from './ControlEnvelopeEditor';
 import { MsegEditor } from './MsegEditor';
 import { MSEG_SHAPES, msegDuration } from '../music/mseg';
 import { recommendedHz } from '../music/audition';
@@ -146,6 +147,7 @@ export function InstrumentEditor({
   onScratchPeaks,
 }: InstrumentEditorProps) {
   // Слитый вид: дорожка + инструмент — для чтения звука и превью.
+  const [envelopeTarget, setEnvelopeTarget] = useState<'amp' | 'pitch' | 'filter'>('amp');
   const [fileBusy, setFileBusy] = useState(false);
   const st: SoundingTrack = { ...inst, ...track };
   const scope = `[data-track-id="${track.id}"]`;
@@ -1395,6 +1397,12 @@ export function InstrumentEditor({
       {tab === 'env' && (
         <div className="we-body">
           <div className="env-tab" data-ob="env-tab">
+            <div className="mseg-targets" data-help="mseg-target">
+              {(['amp', 'pitch', 'filter'] as const).map(target => <button key={target} aria-pressed={envelopeTarget === target} onClick={() => setEnvelopeTarget(target)}>{({amp:'громкость',pitch:'высота',filter:'локальный фильтр'})[target]}{(target === 'pitch' ? st.pitchMseg : target === 'filter' ? st.filterMseg : st.ampMseg) ? ' ·' : ''}</button>)}
+              <button onClick={() => onPreviewNote(inst)} data-help="mseg-listen">▶ послушать</button>
+            </div>
+            {envelopeTarget !== 'amp' ? <ControlEnvelopeEditor key={envelopeTarget} target={envelopeTarget} inst={inst} onChange={onChangeInst} /> : <>
+
             <div className="mseg-toolbar" data-ob="envelope-mode"><span>громкость ноты</span><select aria-label="Режим огибающей" value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
             {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={(ampMseg, command) => onChangeInst({ ampMseg }, command)} /> : <>
             <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
@@ -1456,6 +1464,7 @@ export function InstrumentEditor({
                 ▶ послушать
               </button>
             </div>
+            </>}
           </div>
         </div>
       )}
@@ -1498,7 +1507,7 @@ export function InstrumentEditor({
               value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
               onChange={(filterQ) => onChangeInst({ filterQ })}
             />}
-            <Knob help="instrument.filterEnvAmount"
+            {st.filterMseg ? <button data-help="mseg-filter" onClick={() => { setEnvelopeTarget('filter'); onTab('env'); }}>фильтр по точкам →</button> : <><Knob help="instrument.filterEnvAmount"
               label="огиб. ↑↓"
               bipolar
               title="Огибающая фильтра: старт в полутонах от ручки «верх». Плюс — яркая атака-плак, минус — тёмный свелл; за «время» фильтр съезжает к базе. Двойной клик — точное число"
@@ -1510,7 +1519,7 @@ export function InstrumentEditor({
               title="Огибающая фильтра: за сколько секунд фильтр съезжает к базе. 0.05–0.2 — щипок, 1+ — плавный свелл. Двойной клик — точное число"
               value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}
               onChange={(filterEnvTime) => onChangeInst({ filterEnvTime })}
-            />
+            /></>}
           </div>
           {!layerSource && <div className="group sub" data-ob="arp-group">
             <div className="sub-head">

@@ -1,0 +1,86 @@
+{
+  "format": "barlow-instrument",
+  "version": 1,
+  "patchVersion": 55,
+  "name": "Совместимость управляющих MSEG v55",
+  "sound": {
+    "waveform": "wave",
+    "wave": {
+      "partials": [
+        {
+          "type": "sine",
+          "ratio": 1,
+          "amp": 1
+        }
+      ]
+    },
+    "freq": 55,
+    "recommendedHz": 55,
+    "attack": 0.025,
+    "decay": 0.55,
+    "sustain": 0.8,
+    "ampMseg": {
+      "seconds": 1,
+      "points": [
+        {
+          "t": 0,
+          "v": 0
+        },
+        {
+          "t": 0.2,
+          "v": 1,
+          "curve": -3
+        },
+        {
+          "t": 0.5,
+          "v": 0.5,
+          "curve": 2
+        },
+        {
+          "t": 1,
+          "v": 0,
+          "curve": -2
+        }
+      ],
+      "sustainPoint": 2,
+      "loop": {
+        "startPoint": 1,
+        "repeats": 4
+      }
+    },
+    "pitchMseg": {
+      "envelope": {
+        "seconds": 1,
+        "points": [
+          {
+            "t": 0,
+            "v": 0
+          },
+          {
+            "t": 1,
+            "v": 1
+          }
+        ]
+      },
+      "depthOctaves": 2
+    },
+    "filterMseg": {
+      "envelope": {
+        "seconds": 1,
+        "points": [
+          {
+            "t": 0,
+            "v": 0
+          },
+          {
+            "t": 1,
+            "v": 1
+          }
+        ]
+      },
+      "depthOctaves": 2,
+      "baseHz": 400
+    }
+  },
+  "samples": []
+}

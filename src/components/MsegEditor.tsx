@@ -1,19 +1,20 @@
 import { useRef, useState } from 'react';
-import { MSEG_LIMIT, MSEG_SHAPES, msegValue, type Mseg } from '../music/mseg';
+import { MSEG_LIMIT, MSEG_SHAPES, CONTROL_MSEG_SHAPES, msegValue, type Mseg } from '../music/mseg';
 import { useEditGesture } from './editGesture';
 import { NumField } from './NumField';
 import { Knob } from './Knob';
 
-export function MsegEditor({ value, onChange }: { value: Mseg; onChange: (value: Mseg, command?: boolean) => void }) {
+export function MsegEditor({ value, onChange, control = false }: { control?: boolean; value: Mseg; onChange: (value: Mseg, command?: boolean) => void }) {
+  const shapes = control ? CONTROL_MSEG_SHAPES : MSEG_SHAPES;
   const [selected, select] = useState(1);
   const drag = useRef<number | null>(null);
   const gesture = useEditGesture();
   const i = Math.min(selected, value.points.length - 1), point = value.points[i];
   const interior = i > 0 && i < value.points.length - 1;
   const edit = (index: number, t: number, v: number) => {
-    if (index <= 0 || index >= value.points.length - 1) return;
+    if (!control && (index <= 0 || index >= value.points.length - 1)) return;
     const points = value.points.map(p => ({ ...p }));
-    points[index] = { ...points[index], t: Math.max(points[index - 1].t + .001, Math.min(points[index + 1].t - .001, t)), v: Math.max(0, Math.min(1, v)) };
+    points[index] = { ...points[index], t: index === 0 ? 0 : index === points.length - 1 ? 1 : Math.max(points[index - 1].t + .001, Math.min(points[index + 1].t - .001, t)), v: Math.max(0, Math.min(1, v)) };
     onChange({ ...value, points });
   };
   const remove = () => {
@@ -37,12 +38,12 @@ export function MsegEditor({ value, onChange }: { value: Mseg; onChange: (value:
     return `${t * 560},${120 - msegValue(value, t) * 110}`;
   })).join(' ');
   const hold = value.sustainPoint;
-  return <div className="mseg-editor" data-ob="mseg">
+  return <div className="mseg-editor" data-ob="mseg" data-help={control ? "mseg-control" : undefined}>
     <div className="mseg-toolbar">
-      <select aria-label="Форма огибающей" value="" onChange={e => { onChange({ ...value, points: structuredClone(MSEG_SHAPES[e.target.value]), sustainPoint: undefined, loop: undefined }, true); select(1); }}>
-        <option value="" disabled>готовая форма…</option>{Object.keys(MSEG_SHAPES).map(name => <option key={name}>{name}</option>)}
+      <select aria-label="Форма огибающей" value="" onChange={e => { onChange({ ...value, points: structuredClone(shapes[e.target.value]), sustainPoint: undefined, loop: undefined }, true); select(1); }}>
+        <option value="" disabled>готовая форма…</option>{Object.keys(shapes).map(name => <option key={name}>{name}</option>)}
       </select>
-      <label data-help="mseg-duration">{hold === undefined ? 'без длины ноты, с' : 'масштаб формы, с'} <NumField ariaLabel="Длительность MSEG, с" value={value.seconds} min={.01} max={16} step={.01} onChange={seconds => onChange({ ...value, seconds })} /></label>
+      {(!control || hold !== undefined) && <label data-help="mseg-duration">{hold === undefined ? (control ? 'масштаб удержания, с' : 'без длины ноты, с') : 'масштаб формы, с'} <NumField ariaLabel="Длительность MSEG, с" value={value.seconds} min={.01} max={16} step={.01} onChange={seconds => onChange({ ...value, seconds })} /></label>}
       <span>{value.points.length}/{MSEG_LIMIT} точек</span>
     </div>
     <div className="mseg-toolbar mseg-playback" data-help="mseg-playback">
@@ -57,7 +58,7 @@ export function MsegEditor({ value, onChange }: { value: Mseg; onChange: (value:
         </>}
       </>}
     </div>
-    <svg viewBox="0 0 560 140" preserveAspectRatio="none" className="mseg-graph" aria-label="График громкости по точкам"
+    <svg viewBox="0 0 560 140" preserveAspectRatio="none" className="mseg-graph" aria-label={control ? "График движения по точкам" : "График громкости по точкам"}
       onDoubleClick={e => { const r = e.currentTarget.getBoundingClientRect(); add(Math.max(.001, Math.min(.999, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, 1 - ((e.clientY - r.top) / r.height * 140 - 10) / 110))); }}
       onPointerMove={e => { if (drag.current === null) return; const r = e.currentTarget.getBoundingClientRect(); edit(drag.current, (e.clientX - r.left) / r.width, 1 - ((e.clientY - r.top) / r.height * 140 - 10) / 110); }}
       onPointerUp={() => { drag.current = null; gesture.commit(); }} onPointerCancel={() => { drag.current = null; gesture.cancel(); }}>
@@ -73,7 +74,7 @@ export function MsegEditor({ value, onChange }: { value: Mseg; onChange: (value:
     <div className="mseg-toolbar">
       <label>точка <select data-help="mseg-point" aria-label="Точка огибающей" value={i} onChange={e => select(+e.target.value)}>{value.points.map((_, n) => <option key={n} value={n}>{n + 1}</option>)}</select></label>
       <label>время, % <NumField help="mseg-time" ariaLabel="Время точки, %" w={55} value={point.t * 100} min={interior ? (value.points[i - 1].t + .001) * 100 : 0} max={interior ? (value.points[i + 1].t - .001) * 100 : 100} disabled={!interior} step={.1} onChange={t => edit(i, t / 100, point.v)} /></label>
-      <label>уровень, % <NumField help="mseg-level" ariaLabel="Уровень точки, %" w={55} value={point.v * 100} min={0} max={100} disabled={!interior} step={1} onChange={v => edit(i, point.t, v / 100)} /></label>
+      <label>уровень, % <NumField help={control ? "mseg-control-level" : "mseg-level"} ariaLabel="Уровень точки, %" w={55} value={point.v * 100} min={0} max={100} disabled={!interior && !control} step={1} onChange={v => edit(i, point.t, v / 100)} /></label>
       {i > 0 && <Knob help="mseg-curve" label="изгиб до точки" value={(point.curve ?? 0) * 25} min={-100} max={100} step={1} bipolar
         onChange={v => onChange({ ...value, points: value.points.map((p, n) => n === i ? { ...p, curve: v / 25 || undefined } : p) })} />}
       <button data-help="mseg-add" disabled={value.points.length >= MSEG_LIMIT} onClick={() => { let n = 0; for (let k = 1; k < value.points.length - 1; k++) if (value.points[k + 1].t - value.points[k].t > value.points[n + 1].t - value.points[n].t) n = k; add((value.points[n].t + value.points[n + 1].t) / 2, (value.points[n].v + value.points[n + 1].v) / 2); }}>+ точка</button>

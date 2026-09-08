@@ -351,14 +351,18 @@ function triggerNoteVoice(
   // минус — тёмный свелл. Выключена (0) — голос идёт напрямую, как раньше.
   let sink: AudioNode = destination;
   const feAmt = clampNum(track.filterEnvAmount ?? 0, -24, 24);
-  if (Math.abs(feAmt) > 0.01) {
+  let localFilter: BiquadFilterNode | undefined;
+  if (track.filterMseg || Math.abs(feAmt) > 0.01) {
     const base = clampNum(track.filterFreq, 60, 12000);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.8;
     const from = clampNum(base * Math.pow(2, feAmt / 12), 40, 18000);
-    lp.frequency.setValueAtTime(from, time);
-    lp.frequency.exponentialRampToValueAtTime(base, time + clampNum(track.filterEnvTime ?? 0.3, 0.01, 4));
+    if (track.filterMseg) { lp.frequency.value = track.filterMseg.baseHz; localFilter = lp; }
+    else {
+      lp.frequency.setValueAtTime(from, time);
+      lp.frequency.exponentialRampToValueAtTime(base, time + clampNum(track.filterEnvTime ?? 0.3, 0.01, 4));
+    }
     lp.connect(destination);
     sink = lp;
   }
@@ -398,7 +402,16 @@ function triggerNoteVoice(
   // значение присваивается после расчёта огибающей (до первого вызова).
   let stopAt = time + 0.05;
   let pitchSource: ConstantSourceNode | undefined;
+  let pitchEnvelope: ConstantSourceNode | undefined;
   const attachPitch = (param: AudioParam): void => {
+    if (track.pitchMseg) {
+      if (!pitchEnvelope) {
+        pitchEnvelope = ctx.createConstantSource();
+        pitchEnvelope.offset.value = 0;
+        pitchEnvelope.start(time); sources.push(pitchEnvelope);
+      }
+      pitchEnvelope.connect(param);
+    }
     if (!glide) return;
     if (!pitchSource) {
       pitchSource = ctx.createConstantSource();
@@ -417,7 +430,18 @@ function triggerNoteVoice(
       amp.gain.setValueAtTime(peak, time);
       scheduleMseg(msegGain.gain, track.ampMseg, time, msegGate);
     }
+    // Control envelopes do not extend the source or the amplitude release.
+    const controlGate = !track.ampMseg && sus >= .99 ? voiceLen : msegGate;
+    if (pitchEnvelope && track.pitchMseg) {
+      scheduleMseg(pitchEnvelope.offset, track.pitchMseg.envelope, time, controlGate, v => v * track.pitchMseg!.depthOctaves * 1200);
+    }
+    if (localFilter && track.filterMseg) {
+      const route = track.filterMseg;
+      const ceiling = Math.min(18000, ctx.sampleRate * .49);
+      scheduleMseg(localFilter.detune, route.envelope, time, controlGate, v => 1200 * Math.log2(clampNum(route.baseHz * 2 ** (v * route.depthOctaves), 40, ceiling) / route.baseHz));
+    }
     stopAt = color.finish(stopAt);
+    if (pitchEnvelope) stopSource(pitchEnvelope, stopAt);
     if (pitchSource) stopSource(pitchSource, stopAt);
     return { amp, sources, stopAt };
   };
@@ -498,7 +522,7 @@ function triggerNoteVoice(
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
     if (!sample) return finish();
     const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd, random,
-      glide ? { attach: attachPitch, maxRatio: Math.max(1, glide.fromHz / glide.toHz) } : undefined);
+      glide || track.pitchMseg ? { attach: attachPitch, maxRatio: Math.max(1, glide ? glide.fromHz / glide.toHz : 1) * 2 ** Math.max(0, track.pitchMseg?.depthOctaves ?? 0) } : undefined);
     stopAt = lastEnd;
     return finish();
   }

@@ -14,7 +14,7 @@ import { validPatchInput } from './patchValidation';
 import { PARAMETERS, normalizeParameter, parameterAt, type ParameterId } from './parameters';
 import { normalizeMacros, type SoundMacro } from './music/macros';
 import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
-import { normalizeMseg, type Mseg } from './music/mseg';
+import { normalizeMseg, normalizeControlMseg, type PitchMseg, type FilterMseg, type Mseg } from './music/mseg';
 import { normalizeNoteLocks } from './music/noteLocks';
 import { normalizeSampleSlices, type SampleSlice } from './music/sampleSlices';
 
@@ -453,6 +453,8 @@ export interface Instrument {
   baseVoiceGain?: number;
   /** Amplitude envelope over the note; absent preserves the classic envelope. */
   ampMseg?: Mseg;
+  pitchMseg?: PitchMseg;
+  filterMseg?: FilterMseg;
   id: string;
   // Имя инструмента (при создании наследует имя дорожки/пресета).
   name: string;
@@ -537,7 +539,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'ringMix', 'ringRatio', 'foldDrive', 'combMix', 'combHz', 'combFeedback', 'synthQuality', 'layers', 'baseVoiceGain', 'ampMseg', 'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
+  'ringMix', 'ringRatio', 'foldDrive', 'combMix', 'combHz', 'combFeedback', 'synthQuality', 'layers', 'baseVoiceGain', 'ampMseg', 'pitchMseg', 'filterMseg', 'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -610,7 +612,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 54;
+export const PATCH_VERSION = 55;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -654,6 +656,8 @@ export function makeInstrument(
     ringMix: partial.ringMix, ringRatio: partial.ringRatio, foldDrive: partial.foldDrive,
     combMix: partial.combMix, combHz: partial.combHz, combFeedback: partial.combFeedback, synthQuality: partial.synthQuality,
     ampMseg: normalizeMseg(partial.ampMseg),
+    pitchMseg: normalizeControlMseg(partial.pitchMseg),
+    filterMseg: normalizeControlMseg(partial.filterMseg, true),
     layers: normalizeLayers(partial.layers),
     baseVoiceGain: partial.baseVoiceGain,
     sampleId: partial.sampleId,
@@ -1014,6 +1018,8 @@ function normalizeInstrument(
     combFeedback: typeof t.combFeedback === 'number' ? clamp(t.combFeedback, 0, .85, .5) : undefined,
     synthQuality: t.synthQuality === '2x' ? '2x' : t.synthQuality === '4x' ? '4x' : undefined,
     ampMseg: normalizeMseg(t.ampMseg),
+    pitchMseg: normalizeControlMseg(t.pitchMseg),
+    filterMseg: normalizeControlMseg(t.filterMseg, true),
     layers: normalizeLayers(t.layers),
     baseVoiceGain: typeof t.baseVoiceGain === 'number' ? clamp(t.baseVoiceGain, 0, 1, 1) : undefined,
     sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,

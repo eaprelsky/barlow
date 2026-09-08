@@ -79,6 +79,38 @@ try{
   const voice=triggerVoice(c,{hp},sample,sample,sound,[{n:0,vel:1,prob:1}],.05,.125,.8,undefined,()=>.5);
   const pcm=(await c.startRendering()).getChannelData(0);check(mode+' sustain release survives note end',rms(pcm,.87,.94)>.001);check(mode+' held release reaches silence',rms(pcm,1.3,1.6)<1e-7);check(mode+' lifetime includes release',voice.stopAt>=1.25);
  }
+
+ const {validControlMseg}=await import('/src/music/mseg.ts');
+ const rise={envelope:{seconds:1,points:[{t:0,v:0},{t:1,v:1}]},depthOctaves:2};
+ const fall={envelope:{seconds:1,points:[{t:0,v:1},{t:1,v:0}]},depthOctaves:-2};
+ check('control endpoints free, amplitude endpoints protected',validControlMseg(rise)&&validControlMseg(fall)&&!validMseg(rise.envelope));
+ for(const bad of [{...rise,depthOctaves:5},{...rise,depthOctaves:NaN},{...rise,envelope:null},{...rise,envelope:{...rise.envelope,points:[{t:0,v:-1},{t:1,v:1}]}}])check('reject invalid control route',!validControlMseg(bad));
+ check('filter requires independent valid base',!validControlMseg(rise,true)&&!validControlMseg({...rise,baseHz:0},true));
+ const routed=structuredClone(patch);Object.assign(routed.instruments[0],{pitchMseg:rise,filterMseg:{...rise,baseHz:400}});
+ routed.instruments[0].layers=[{id:'route-layer',name:'routes',gain:.5,ratio:1,sound:voiceSnapshot(routed.instruments[0])}];
+ const normalized=normalizePatch(JSON.parse(JSON.stringify(routed)));
+ check('routes survive JSON normalization',isPatch(normalized)&&JSON.stringify(normalized.instruments[0].pitchMseg)===JSON.stringify(rise));
+ const moved=await prepareInstrument(await exportInstrument({name:'routes',category:'мои',track:{...st,...normalized.instruments[0]}}));
+ check('routes survive portable main and layer',JSON.stringify(moved.preset.track.pitchMseg)===JSON.stringify(rise)&&JSON.stringify(moved.preset.track.layers[0].sound.filterMseg)===JSON.stringify({...rise,baseHz:400}));
+ const flat={seconds:1,points:[{t:0,v:0},{t:.005,v:1},{t:.99,v:1},{t:1,v:0}]};
+ async function renderRoute(route,mode='wave',filter){
+   const c=new OfflineAudioContext(1,44100*1.3,44100);if(mode==='scratch')await ensureScratchModule(c);
+   const sample=c.createBuffer(1,44100*3,44100);for(let i=0;i<sample.length;i++)sample.getChannelData(0)[i]=Math.sin(2*Math.PI*220*i/44100)*.5;
+   const hp=c.createGain();hp.connect(c.destination);
+   const sound={...st,ampMseg:flat,pitchMseg:route,filterMseg:filter,rootHz:220,keyTracking:true,waveform:['plain','grain','scratch'].includes(mode)?'sample':'wave',sampleMode:mode,sampleLoop:true,grainCount:64,grainSizeMs:200,grainScatter:0,grainPos:.3,scratchPoints:[{t:0,pos:0},{t:1,pos:.3}],wave:{partials:[{type:'sine',ratio:mode==='filter'?16:1,amp:1}]}};
+   triggerVoice(c,{hp},sample,sample,sound,[{n:0,vel:1,prob:1}],.05,.125,1,undefined,()=>.5);
+   return (await c.startRendering()).getChannelData(0);
+ }
+ function frequency(a,from,to){let n=0;for(let i=Math.floor(from*44100)+1;i<to*44100;i++)if(a[i-1]<=0&&a[i]>0)n++;return n/(to-from);}
+ for(const mode of ['wave','plain','grain']){
+   const a=await renderRoute(rise,mode);const early=frequency(a,.2,.35),late=frequency(a,.75,.9);
+   check(mode+' riser raises actual PCM pitch',late>early*1.8&&a.every(Number.isFinite));
+   const b=await renderRoute(fall,mode);check(mode+' negative sweep approaches base from below',frequency(b,.75,.9)>frequency(b,.2,.35)*1.6);
+ }
+ const filtered=await renderRoute(undefined,'filter',{...rise,depthOctaves:4,baseHz:200});
+ check('local filter opens in actual PCM',rms(filtered,.75,.9)>rms(filtered,.15,.3)*4&&filtered.every(Number.isFinite));
+ const unchangedScratch=await renderRoute(undefined,'scratch'),routedScratch=await renderRoute(rise,'scratch');
+ check('pitch route does not change scratch gesture',unchangedScratch.every((v,i)=>Math.abs(v-routedScratch[i])<1e-6));
  localStorage.setItem('barlow.patch.v12',JSON.stringify(patch));localStorage.setItem('barlow.onboarding.v1',JSON.stringify({invited:true,seen:{main:true}}));return checks;
  });
  for(const c of result)console.log(`${c.pass?'PASS':'FAIL'} ${c.name}`);assert.ok(result.every(c=>c.pass));
@@ -95,5 +127,13 @@ try{
  await page.locator('[data-ob="library-btn"]').click();
  for(const width of [1024,1440]){await page.setViewportSize({width,height:900});await page.locator('[data-ob="mseg"]').scrollIntoViewIfNeeded();const bounds=await page.locator('[data-ob="mseg"]').boundingBox();assert.ok(bounds.height<360&&bounds.x+bounds.width<=width);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:root+`/tmp/mseg-${width}.png`});console.log('PASS MSEG compact layout '+width);}
  const withHold=await readEnvelope();await page.getByLabel('Точка огибающей',{exact:true}).selectOption({value:'2'});await page.getByRole('button',{name:'удалить',exact:true}).click();assert.equal((await readEnvelope()).sustainPoint,undefined);assert.equal((await readEnvelope()).loop,undefined);await page.keyboard.press('Control+z');assert.deepEqual(await readEnvelope(),withHold);
- await page.keyboard.press('F1');await page.locator('[data-ob="mseg"]').click();await page.locator('.ph-card').filter({hasText:'огибающая по точкам'}).waitFor();await page.keyboard.press('Escape');await page.keyboard.press('Escape');assert.deepEqual(errors,[]);console.log('PASS UI fields undo and help');
+ await page.keyboard.press('F1');await page.locator('[data-ob="mseg"]').click();await page.locator('.ph-card').filter({hasText:'огибающая по точкам'}).waitFor();await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.getByRole('button',{name:'высота',exact:true}).click();await page.getByLabel('Включить огибающую цели').check();
+ await page.getByLabel('Точка огибающей',{exact:true}).selectOption({value:'0'});await page.getByLabel('Уровень точки, %',{exact:true}).fill('25');await page.getByLabel('Уровень точки, %',{exact:true}).press('Enter');
+ await page.keyboard.press('Control+z');assert.equal(+await page.getByLabel('Уровень точки, %',{exact:true}).inputValue(),0);await page.keyboard.press('Control+Shift+z');
+ for(const target of ['pitch','filter']){
+   if(target==='filter'){await page.getByRole('button',{name:'локальный фильтр',exact:true}).click();await page.getByLabel('Включить огибающую цели').check();}
+   assert.deepEqual((await page.evaluate(async()=>(await import('/src/onboarding/helpResolver.ts')).helpCoverage())).missing,[]);
+   for(const width of [1024,1440]){await page.setViewportSize({width,height:900});await page.locator('.control-envelope').scrollIntoViewIfNeeded();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:root+`/tmp/mseg55-${target}-${width}.png`});}
+ }
+ assert.deepEqual(errors,[]);console.log('PASS UI fields undo and help');
 }finally{await browser?.close();vite.kill();}

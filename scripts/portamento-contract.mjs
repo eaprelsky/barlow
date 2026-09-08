@@ -90,7 +90,7 @@ try{
  });
  for(const c of result)console.log(`${c.pass?'PASS':'FAIL'} ${c.name} ${JSON.stringify(c.details??'')}`);assert.ok(result.every(c=>c.pass));
  await page.goto(`http://127.0.0.1:${port}`);await page.locator('[data-ob="mode-track"]').first().click();
- const field=page.getByRole('spinbutton',{name:'portamento, мс',exact:true});await field.fill('350');await field.press('Enter');
+ const field=page.locator('[data-ob="portamento"] input');await field.fill('350');await field.press('Enter');
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('barlow.patch.v12')).tracks[0].portamentoSec===.35);
  await page.keyboard.press('Control+z');assert.equal(Number(await field.inputValue()),0);await page.keyboard.press('Control+Shift+z');assert.equal(Number(await field.inputValue()),350);
  await field.fill('800');await field.press('Escape');assert.equal(Number(await field.inputValue()),350);

@@ -12,7 +12,7 @@ export const MSEG_SHAPES: Record<string, Mseg['points']> = {
   'взлёт': [{ t: 0, v: 0 }, { t: .7, v: .5 }, { t: .9, v: 1 }, { t: 1, v: 0 }],
   'две атаки': [{ t: 0, v: 0 }, { t: .02, v: 1 }, { t: .35, v: 0 }, { t: .5, v: 0 }, { t: .52, v: .8 }, { t: 1, v: 0 }],
 };
-export function validMseg(raw: unknown): boolean {
+export function validMseg(raw: unknown, control = false): boolean {
   if (raw === undefined) return true;
   if (!raw || typeof raw !== 'object') return false;
   const e = raw as Mseg;
@@ -22,15 +22,15 @@ export function validMseg(raw: unknown): boolean {
       && (p.curve === undefined || Number.isFinite(p.curve) && p.curve >= -4 && p.curve <= 4)
       && p.t >= 0 && p.t <= 1 && p.v >= 0 && p.v <= 1
       && (i === 0 || p.t - e.points[i - 1].t >= .001 - 1e-9))
-    && e.points[0].t === 0 && e.points[0].v === 0
-    && e.points.at(-1)!.t === 1 && e.points.at(-1)!.v === 0
+    && e.points[0].t === 0 && (control || e.points[0].v === 0)
+    && e.points.at(-1)!.t === 1 && (control || e.points.at(-1)!.v === 0)
     && (e.sustainPoint === undefined || Number.isInteger(e.sustainPoint) && e.sustainPoint > 0 && e.sustainPoint < e.points.length - 1)
     && (e.loop === undefined || !!e.loop && typeof e.loop === 'object' && e.sustainPoint !== undefined
       && Number.isInteger(e.loop.startPoint) && e.loop.startPoint >= 0 && e.loop.startPoint < e.sustainPoint
       && Number.isInteger(e.loop.repeats) && e.loop.repeats >= 1 && e.loop.repeats <= 32);
 }
-export function normalizeMseg(raw: unknown): Mseg | undefined {
-  if (raw === undefined || !validMseg(raw)) return undefined;
+export function normalizeMseg(raw: unknown, control = false): Mseg | undefined {
+  if (raw === undefined || !validMseg(raw, control)) return undefined;
   const e = raw as Mseg;
   return { seconds: e.seconds, points: e.points.map(({ t, v, curve }) => ({ t, v, ...(curve ? { curve } : {}) })),
     ...(e.sustainPoint === undefined ? {} : { sustainPoint: e.sustainPoint }),
@@ -85,19 +85,44 @@ export function msegSegments(envelope: Mseg, gate: number): MsegSegment[] {
     i === hold + 1 ? releaseFrom : p[i - 1].v, p[i].v, p[i].curve);
   return out;
 }
-export function scheduleMseg(param: AudioParam, envelope: Mseg, time: number, duration: number): void {
-  param.setValueAtTime(0, time);
+export function scheduleMseg(param: AudioParam, envelope: Mseg, time: number, duration: number, map?: (value: number) => number): void {
+  const transform = map ?? ((v: number) => v);
+  param.setValueAtTime(transform(envelope.points[0].v), time);
   // Preserve previously released envelopes without numerical or timing changes.
-  if (envelope.sustainPoint === undefined && envelope.points.every(p => !p.curve)) {
-    for (const point of envelope.points.slice(1)) param.linearRampToValueAtTime(point.v, time + point.t * duration);
+  if (!map && envelope.sustainPoint === undefined && envelope.points.every(p => !p.curve)) {
+    for (const point of envelope.points.slice(1)) param.linearRampToValueAtTime(transform(point.v), time + point.t * duration);
     return;
   }
   let cursor = time;
   for (const segment of msegSegments(envelope, duration)) {
-    const count = segment.curve ? 65 : 2;
-    const values = Float32Array.from({ length: count }, (_, i) => segment.from + (segment.to - segment.from) * msegCurve(i / (count - 1), segment.curve));
+    const count = segment.curve || map ? 65 : 2;
+    const values = Float32Array.from({ length: count }, (_, i) => transform(segment.from + (segment.to - segment.from) * msegCurve(i / (count - 1), segment.curve)));
     param.setValueCurveAtTime(values, cursor, segment.duration);
     // Use precisely the previous AudioParam curve end to avoid overlap by roundoff.
     cursor += segment.duration;
   }
 }
+
+/** Control envelopes have free endpoint levels; zero means unshifted base. */
+export interface PitchMseg { envelope: Mseg; depthOctaves: number }
+export interface FilterMseg extends PitchMseg { baseHz: number }
+export function validControlMseg(raw: unknown, filter = false): boolean {
+  if (raw === undefined) return true;
+  if (!raw || typeof raw !== 'object') return false;
+  const r = raw as FilterMseg;
+  return r.envelope !== undefined && validMseg(r.envelope, true)
+    && Number.isFinite(r.depthOctaves) && Math.abs(r.depthOctaves) <= 4
+    && (!filter || Number.isFinite(r.baseHz) && r.baseHz >= 40 && r.baseHz <= 18000);
+}
+export function normalizeControlMseg(raw: unknown): PitchMseg | undefined;
+export function normalizeControlMseg(raw: unknown, filter: true): FilterMseg | undefined;
+export function normalizeControlMseg(raw: unknown, filter = false): PitchMseg | FilterMseg | undefined {
+  if (raw === undefined || !validControlMseg(raw, filter)) return undefined;
+  const r = raw as FilterMseg;
+  return { envelope: normalizeMseg(r.envelope, true)!, depthOctaves: r.depthOctaves, ...(filter ? { baseHz: r.baseHz } : {}) };
+}
+export const CONTROL_MSEG_SHAPES: Record<string, Mseg['points']> = {
+  'подъём': [{t:0,v:0},{t:1,v:1}],
+  'спад': [{t:0,v:1},{t:1,v:0}],
+  'волна': [{t:0,v:0},{t:.5,v:1},{t:1,v:0}],
+};
