@@ -318,6 +318,7 @@ export function modRateHz(mod: Mod, bpm: number): number {
 }
 
 export interface Track {
+  spaceSend?: number;
   id: string;
   name: string;
   // Инструмент дорожки (тембр: источник, огибающая ноты, фильтры).
@@ -603,6 +604,7 @@ export interface Patch {
   // Панорама всего микса 0..1 (0.5 — центр): сдвигает стерео поле целиком,
   // трековые паны и их модуляции остаются как есть.
   masterPan?: number;
+  sceneSpace?: {sizeSec:number;level:number};
   // Фоновый шум мастера (после лимитера — не качается компрессией):
   // естественность ленты/воздуха. Уровень 0..1.
   masterNoise?: MasterNoise;
@@ -744,6 +746,7 @@ export function makeTrackWithInstrument(
     chokeGroup: partial.chokeGroup,
     chokePriority: partial.chokePriority,
     effects: normalizeEffects(partial.effects),
+    spaceSend: partial.spaceSend,
     scaleOctUp: partial.scaleOctUp,
     scaleOctDown: partial.scaleOctDown,
     patterns:
@@ -1288,6 +1291,7 @@ export function normalizePatch(p: Patch): Patch {
           };
         })(),
         effects: normalizeEffects((t as { effects?: unknown }).effects),
+        spaceSend: typeof t.spaceSend === 'number' ? clamp(t.spaceSend,0,1,0) : undefined,
         scaleOctUp: octUp,
         scaleOctDown: octDown,
       };
@@ -1391,6 +1395,7 @@ export function normalizePatch(p: Patch): Patch {
         ? ((p as { masterNoise?: MasterNoise }).masterNoise!)
         : 'off',
     masterNoiseLevel: clamp((p as { masterNoiseLevel?: number }).masterNoiseLevel ?? 0.03, 0, 0.15, 0.03),
+    sceneSpace: p.sceneSpace && typeof p.sceneSpace === 'object' ? {sizeSec:clamp(p.sceneSpace.sizeSec,.2,8,2),level:clamp(p.sceneSpace.level,0,1,.3)} : undefined,
     masterPan: clamp((p as { masterPan?: number }).masterPan ?? 0.5, 0, 1, 0.5),
     masterComp: clamp((p as { masterComp?: number }).masterComp ?? 0, 0, 1, 0),
     followChain: !!p.followChain,
@@ -1432,4 +1437,11 @@ export function normalizeVoiceRange(raw: unknown): VoiceRange | undefined {
  if(!raw || typeof raw!=='object') return undefined;
  const r=raw as VoiceRange,minHz=clamp(r.minHz,1,24000,20),minVelocity=clamp(r.minVelocity,0,1,0);
  return {minHz,maxHz:clamp(r.maxHz,minHz,24000,20000),minVelocity,maxVelocity:clamp(r.maxVelocity,minVelocity,1,1)};
+}
+
+/** Named multi-instrument archive; assets are shared by content hash. */
+export interface InstrumentPackFile {
+ format: 'barlow-pack'; version: 1; patchVersion: number; name: string; description: string;
+ instruments: {id:string;name:string;hint?:string;tags?:string[];sound:Partial<Track & Instrument>}[];
+ samples: {id:string;name:string;mime:string}[];
 }

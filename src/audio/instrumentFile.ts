@@ -14,7 +14,7 @@ const allowed = new Set<string>(SAVE_FIELDS);
 const hash = async (bytes: Uint8Array<ArrayBuffer>) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
 function check(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
-function checkedSound(value: unknown, name: string): InstrumentPreset['track'] {
+export function checkedSound(value: unknown, name: string): InstrumentPreset['track'] {
   check(value && typeof value === 'object' && !Array.isArray(value), 'Нет настроек инструмента');
   const raw = value as InstrumentPreset['track'];
   check(Object.keys(raw).every(key=>allowed.has(key)), 'Файл использует неизвестные настройки звука. Обнови barlow.');

@@ -1,3 +1,4 @@
+import { AutomationRecorder } from './AutomationRecorder';
 import { EqEditor } from './EqEditor';
 import { newEqBand } from '../music/equalizer';
 import type { SamplePCM } from '../audio/pcm';
@@ -1897,6 +1898,7 @@ export const TrackRow = memo(function TrackRow({
                   </select></label>}
                   {laneTarget.startsWith('fx') && !laneFx && <span role="status">Цель удалена — назначения не звучат.</span>}
                   {laneTarget.startsWith('fx') && laneFx && !laneSupported && <span role="status">Этот эффект не поддерживает параметр — назначения не звучат.</span>}
+                  <AutomationRecorder key={`${pattern.id}:${laneTarget}:${laneFxId}`} pattern={pattern} step={activeStep} target={laneTarget} fxId={laneTarget.startsWith('fx')?laneFxId:undefined} base={laneTarget==='volume'?1:laneTarget==='pan'?(pattern.pan??track.pan):laneTarget==='filterFreq'?Math.max(0,Math.min(1,Math.log(st.filterFreq/60)/Math.log(200))):laneTarget==='fxTime'?Math.log(autoBaseOf(laneTarget,laneFxId)/.01)/Math.log(200):laneTarget==='fxFeedback'?autoBaseOf(laneTarget,laneFxId)/.9:autoBaseOf(laneTarget,laneFxId)} supported={laneSupported} onChange={automation=>onPatternChange(track.id,pattern.id,{automation})}/>
                   {(pattern.automation?.some(laneMatches)) && (
                     <button
                       title="Убрать кривую: параметр вернётся к своей ручке"

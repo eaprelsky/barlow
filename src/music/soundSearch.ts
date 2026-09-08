@@ -26,7 +26,7 @@ export function soundMatches(text: string, query: string): boolean {
 }
 export function presetMatches(p: InstrumentPreset, query: string): boolean {
   const pack = SOUND_PACKS.find(pack => pack.id === presetPackOf(p));
-  return soundMatches([p.name, p.category, p.hint ?? '', ...(p.tags ?? []), pack?.name ?? '', ...SOUND_COLLECTIONS.filter(c=>presetInCollection(p,c.id)).map(c=>c.name), p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
+  return soundMatches([p.name, p.category, p.hint ?? '', p.packName ?? '', p.packDescription ?? '', ...(p.tags ?? []), pack?.name ?? '', ...SOUND_COLLECTIONS.filter(c=>presetInCollection(p,c.id)).map(c=>c.name), p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
 }
 export const presetFavoriteId = (p: InstrumentPreset) => `preset:${p.id ?? p.name}`;
 export const sampleFavoriteId = (id: string) => `sample:${id}`;
@@ -55,6 +55,7 @@ export const SOUND_COLLECTIONS = [
   {id:'user',name:'Мои инструменты',description:'Сохранённые и импортированные тобой тембры'},
 ];
 export function presetInCollection(p: InstrumentPreset, id: string): boolean {
+  if(id.startsWith('pack:')) return p.packId===id.slice(5);
   if(id==='user') return p.category==='мои';
   if(p.category==='мои') return false;
   switch(id){

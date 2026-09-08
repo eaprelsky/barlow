@@ -408,6 +408,7 @@ export function SoundBrowser({
         {tab === 'inst' && <label className="sb-pack">подборка <select title={SOUND_COLLECTIONS.find(p=>p.id===pack)?.description ?? 'Подборки по музыкальной задаче; один звук может входить в несколько'} data-help="library-pack" aria-label="Подборка звуков" value={pack} onChange={e => setPack(e.target.value)}>
           <option value="">все инструменты</option>
           {SOUND_COLLECTIONS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetInCollection(s, p.id)).length})</option>)}
+          {[...new Map(all.filter(p=>p.packName&&p.packId).map(p=>[p.packId!,p])).values()].map(p=><option key={p.packId} value={`pack:${p.packId}`}>{p.packName}</option>)}
         </select></label>}
         <label><input data-help="favorites-only" type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
         <span role="status">найдено: {tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>

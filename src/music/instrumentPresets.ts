@@ -15,6 +15,8 @@ export interface InstrumentPreset {
   id?: string;
   tags?: string[];
   packId?: string;
+  packName?: string;
+  packDescription?: string;
   name: string;
   // Группа в браузере инструментов (порядок категорий — CATEGORY_ORDER).
   category: string;
@@ -865,7 +867,8 @@ export function loadUserPresets(): InstrumentPreset[] {
       // Сохранённые до v39 модели пересобираются в строки рецептами.
       .map((p) => ({ ...convertPresetV39({ name: p.name, category: USER_CATEGORY, track: p.track }),
         id: typeof (p as InstrumentPreset).id === 'string' ? (p as InstrumentPreset).id : `user:${p.name}`,
-        packId: 'user', hint: typeof (p as InstrumentPreset).hint === 'string' ? (p as InstrumentPreset).hint?.slice(0, 600) : undefined,
+        packId: typeof (p as InstrumentPreset).packId === 'string' ? (p as InstrumentPreset).packId : 'user',
+        packName: (p as InstrumentPreset).packName, packDescription: (p as InstrumentPreset).packDescription, hint: typeof (p as InstrumentPreset).hint === 'string' ? (p as InstrumentPreset).hint?.slice(0, 600) : undefined,
         tags: Array.isArray((p as InstrumentPreset).tags)
           ? (p as InstrumentPreset).tags!.filter((t) => typeof t === 'string').slice(0, 16) : ['user'],
       }));
@@ -904,4 +907,12 @@ export function deleteUserPreset(name: string): void {
   const list = loadUserPresets().filter((p) => p.name !== name);
   localStorage.setItem(USER_KEY, JSON.stringify(list));
   window.dispatchEvent(new Event(USER_PRESETS_EVENT));
+}
+
+/** One localStorage write publishes the entire selection. Existing presets are untouched. */
+export function appendUserPack(presets: InstrumentPreset[], packName: string, packDescription: string): string[] {
+ const existing=loadUserPresets(),names=new Set(existing.map(p=>p.name)),packId=`import:${crypto.randomUUID()}`;
+ const added=presets.map(p=>{const base=p.name;let name=base;for(let n=2;names.has(name);n++)name=`${base.slice(0,150)} (${n})`;names.add(name);
+  return {...p,name,id:`user:${crypto.randomUUID()}`,category:USER_CATEGORY,packId,packName,packDescription,track:presetFields(p.track)};});
+ localStorage.setItem(USER_KEY,JSON.stringify([...existing,...added]));window.dispatchEvent(new Event(USER_PRESETS_EVENT));return added.map(p=>p.name);
 }

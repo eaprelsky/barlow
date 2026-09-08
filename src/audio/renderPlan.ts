@@ -96,6 +96,9 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     if (!Number.isFinite(duration) || duration - start > RENDER_LIMITS.tailSeconds)
       throw new Error('WAV: расчётный хвост больше 120 секунд. Уменьши длину нот, время/повторы эха или выбери точную границу.');
   }
+  if(options?.tail === 'natural' && patch.sceneSpace) duration += patch.sceneSpace.sizeSec;
+  if(patch.sceneSpace) chainResources.bufferBytes += Math.ceil(patch.sceneSpace.sizeSec*44100)*2*4*4;
+  if (!resourcesFit(chainResources, OFFLINE_CHAIN_LIMITS)) throw new ChainBudgetError();
   const format = WEB_AUDIO_CAPABILITIES.wav;
   const memoryBytes = renderMemoryBytes(duration, format.channels, format.sampleRate, chainResources.bufferBytes);
   checkRenderMemory(memoryBytes);

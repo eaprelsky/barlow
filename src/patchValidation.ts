@@ -43,9 +43,11 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   const instruments = value.instruments ?? [];
   const scenes = value.scenes ?? [];
   if (!Array.isArray(instruments) || !unique(instruments, 512) || !Array.isArray(scenes) || !unique(scenes, 512)) return false;
+  if(value.sceneSpace!==undefined && (!record(value.sceneSpace)||typeof value.sceneSpace.sizeSec!=='number'||value.sceneSpace.sizeSec<.2||value.sceneSpace.sizeSec>8||typeof value.sceneSpace.level!=='number'||value.sceneSpace.level<0||value.sceneSpace.level>1)) return false;
   const instrumentIds = new Set(instruments.map(i => i.id));
   const patterns = new Map<string, Set<string>>();
   for (const t of value.tracks) {
+    if(t.spaceSend!==undefined && (typeof t.spaceSend!=='number'||t.spaceSend<0||t.spaceSend>1))return false;
     if (t.portamentoSec !== undefined && (typeof t.portamentoSec !== 'number' || !Number.isFinite(t.portamentoSec) || t.portamentoSec < 0 || t.portamentoSec > 4)) return false;
     if (t.chokeGroup !== undefined && (!Number.isInteger(t.chokeGroup) || (t.chokeGroup as number) < 1 || (t.chokeGroup as number) > 16)) return false;
     if (t.chokePriority !== undefined && (!Number.isInteger(t.chokePriority) || (t.chokePriority as number) < 0 || (t.chokePriority as number) > 16)) return false;

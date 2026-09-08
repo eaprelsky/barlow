@@ -1,3 +1,5 @@
+import { Knob } from './components/Knob';
+import { PackManager } from './components/PackManager';
 import { MainMenu } from './components/MainMenu';
 import { pickInstrumentFile } from './platform';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -165,6 +167,7 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
+  const [showPacks,setShowPacks]=useState(false);
   const [history] = useState(() => createHistory(loadPatch()));
   const historyState = useSyncExternalStore(history.subscribe, history.snapshot);
   const patch = historyState.present;
@@ -212,7 +215,7 @@ export default function App() {
     // Native ranges and graphical editors share a pointer transaction.
     // Knob/NumField use their own owner IDs and may replace this empty one.
     const down = (e: PointerEvent) => {
-      if (e.button === 0 && e.target instanceof Element && e.target.closest('input[type="range"], canvas, svg')) history.begin('pointer');
+      if (e.button === 0 && e.target instanceof Element && !e.target.closest('[data-recording-control]') && e.target.closest('input[type="range"], canvas, svg')) history.begin('pointer');
     };
     const up = () => history.commit('pointer');
     const cancel = () => history.cancel('pointer');
@@ -1484,6 +1487,7 @@ export default function App() {
           {label:'Сохранить проект…',help:'file-menu',action:()=>{void exportZip();}},
           {label:'Открыть демо',help:'file-menu',action:resetPatch},
           {label:'Импортировать инструмент…',help:'instrument-import',separator:true,action:()=>{void pickInstrumentFile(()=>instrumentFileRef.current?.click()).then(f=>{if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}).catch(e=>void alertDialog(errText(e),'импорт'));}},
+          {label:'Паки инструментов…',help:'portable-packs',action:()=>setShowPacks(true)},
           {label:'Экспортировать WAV…',help:'file-menu',disabled:rendering,action:()=>setWavExport({patch,sceneId})},
           {label:'Экспортировать патч JSON…',help:'file-menu',action:exportPatch},
         ]},
@@ -1628,6 +1632,9 @@ export default function App() {
             <div className="mix-block master" data-ob="mix-master">
               <div className="mix-main">
                 <span className="mix-name">мастер</span>
+                <label className="mix-ctl" data-help="scene-space"><span>пространство</span><input type="checkbox" aria-label="Общее пространство" checked={!!patch.sceneSpace} onChange={e=>setPatchStep(p=>({...p,sceneSpace:e.target.checked?{sizeSec:2,level:.3}:undefined}))}/></label>
+                {patch.sceneSpace&&<div className="eq-knobs" data-help="scene-space"><Knob label="размер, с" value={patch.sceneSpace.sizeSec} min={.2} max={8} step={.1} onChange={sizeSec=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,sizeSec}}))}/><Knob label="возврат, %" value={patch.sceneSpace.level*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,level:v/100}}))}/></div>}
+
                 <SliderField
                   variant="mix"
                   label="пан"
@@ -1678,6 +1685,8 @@ export default function App() {
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')} data-ob={ti === 0 ? 'mix-track' : undefined}>
                 <div className="mix-main">
                   <span className="mix-name" title={t.name}>{t.name}</span>
+                  {patch.sceneSpace&&<div data-help="scene-space"><SliderField variant="mix" label="в пространство" title="Посыл в общее пространство — хвост продолжается при смене сцены" display={`${Math.round((t.spaceSend??0)*100)}%`} value={(t.spaceSend??0)*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,tracks:p.tracks.map(x=>x.id===t.id?{...x,spaceSend:v/100}:x)}))}/></div>}
+
                   <SliderField
                     variant="mix"
                     label="громкость"
@@ -2096,6 +2105,7 @@ export default function App() {
 
       {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId} backend={engine}
         onClose={() => setWavExport(null)} onExport={renderWav} />}
+      {showPacks && <PackManager onClose={()=>setShowPacks(false)} />}
       <DialogHost />
       {showHelpSearch && <HelpSearch onClose={()=>setShowHelpSearch(false)} onNavigate={navigateHelp} tracks={patch.tracks.map(t=>({id:t.id,name:t.name}))} initialTrack={editorActive??patch.tracks[0]?.id??''} />}
       {helpArrival&&<aside className="help-arrival" data-help="help-search-arrival" role="status"><span>{helpArrival}</span><button aria-label="Закрыть подсказку перехода" onClick={()=>{setHelpArrival('');setHelpDestination(null);}}>×</button></aside>}

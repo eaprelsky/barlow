@@ -1,3 +1,4 @@
+import { makeSceneSpace, sendToSpace } from './sceneSpace';
 import { updateEq } from './equalizer';
 import { sampleTime } from './sampleTime';
 import { scheduleSceneEnvelope } from './sceneEnvelope';
@@ -151,6 +152,7 @@ export class AudioEngine implements AudioBackend {
   private noiseKind = '';
   private noiseBuffer: AudioBuffer | null = null;
   private chains = new Map<string, TrackChain>();
+  private sceneSpace: ReturnType<typeof makeSceneSpace> | null = null;
   // Уходящие цепочки: хвосты нот доигрывают с затуханием ~30 мс, потом
   // узлы освобождаются — стык инструментов/эскизов без щелчка.
   private retiring: { chain: TrackChain; dieAt: number }[] = [];
@@ -322,6 +324,12 @@ export class AudioEngine implements AudioBackend {
     this.patch = patch;
     this.applyMasterVolume(patch.masterVolume);
     this.applyMasterFx(patch);
+    if(this.ctx && this.master && patch.sceneSpace){
+      this.sceneSpace ??= makeSceneSpace(this.ctx,this.master.input,patch.sceneSpace.sizeSec,patch.sceneSpace.level,patch.performanceSeed);
+      this.sceneSpace.update(patch.sceneSpace.sizeSec,patch.sceneSpace.level);
+      for(const track of patch.tracks){const chain=this.chains.get(track.id);if(chain)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);}
+    } else if(this.sceneSpace){this.sceneSpace.update(2,0);}
+
     if (!this.ctx) return;
     const alive = new Set(patch.tracks.map((t) => t.id));
     for (const id of this.blockedTracks) if (!alive.has(id)) this.blockedTracks.delete(id);
@@ -391,6 +399,7 @@ export class AudioEngine implements AudioBackend {
     if (chain.modSig !== sig) {
       const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
       this.retireChain(chain, t0);
+      if(this.sceneSpace)sendToSpace(fresh,this.sceneSpace.input,track.spaceSend??0);
       this.chains.set(trackId, fresh);
       return fresh;
     }
@@ -552,6 +561,7 @@ export class AudioEngine implements AudioBackend {
       const eff = effectiveParams(track, pattern);
       try {
         const chain = makeChain(ctx, { ...stOf(patch, track), ...eff }, this.master!.input, this.liveBpm, patch.performanceSeed, null);
+        if(this.sceneSpace)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);
         this.chains.set(track.id, chain);
       } catch (e) {
         if (!(e instanceof ChainBudgetError)) {
@@ -584,10 +594,17 @@ export class AudioEngine implements AudioBackend {
     this.timer = window.setInterval(() => this.scheduler(), LOOKAHEAD_MS);
     this.armSceneExit(this.sceneAdvanceTime);
     this.applyMasterFx(patch);
+    if(this.ctx && this.master && patch.sceneSpace){
+      this.sceneSpace ??= makeSceneSpace(this.ctx,this.master.input,patch.sceneSpace.sizeSec,patch.sceneSpace.level,patch.performanceSeed);
+      this.sceneSpace.update(patch.sceneSpace.sizeSec,patch.sceneSpace.level);
+      for(const track of patch.tracks){const chain=this.chains.get(track.id);if(chain)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);}
+    } else if(this.sceneSpace){this.sceneSpace.update(2,0);}
+
     this.scheduler();
   }
 
   stop(): void {
+    this.sceneSpace?.dispose();this.sceneSpace=null;
     this.blockedTracks.clear();
     this.scratchEnd();
     ++this.regionRequest; this.regionCleanup?.(); this.regionCleanup = null;
@@ -1156,7 +1173,8 @@ export class AudioEngine implements AudioBackend {
         try {
           if (!chain && this.master) {
             chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, patch.performanceSeed, Math.max(ctx.currentTime,clock.resetTime));
-            this.chains.set(track.id, chain);
+            if(this.sceneSpace)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);
+        this.chains.set(track.id, chain);
             this.armSceneExit(this.sceneAdvanceTime);
           }
           if (chain) chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
@@ -1279,6 +1297,7 @@ export class AudioEngine implements AudioBackend {
     // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
     if (plan.parts.some(p=>instrumentVoices(p.st).some(v=>v.gain>0 && v.sound.waveform==='sample' && v.sound.sampleMode==='scratch'))) await ensureScratchModule(ctx);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
+    const space = patch.sceneSpace ? makeSceneSpace(ctx,master.input,patch.sceneSpace.sizeSec,patch.sceneSpace.level,patch.performanceSeed) : null;
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
       const layer = connectMasterNoise(ctx, patch.masterNoise, patch.masterNoiseLevel ?? 0.03, patch.performanceSeed, options ? plan.musicalStart : 0);
@@ -1297,6 +1316,7 @@ export class AudioEngine implements AudioBackend {
         const eff = effectiveParams(track, pattern);
         const naturalFinal = options?.tail === 'natural' && part.itemIndex === plan.finalItemIndex;
         const chain = makeChain(ctx, { ...st, ...eff }, master.input, bpm, patch.performanceSeed, start);
+        if(space)sendToSpace(chain,space.input,track.spaceSend??0);
         chainsByKey.set(part.key, chain);
         if (options) {
           scheduleSceneEnvelope(chain.sceneGain.gain, { start, end: naturalFinal ? null : end,
@@ -1373,6 +1393,7 @@ export class AudioEngine implements AudioBackend {
       return audioBufferToWav(rendered, { from, to, fadeFrames: Math.round(.005 * sampleRate) });
     } finally {
       for (const chain of chainsByKey.values()) disposeChain(chain);
+      space?.dispose();
     }
   }
 }

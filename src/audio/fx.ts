@@ -45,6 +45,7 @@ export interface TrackChain {
   panner: StereoPannerNode;
   gain: GainNode;
   sceneGain: GainNode;
+  spaceSend?: GainNode;
   sceneEnvelopeSig?: string;
   // Гейт сайдчейна: живёт отдельно от gain, чтобы качаться поверх
   // эффективной громкости эскиза.
@@ -345,6 +346,7 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
 export function disposeChain(chain: TrackChain): void {
   chain.resourceLease?.release();
   chain.sceneGain.disconnect();
+  chain.spaceSend?.disconnect();
   for (const m of chain.mods) {
     try {
       m.src.stop();
