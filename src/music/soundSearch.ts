@@ -26,7 +26,7 @@ export function soundMatches(text: string, query: string): boolean {
 }
 export function presetMatches(p: InstrumentPreset, query: string): boolean {
   const pack = SOUND_PACKS.find(pack => pack.id === presetPackOf(p));
-  return soundMatches([p.name, p.category, p.hint ?? '', ...(p.tags ?? []), pack?.name ?? '', p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
+  return soundMatches([p.name, p.category, p.hint ?? '', ...(p.tags ?? []), pack?.name ?? '', ...SOUND_COLLECTIONS.filter(c=>presetInCollection(p,c.id)).map(c=>c.name), p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
 }
 export const presetFavoriteId = (p: InstrumentPreset) => `preset:${p.id ?? p.name}`;
 export const sampleFavoriteId = (id: string) => `sample:${id}`;
@@ -41,4 +41,30 @@ export function saveSoundFavorites(ids: Set<string>): void {
   if (ids.size > 2000) throw new Error('В избранном уже 2000 звуков. Убери часть отметок перед добавлением новых.');
   localStorage.setItem(FAVORITES_KEY, JSON.stringify([...ids]));
   window.dispatchEvent(new Event(FAVORITES_EVENT));
+}
+
+/** Musical collections are independent of historical release packs and may overlap. */
+export const SOUND_COLLECTIONS = [
+  {id:'rhythm',name:'Ритм и ударные',description:'Бочки, снейры, хэты и мелодическая перкуссия'},
+  {id:'bass',name:'Бас и грув',description:'Саб, упругие басы и движущиеся басовые линии'},
+  {id:'melody',name:'Мелодии и аккорды',description:'Клавишные, лиды и щипковые тембры'},
+  {id:'space',name:'Атмосферы и космос',description:'Фоны, дроны и пространственные звуковые эффекты'},
+  {id:'heavy',name:'Жёсткая электроника',description:'Нейрофанк, дабстеп и перегруженные струны'},
+  {id:'basics',name:'Основы синтеза',description:'Простые исходные формы для своего звукового дизайна'},
+  {id:'samplers',name:'Сэмплеры',description:'Шаблоны для твоих записей'},
+  {id:'user',name:'Мои инструменты',description:'Сохранённые и импортированные тобой тембры'},
+];
+export function presetInCollection(p: InstrumentPreset, id: string): boolean {
+  if(id==='user') return p.category==='мои';
+  if(p.category==='мои') return false;
+  switch(id){
+    case 'rhythm': return p.category==='перкуссия';
+    case 'bass': return p.category==='бас';
+    case 'melody': return ['клавишные','тоны и лиды'].includes(p.category);
+    case 'space': return ['фоны','прочее'].includes(p.category);
+    case 'heavy': return /neurofunk|dubstep|distortion|дисторшн|перегруж|нейрофанк|дабстеп/i.test([p.name,...(p.tags??[])].join(' '));
+    case 'basics': return p.category==='стартовые';
+    case 'samplers': return p.category==='сэмплеры';
+    default: return false;
+  }
 }

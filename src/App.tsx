@@ -1587,6 +1587,7 @@ export default function App() {
         {/* Перенос строки: название пьесы и всё после него — вторым рядом.
             Правый верхний угол остаётся за частыми действиями. */}
         <span className="hdr-break" />
+        <div className="project-strip">
         <input
           className="title-input"
           data-ob="title"
@@ -1599,13 +1600,16 @@ export default function App() {
         />
         <span
           className="cycle-info"
-          title="Длины циклов дорожек в этой сцене, в шагах. Разные длины = полиритмия: узоры сдвигаются друг относительно друга и не повторяются"
+          title={`Длины циклов в шагах: ${patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}. Разные длины создают полиритмию.`}
         >
-          циклы: {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}
+          циклы
         </span>
         <span className="spacer" />
-        <span className="tb-sep" />
+        <div className="project-actions">
+        <div className="panel-switches" role="group" aria-label="Панели" data-help="panel-switches">
+        <span className="panel-switches-label">панели</span>
         <button
+          aria-pressed={showMix}
           className={showMix ? 'on' : ''}
           data-ob="mixer-btn"
           onClick={() => setShowMix((v) => !v)}
@@ -1620,8 +1624,8 @@ export default function App() {
           </svg>
           микшер
         </button>
-        <span className="tb-sep" />
         <button
+          aria-pressed={showLib}
           className={showLib ? 'on' : ''}
           data-ob="library-btn"
           onClick={() => {
@@ -1637,9 +1641,13 @@ export default function App() {
           </svg>
           инструменты
         </button>
+        </div>
         <div className="menu">
           <button
             data-ob="file-menu"
+            aria-label="Файл"
+            aria-expanded={fileOpen}
+            className="file-menu-icon"
             onClick={() => { setFileOpen((v) => !v); setExportOpen(false); }}
             title="Файлы: новый, открыть, записать, экспорт"
           >
@@ -1648,7 +1656,6 @@ export default function App() {
               <path d="M3 1.5h5.2L11.5 5v7.5H3z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
               <path d="M8 1.8V5.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
-            файл ▾
           </button>
           {fileOpen && (
             <div className="menu-list">
@@ -1697,7 +1704,6 @@ export default function App() {
             </div>
           )}
         </div>
-        <span className="tb-sep" />
         <button
           className="undo-btn"
           disabled={historyState.past.length === 0 && (!historyState.gesture || historyState.gesture.base === patch)}
@@ -1710,6 +1716,8 @@ export default function App() {
           data-help="redo" onClick={redo}
           title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
         >↷</button>
+        </div>
+        </div>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {

@@ -3741,3 +3741,18 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .help-arrival { position:fixed; bottom:16px; right:18px; width:min(540px,calc(100vw - 48px)); z-index:80; display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:var(--panel); font-size:12px; line-height:1.5; box-shadow:0 4px 20px #0008; }
 .help-arrival span { flex:1; }
 .help-found-target { outline:2px solid var(--accent); outline-offset:5px; border-radius:3px; }
+.panel-switches { display:flex; align-items:center; gap:4px; padding:3px 6px; border:1px solid var(--border); border-radius:7px; }
+.panel-switches-label { color:var(--text-dim); font-size:11px; margin-right:5px; }
+.panel-switches button { display:inline-flex; align-items:center; gap:6px; }
+.file-menu-icon { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:6px; }
+.sb-head .sb-transfer { padding:0; gap:4px; }
+.sb-head .sb-transfer > button { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:28px; padding:4px; }
+.sb-head .sb-transfer [role="status"] { font-size:10px; }
+.sb-pack select { min-width:0; width:100%; }
+.project-strip { display:flex; align-items:center; gap:10px; width:100%; }
+.project-strip .title-input { min-width:80px; flex-shrink:1; }
+.project-strip .cycle-info { font-size:11px; cursor:help; }
+.project-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.project-actions .panel-switches { padding:3px; }
+.project-actions .panel-switches button { padding:6px 8px; }
+.panel-switches button[aria-pressed="true"] { background:rgba(242,178,99,.14); box-shadow:inset 0 -2px var(--accent); }

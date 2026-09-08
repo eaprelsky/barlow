@@ -1384,7 +1384,7 @@ export function InstrumentEditor({
                       <span className="scratch-hint">идёт запись — веди мышью по пэду</span>
                     )}
                     {(st.scratchPoints ?? []).length === 0 && !dragPts && !scratchArmed && (
-                      <span className="scratch-hint">кликни — появится точка; несколько точек — жест</span>
+                      <span className="scratch-hint" data-help="scratch-pad" title="Клик добавляет точку; несколько точек задают движение иглы">нет жеста</span>
                     )}
                   </div>
                   <span className="scratch-axis">время ноты →</span>
@@ -1405,7 +1405,7 @@ export function InstrumentEditor({
 
             <div className="mseg-toolbar" data-ob="envelope-mode"><span>громкость ноты</span><select aria-label="Режим огибающей" value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
             {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={(ampMseg, command) => onChangeInst({ ampMseg }, command)} /> : <>
-            <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
+            <span className="sub-cap" data-help="tab-env" title="Громкость и падение тона на одной оси времени">форма ноты</span>
             <NoteGraph
               attack={st.attack}
               decay={st.decay}
@@ -1472,7 +1472,7 @@ export function InstrumentEditor({
       {tab === 'timbre' && (
         <div className="we-body">
           <div className="group sub" data-ob="voice-color">
-            <span className="sub-cap">характер голоса — до эффектов дорожки</span>
+                <span className="sub-cap" title="Окраска голоса до эффектов дорожки">характер голоса</span>
             <div className="mseg-toolbar">
               <label>ring, % <NumField help="instrument.ringMix" ariaLabel="Доля ring, %" value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
               <label>частота × <NumField help="instrument.ringRatio" ariaLabel="Частота ring, ×" value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>

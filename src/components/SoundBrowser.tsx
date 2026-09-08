@@ -32,7 +32,7 @@ import { recommendedHz } from '../music/audition';
 import { isDesktop, saveBlob, pickInstrumentFile } from '../platform';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { HelpHint } from '../onboarding/Onboarding';
-import { SOUND_PACKS, presetPackOf, presetMatches, soundMatches, presetFavoriteId, sampleFavoriteId, loadSoundFavorites, saveSoundFavorites, FAVORITES_KEY, FAVORITES_EVENT } from '../music/soundSearch';
+import { SOUND_COLLECTIONS, presetInCollection, presetMatches, soundMatches, presetFavoriteId, sampleFavoriteId, loadSoundFavorites, saveSoundFavorites, FAVORITES_KEY, FAVORITES_EVENT } from '../music/soundSearch';
 
 interface Props {
   tracks: Track[];
@@ -202,7 +202,7 @@ export function SoundBrowser({
     });
   }, [tab, targetPresetName, all]);
   const groups = useMemo(() => {
-    const filtered = all.filter(p => (!pack || presetPackOf(p) === pack)
+    const filtered = all.filter(p => (!pack || presetInCollection(p, pack))
       && (!favoritesOnly || favorites.has(presetFavoriteId(p))) && presetMatches(p, q));
     return CATEGORY_ORDER.map((cat) => ({
       cat,
@@ -345,8 +345,16 @@ export function SoundBrowser({
         <span className="scenes-label">инструменты</span>
         <HelpHint guide="browser" step={1} label="Гид: найти и выбрать звук" />
         <span className="spacer" />
-        <button data-help="panel-close" onClick={onClose} title="Скрыть панель">скрыть</button>
+      {tab === 'inst' && <div className="sb-transfer" data-help="instrument-import">
+        <input ref={importInput} type="file" hidden accept=".zip,.barlow-instrument.zip" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void readInstrument(file);}} />
+        <button title="Добавить инструмент из файла" aria-label="Импорт инструмента" disabled={!!transfer} onClick={async()=>{try { const file=await pickInstrumentFile(()=>importInput.current?.click());if(file) await readInstrument(file); }
+          catch(error) { await alertDialog(String(error),'не удалось открыть файл'); }}}><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 6V4h6l2 2h8v11H2V6Zm8 2v6m-3-3 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg></button>
+      </div>}
+        <button data-help="panel-close" onClick={onClose} title="Скрыть панель" aria-label="Скрыть инструменты">×</button>
       </div>
+      {transfer && <div className="sb-transfer" data-help="instrument-import"><span role="status">{transfer==='reading'?'проверяем…':'добавляем…'}</span>
+        {transfer==='reading' && <button data-help="instrument-import-cancel" onClick={()=>{importGeneration.current++;setTransfer(null);}}>отмена</button>}
+      </div>}
       {/* Вкладки: пресеты и сэмплы — явные, не теряются. Сэмпл-пресет
           без сэмпла сам перебрасывает сюда на «сэмплы». Вкладка
           управляется снаружи (App) — точка входа знает, что показать. */}
@@ -389,17 +397,10 @@ export function SoundBrowser({
           </button>
         )}
       </div>
-      {tab === 'inst' && <div className="sb-transfer" data-help="instrument-import">
-        <input ref={importInput} type="file" hidden accept=".zip,.barlow-instrument.zip" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void readInstrument(file);}} />
-        <button disabled={!!transfer} onClick={async()=>{try { const file=await pickInstrumentFile(()=>importInput.current?.click());if(file) await readInstrument(file); }
-          catch(error) { await alertDialog(String(error),'не удалось открыть файл'); }}}>из файла…</button>
-        {transfer && <span role="status">{transfer==='reading'?'проверяем…':'добавляем…'}</span>}
-        {transfer==='reading' && <button data-help="instrument-import-cancel" onClick={()=>{importGeneration.current++;setTransfer(null);}}>отмена</button>}
-      </div>}
       <div className="sb-filters">
-        {tab === 'inst' && <label className="sb-pack">пакет <select data-help="library-pack" aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
-          <option value="">все пакеты</option>
-          {SOUND_PACKS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetPackOf(s) === p.id).length})</option>)}
+        {tab === 'inst' && <label className="sb-pack">подборка <select title={SOUND_COLLECTIONS.find(p=>p.id===pack)?.description ?? 'Подборки по музыкальной задаче; один звук может входить в несколько'} data-help="library-pack" aria-label="Подборка звуков" value={pack} onChange={e => setPack(e.target.value)}>
+          <option value="">все инструменты</option>
+          {SOUND_COLLECTIONS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetInCollection(s, p.id)).length})</option>)}
         </select></label>}
         <label><input data-help="favorites-only" type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
         <span role="status">найдено: {tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>

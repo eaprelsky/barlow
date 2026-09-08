@@ -105,7 +105,7 @@ try{
   await page.locator('[data-ob="sb-tab-instruments"]').click();
   const search=page.getByRole('textbox',{name:'поиск звука'});await search.fill('IDM kick');
   assert.ok(await page.locator('.inst-card').count()>=8);
-  const pack=page.getByRole('combobox',{name:'Пакет звуков'});await pack.selectOption('core-v39');assert.equal(await page.locator('.inst-card').count(),0);
+  const pack=page.getByRole('combobox',{name:'Подборка звуков'});await pack.selectOption('melody');assert.equal(await page.locator('.inst-card').count(),0);
   await page.getByRole('button',{name:'сбросить фильтры',exact:true}).click();await pack.selectOption('idm-01');
   assert.equal(await page.locator('.inst-card').count(),68);
   const first=page.locator('.inst-card').first(),name=await first.getAttribute('aria-label'),favorite=first.getByRole('button',{name:`Избранное: ${name}`});

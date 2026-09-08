@@ -1988,13 +1988,10 @@ export const TrackRow = memo(function TrackRow({
           </div>
             </>
           ) : (
-            <div className="sketch-muted" data-ob="sketch-muted">
+            <div className="sketch-muted" data-ob="sketch-muted" data-help="sketch-muted" title={`Сними M — эскиз «${pattern.name}» продолжится с той же фазы`}>
               <span className="skm-m">M</span>
               <span className="skm-text">
-                тишина в этой сцене
-                <span className="mini-info">
-                  дорожка молчит, но часы партии идут — сними M, и эскиз «{pattern.name}» продолжится с той же фазы
-                </span>
+                выключено в этой сцене
               </span>
             </div>
           )}
