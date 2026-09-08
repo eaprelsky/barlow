@@ -37,11 +37,43 @@ try{
  patch.instruments[0]={...patch.instruments[0],...variants[0],ringMix:.2,foldDrive:1,combMix:.3,combHz:110};check('new fields survive ZIP',JSON.stringify((await importProject(await exportProject(patch))).instruments[0])===JSON.stringify(normalizePatch(patch).instruments[0]));
  for(const wave of [{...st.wave,wavetable:{frames:[[]],position:0,sweep:0}},{...st.wave,va:{shape:'pulse',pulseWidth:2}}]){const bad=structuredClone(patch);bad.instruments[0].wave=wave;check('malformed source rejected before I/O',!isPatch(bad));}
  const engine=new AudioEngine();try{const wav=await engine.renderToWav(patch,'s',1,{tail:'natural'});check('natural WAV accounts for comb decay',wav.size>10000);}finally{engine.stop();if(engine.ctx)await engine.ctx.close();}
+
+ const {wavetablePosition,validWavetable}=await import('/src/music/wavetable.ts');const {tableMotion}=await import('/src/audio/wavetable.ts');
+ const moving={frames:[tableFrame('sine'),tableFrame('pulse')],position:.2,sweep:.6,scan:{cycles:2},positionLfo:{shape:'sine',rateHz:2,depth:.15,phase:0}};
+ for(const change of [{scan:{cycles:0}},{scan:{cycles:33}},{scan:{cycles:1.5}},{positionLfo:{...moving.positionLfo,rateHz:0}},{positionLfo:{...moving.positionLfo,depth:2}},{positionLfo:{...moving.positionLfo,phase:NaN}},{positionLfo:{...moving.positionLfo,shape:'square'}}])check('invalid table motion rejected',!validWavetable({...moving,...change}));
+ for(const shape of ['sine','triangle'])for(const phase of [0,.25])for(const count of [2,8]){
+  const table={...moving,frames:Array.from({length:count},()=>tableFrame('sine')),position:.8,sweep:-.7,positionLfo:{shape,rateHz:3,depth:.35,phase}};
+  const ctx=new OfflineAudioContext(count,44100*1.2,44100);const motion=tableMotion(ctx,table,.05,1),merge=ctx.createChannelMerger(count);motion.weights.forEach((w,i)=>w.connect(merge,0,i));merge.connect(ctx.destination);motion.sources.forEach(s=>s.stop(1.15));const pcm=await ctx.startRendering();let sumError=0,positionError=0,finite=true;
+  for(let i=2500;i<46000;i+=37){let sum=0,p=0;for(let n=0;n<count;n++){const v=pcm.getChannelData(n)[i];finite=finite&&Number.isFinite(v)&&v>=-1e-6&&v<=1.000001;sum+=v;p+=v*n/(count-1);}sumError=Math.max(sumError,Math.abs(sum-1));positionError=Math.max(positionError,Math.abs(p-wavetablePosition(table,(i/44100-.05),i/44100-.05)));}
+  check('motion weights normalized and follow bounded position '+shape+'/'+phase+'/'+count,finite&&sumError<1e-5&&positionError<.015,{sumError,positionError});
+  check('motion has two scheduled sources independent of frame count',motion.sources.length===2);
+ }
+ const flat={seconds:1,points:[{t:0,v:0},{t:.005,v:1},{t:.995,v:1},{t:1,v:0}]};
+ const cyclic={frames:[tableFrame('sine'),tableFrame('pulse')],position:0,sweep:1,scan:{cycles:2}};
+ const cyc=await render({...st,ampMseg:flat,wave:{...st.wave,wavetable:cyclic}});
+ check('cyclic PCM returns to dark frame between bright peaks',tone(cyc.a,1320,.27,.32)>tone(cyc.a,1320,.52,.57)*3&&tone(cyc.a,1320,.77,.82)>tone(cyc.a,1320,.52,.57)*3);
+ const lfoSound={...st,ampMseg:flat,wave:{...st.wave,wavetable:{...cyclic,scan:undefined,position:.5,sweep:0,positionLfo:{shape:'sine',rateHz:2,depth:.45,phase:0}}}};
+ const lfoPcm=await render(lfoSound),stopped=await render(lfoSound,true);
+ check('LFO changes actual harmonic balance repeatedly',tone(lfoPcm.a,1320,.15,.2)>tone(lfoPcm.a,1320,.4,.45)*3&&tone(lfoPcm.a,1320,.65,.7)>tone(lfoPcm.a,1320,.4,.45)*3);
+ check('Stop closes moving table voice',stopped.a.slice(16000).every(v=>Math.abs(v)<1e-6));
+ const legacyTable={...cyclic,scan:undefined,position:.1,sweep:.7};
+ const oldScan=await render({...st,wave:{...st.wave,wavetable:legacyTable}}),zeroLfo=await render({...st,wave:{...st.wave,wavetable:{...legacyTable,positionLfo:{shape:'sine',rateHz:5,depth:0,phase:.25}}}});
+ let zeroDifference=0;oldScan.a.forEach((v,i)=>zeroDifference=Math.max(zeroDifference,Math.abs(v-zeroLfo.a[i])));check('zero-depth LFO preserves original sweep PCM',zeroDifference<1e-4,zeroDifference);
+ const {voiceSnapshot}=await import('/src/music/layers.ts');const {exportInstrument,prepareInstrument}=await import('/src/audio/instrumentFile.ts');
+ const movingInst={...patch.instruments[0],wave:{...st.wave,wavetable:moving}};movingInst.layers=[{id:'motion-layer',name:'движение',ratio:1,gain:.5,sound:voiceSnapshot(movingInst)}];
+ const transfer=await prepareInstrument(await exportInstrument({name:'motion',category:'мои',track:{...st,...movingInst}}));check('motion survives portable main and layer',JSON.stringify(transfer.preset.track.wave.wavetable)===JSON.stringify(moving)&&JSON.stringify(transfer.preset.track.layers[0].sound.wave.wavetable)===JSON.stringify(moving));
  localStorage.setItem('barlow.patch.v12',JSON.stringify(patch));localStorage.setItem('barlow.onboarding.v1',JSON.stringify({invited:true,seen:{main:true}}));return checks;
  });
  for(const c of result)console.log(`${c.pass?'PASS':'FAIL'} ${c.name} ${JSON.stringify(c.details??'')}`);assert.ok(result.every(c=>c.pass));
  await page.goto(`http://127.0.0.1:${port}`);await page.locator('[data-ob="mode-inst"]').first().click();
- const position=page.getByRole('spinbutton',{name:'Позиция wavetable, %',exact:true});await position.fill('40');await position.press('Enter');await page.keyboard.press('Control+z');assert.equal(+await position.inputValue(),0);await page.keyboard.press('Control+Shift+z');assert.equal(+await position.inputValue(),40);
- for(const width of [1024,1440]){await page.setViewportSize({width,height:1000});await page.locator('[data-ob="wavetable"]').scrollIntoViewIfNeeded();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:root+`/tmp/synthesis-${width}.png`});}
+ const exact=async(help,value)=>{await page.locator(`[data-help="${help}"] [role="slider"], [data-help="${help}"][role="slider"]`).first().dblclick();const field=page.locator(`[data-help="${help}"] input`).first();await field.fill(String(value));await field.press('Enter');};
+ const readTable=()=>page.evaluate(async()=>{(await import('/src/storage.ts')).flushAutosave();return JSON.parse(localStorage.getItem('barlow.patch.v12')).instruments[0].wave.wavetable;});
+ await exact('wave-position',40);await page.keyboard.press('Control+z');assert.equal((await readTable()).position,0);await page.keyboard.press('Control+Shift+z');assert.equal((await readTable()).position,.4);
+ await page.getByLabel('Режим прохода wavetable').selectOption('cycle');await exact('wave-scan-cycles',4);assert.equal((await readTable()).scan.cycles,4);await page.keyboard.press('Control+z');assert.equal((await readTable()).scan.cycles,2);await page.keyboard.press('Control+Shift+z');
+ await page.getByLabel('LFO позиции wavetable',{exact:true}).check();await exact('wave-lfo-rate',3.5);await exact('wave-lfo-depth',35);await exact('wave-lfo-phase',25);await page.getByLabel('Форма LFO позиции').selectOption('triangle');assert.deepEqual((await readTable()).positionLfo,{shape:'triangle',rateHz:3.5,depth:.35,phase:.25});
+ await page.getByLabel('LFO позиции wavetable',{exact:true}).uncheck();await page.keyboard.press('Control+z');assert.equal((await readTable()).positionLfo.rateHz,3.5);
+ assert.deepEqual((await page.evaluate(async()=>(await import('/src/onboarding/helpResolver.ts')).helpCoverage())).missing,[]);
+ await page.locator('[data-ob="library-btn"]').click();
+ for(const width of [1024,1440]){await page.setViewportSize({width,height:900});await page.locator('.table-motion').scrollIntoViewIfNeeded();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:root+`/tmp/synthesis-${width}.png`});}
  await page.getByLabel('Способ синтеза',{exact:true}).selectOption('va');await page.getByLabel('Форма VA',{exact:true}).selectOption('pulse');await page.getByRole('spinbutton',{name:'Ширина импульса VA, %',exact:true}).fill('17');await page.keyboard.press('Enter');await page.locator('[data-ob="tab-timbre"]').click();await page.getByRole('spinbutton',{name:'Доля ring, %',exact:true}).fill('35');await page.keyboard.press('Enter');await page.screenshot({path:root+'/tmp/synthesis-color.png'});assert.deepEqual(errors,[]);console.log('PASS synthesis controls, undo and desktop layout');
 }finally{await browser?.close();vite.kill();}

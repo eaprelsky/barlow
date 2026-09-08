@@ -612,7 +612,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 55;
+export const PATCH_VERSION = 56;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>

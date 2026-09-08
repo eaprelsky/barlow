@@ -1,5 +1,5 @@
 import { stopSource } from './sourceLifecycle';
-import { periodicFrames, scanFrame } from './wavetable';
+import { periodicFrames, scanFrame, tableMotion } from './wavetable';
 import { voiceColor } from './voiceColor';
 import { sampleTime } from './sampleTime';
 import { instrumentVoices } from '../music/layers';
@@ -709,6 +709,9 @@ function triggerNoteVoice(
     if (wave.wavetable || wave.va) {
       const frames = periodicFrames(ctx, wave), from = wave.wavetable?.position ?? 0;
       const to = Math.max(0, Math.min(1, from + (wave.wavetable?.sweep ?? 0)));
+      const motion = wave.wavetable && (wave.wavetable.scan || wave.wavetable.positionLfo)
+        ? tableMotion(ctx, wave.wavetable, time, voiceLen) : undefined;
+      if (motion) { sources.push(...motion.sources); for (const source of motion.sources) stopSource(source, stopAt); }
       freqs.forEach((f, fi) => {
         for (let i = 0; i < uniN; i++) {
           const k = uniN > 1 ? i / (uniN - 1) * 2 - 1 : 0, dest = uniDest(fi, k);
@@ -717,7 +720,8 @@ function triggerNoteVoice(
             osc.setPeriodicWave(pw); osc.frequency.value = drop ? f * track.pitchDrop : f;
             if (drop) { osc.frequency.setValueAtTime(f * track.pitchDrop, time); osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime); }
             osc.detune.value = k * uniDet; attachPitch(osc.detune); vibBus(1)?.connect(osc.detune);
-            scanFrame(mix.gain, n, frames.length, from, to, time, voiceLen);
+            if (motion) { mix.gain.value = 0; motion.weights[n].connect(mix.gain); }
+            else scanFrame(mix.gain, n, frames.length, from, to, time, voiceLen);
             osc.connect(mix); mix.connect(dest); osc.start(time); stopSource(osc, stopAt); sources.push(osc);
           });
         }

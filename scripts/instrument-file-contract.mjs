@@ -36,7 +36,7 @@ try {
     const checks=[],check=(name,pass,details)=>checks.push({name,pass:!!pass,details});
     for (const compatibilityFixture of compatibilityFixtures) {
       const compatible=await prepareInstrument(new Blob([zipSync({'instrument.json':strToU8(JSON.stringify(compatibilityFixture))})]));
-      check('read released v1 schema '+compatibilityFixture.patchVersion+' fixture',compatible.preset.track.recommendedHz===55&&JSON.stringify(compatible.preset.track.ampMseg)===JSON.stringify(compatibilityFixture.sound.ampMseg)&&JSON.stringify(compatible.preset.track.pitchMseg)===JSON.stringify(compatibilityFixture.sound.pitchMseg)&&JSON.stringify(compatible.preset.track.filterMseg)===JSON.stringify(compatibilityFixture.sound.filterMseg));
+      check('read released v1 schema '+compatibilityFixture.patchVersion+' fixture',compatible.preset.track.recommendedHz===55&&JSON.stringify(compatible.preset.track.ampMseg)===JSON.stringify(compatibilityFixture.sound.ampMseg)&&JSON.stringify(compatible.preset.track.pitchMseg)===JSON.stringify(compatibilityFixture.sound.pitchMseg)&&JSON.stringify(compatible.preset.track.filterMseg)===JSON.stringify(compatibilityFixture.sound.filterMseg)&&JSON.stringify(compatible.preset.track.wave?.wavetable)===JSON.stringify(compatibilityFixture.sound.wave?.wavetable));
     }
     const target=defaultPatch().tracks[0];
     async function render(preset,buffer=null) {
@@ -95,7 +95,7 @@ try {
     let failed=false;try{await installInstrument(ready);}catch{failed=true;}finally{Storage.prototype.setItem=oldSet;}
     check('storage failure does not publish a preset',failed&&localStorage.getItem('barlow.instruments.v1')===current);
     return checks;
-  }, ['instrument-v1.json','instrument-v1-schema54.json','instrument-v1-schema55.json'].map(name=>JSON.parse(readFileSync(root+'/fixtures/'+name,'utf8'))));
+  }, ['instrument-v1.json','instrument-v1-schema54.json','instrument-v1-schema55.json','instrument-v1-schema56.json'].map(name=>JSON.parse(readFileSync(root+'/fixtures/'+name,'utf8'))));
   writeFileSync(root+'/tmp/instrument-file-qa.json',JSON.stringify(result,null,2));
   for(const r of result)console.log(`${r.pass?'PASS':'FAIL'} ${r.name} ${JSON.stringify(r.details??'')}`);
   if(result.some(r=>!r.pass))process.exitCode=1;

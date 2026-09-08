@@ -3718,3 +3718,8 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .chain-tempo select { width:74px; min-width:0; }
 .chain-item input { padding:4px; font-variant-numeric:tabular-nums; }
 .chain-item .chain-grip:focus-visible { outline:1px solid var(--accent); border-radius:3px; }
+
+.table-motion { border-top:1px solid var(--border); margin-top:6px; padding-top:4px; }
+.table-motion-row { gap:14px; min-height:46px; }
+.table-motion input[type="checkbox"] { width:auto; min-width:0; margin:0; accent-color:var(--accent); }
+.table-motion-row > select { min-width:100px; }
