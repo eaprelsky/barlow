@@ -2873,7 +2873,6 @@ button.danger:hover {
     0 0 0 2px var(--accent),
     0 0 22px rgba(255, 180, 84, 0.35);
   pointer-events: none;
-  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
 
 /* Шаг-действие: цель зовёт «жми меня» */

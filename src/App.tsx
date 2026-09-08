@@ -283,7 +283,10 @@ export default function App() {
     markInvited(); // любой запуск гасит пульс-приглашение на «?»
     setShowHelpMenu(false);
     setPointHelp(false);
-    setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope });
+    const active=document.querySelector('[data-ob="mode-inst"].on')?.closest('[data-track-id]');
+    const first=Array.from(document.querySelectorAll('[data-track-id]')).find(el=>el.getBoundingClientRect().height>0);
+    const id=(active??first)?.getAttribute('data-track-id');
+    setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope ?? (id?`[data-track-id="${CSS.escape(id)}"]`:undefined) });
   }, []);
   useEffect(() => registerGuideStarter(startGuide), [startGuide]);
 

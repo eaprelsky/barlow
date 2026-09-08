@@ -30,13 +30,16 @@ const sameRect = (a: Rect | null, b: Rect): boolean =>
   Math.abs(a.width - b.width) < 0.5 &&
   Math.abs(a.height - b.height) < 0.5;
 
-function findTarget(run: GuideRun, target?: string): HTMLElement | null {
+function findTarget(run: GuideRun, target?: string): Element | null {
   if (!target) return null;
+  const rendered = (el: Element) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0 && getComputedStyle(el).visibility !== 'hidden';
   if (run.scope) {
-    const scoped = document.querySelector(`${run.scope} ${target}`);
-    if (scoped) return scoped as HTMLElement;
+    const scoped = Array.from(document.querySelector(run.scope)?.querySelectorAll(target) ?? []).find(rendered);
+    if (scoped) return scoped;
+    // A hidden control in this track must never resolve to its neighbour.
+    return Array.from(document.querySelectorAll(target)).find(el => rendered(el) && !el.closest('[data-track-id]')) ?? null;
   }
-  return document.querySelector(target) as HTMLElement | null;
+  return Array.from(document.querySelectorAll(target)).find(rendered) ?? null;
 }
 
 /** Карточка шага: где встать относительно подсвеченной цели.
@@ -118,13 +121,17 @@ export function Onboarding({
     if (!step) return;
     const el = findTarget(run, step.target);
     if (!el) {
-      setMissing(true);
+      setMissing(!!step.target);
       setHole(null);
       return;
     }
     setMissing(false);
     const r = el.getBoundingClientRect();
-    setHole((prev) => (sameRect(prev, r) ? prev : { left: r.left, top: r.top, width: r.width, height: r.height }));
+    const header = document.querySelector('.topbar');
+    const top = Math.max(0, r.top, header && !header.contains(el) ? header.getBoundingClientRect().bottom : 0);
+    const visible = {left: Math.max(0,r.left),top,width: Math.min(innerWidth,r.right)-Math.max(0,r.left),height: Math.min(innerHeight,r.bottom)-top};
+    if(visible.width<=0 || visible.height<=0){setMissing(true);setHole(null);return;}
+    setHole((prev) => (sameRect(prev, visible) ? prev : visible));
   }, [run, step]);
 
   // Размер карточки нужен до позиционирования: замеряем каждый кадр рендера.
@@ -144,14 +151,26 @@ export function Onboarding({
   useLayoutEffect(() => {
     if (!step) return;
     if (step.open) onOpenPanel?.(step.open);
-    place();
-    const el = findTarget(run, step.target);
-    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    const t1 = window.setTimeout(place, 80);
-    const t2 = window.setTimeout(place, 260);
+    let revealed: Element | null = null;
+    const reveal = () => {
+      const el = findTarget(run, step.target);
+      if(el && el!==revealed){
+        revealed=el;
+        el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+        const header=document.querySelector('.topbar');
+        if(header && !header.contains(el)){
+          const top=header.getBoundingClientRect().bottom+12,r=el.getBoundingClientRect();
+          if(r.top<top) window.scrollBy({top:r.top-top,behavior:'instant'});
+        }
+      }
+      place();
+    };
+    reveal();
+    const t1 = window.setTimeout(reveal, 80);
+    const t2 = window.setTimeout(reveal, 260);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
-    const iv = window.setInterval(place, 400);
+    const iv = window.setInterval(reveal, 400);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
@@ -167,6 +186,14 @@ export function Onboarding({
     if (run.step >= guide.steps.length - 1) onDone();
     else onStep(1);
   }, [guide, onDone, onStep, run.step]);
+
+  const alreadyOpenRun = useRef<GuideRun | null>(null);
+  useEffect(() => {
+    if(alreadyOpenRun.current!==run && step?.expect==='click' && step.target==='[data-ob="mode-inst"]' && findTarget(run,step.target)?.classList.contains('on')) {
+      alreadyOpenRun.current=run;
+      onStep(1);
+    }
+  },[run,step,onStep]);
 
   // Сердце интерактивности. Шаг-действие: пропускаем клики только по цели
   // (и по карточке), остальные перехватываем на capture — до React.

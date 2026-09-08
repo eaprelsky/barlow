@@ -41,6 +41,7 @@
     "test:mseg": "node scripts/mseg-contract.mjs",
     "test:audition": "node scripts/audition-contract.mjs",
     "test:help-search": "node scripts/help-search-contract.mjs",
+    "test:guide-placement": "node scripts/guide-placement-contract.mjs",
     "test:chain-editor": "node scripts/chain-editor-contract.mjs",
     "test:portamento": "node scripts/portamento-contract.mjs",
     "test:slices": "node scripts/slices-contract.mjs",
