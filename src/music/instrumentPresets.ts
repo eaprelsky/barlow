@@ -4,6 +4,7 @@
 import type { Instrument, Track } from '../types';
 import { INSTRUMENT_FIELDS } from '../types';
 import { recipeForLegacy } from './waveRecipes';
+import { CHARACTER_BANK } from './characterBank';
 import { EXPANDED_BANK } from './expandedBank';
 import { IDM_BANK } from './idmBank';
 import { recommendedHz } from './audition';
@@ -195,13 +196,13 @@ const RAW_PRESETS: {
     track: {
       name: 'воббл', waveform: 'supersaw', freq: 55,
       voiceMorph: 0.25,
-      length: 16, rate: 4, attack: 0.03, decay: 1.2, sustain: 0.3,
-      pitchDrop: 1.2, pitchTime: 0.1,
-      vibratoRate: 12, vibratoDepth: 100,
-      filterFreq: 450, filterQ: 5, filterLow: 30,
+      length: 16, rate: 4, attack: 0.035, decay: 1.2, sustain: 0.3,
+      pitchDrop: 1, pitchTime: 0.1,
+      vibratoRate: 5, vibratoDepth: 0,
+      filterFreq: 650, filterQ: 2, filterLow: 25,
       mono: true,
-      effects: [{ type: 'dist', drive: 6, mix: 0.7 }],
-      mods: [{ target: 'filterFreq', shape: 'triangle', rate: 3.93, depth: 0.4 }],
+      effects: [{ type: 'dist', drive: 3, mix: 0.45 }],
+      mods: [{ target: 'filterFreq', shape: 'triangle', rate: 3.93, depth: 0.22 }],
     },
   },
   {
@@ -562,19 +563,22 @@ const RAW_PRESETS: {
   {
     name: 'флейта',
     category: 'тоны и лиды',
-    hint: 'чистый тон с лёгким дыханием (шумового зерна всего 6%) — вибрато мягко подступает',
+    hint: 'Мягкая синтетическая флейта: основной тон с тихими обертонами и едва заметным дыханием. Начни с 523 Гц и плавной мелодии; вибрато появляется после начала ноты.',
     track: {
       name: 'флейта', waveform: 'wave', freq: 523.3,
       wave: {
         partials: [
           { ratio: 1, amp: 1, type: 'sine' },
-          { ratio: 1, amp: 0.06, type: 'noise' },
+          { ratio: 2, amp: 0.18, type: 'sine' },
+          { ratio: 3, amp: 0.065, type: 'sine' },
+          { ratio: 4, amp: 0.018, type: 'sine' },
+          { ratio: 1, amp: 0.008, type: 'noise' },
         ],
-        noiseGrainMs: 60,
+        noiseGrainMs: 250,
       },
       attack: 0.06, decay: 1, sustain: 0.9,
-      vibratoRate: 5.5, vibratoDepth: 22, vibratoDelay: 0.5,
-      filterFreq: 9000,
+      vibratoRate: 5.2, vibratoDepth: 9, vibratoDelay: 0.35,
+      filterFreq: 2800,
     },
   },
   {
@@ -667,15 +671,19 @@ const RAW_PRESETS: {
     },
   },
   {
-    name: 'там-там',
+    name: 'низкий барабанный том',
     category: 'перкуссия',
-    hint: 'Большой гонг: модальный банк колокольного строя низко, длинный звонастый хвост и много воздуха',
+    hint: 'Барабанный там-там: короткий удар по коже, низкий округлый корпус и быстро затухающие обертоны. Попробуй 80–160 Гц, чередуя сильные и тихие удары. Это синтетический барабан, а не гонг.',
     track: {
-      name: 'там-там', waveform: 'modal', freq: 110,
-      voiceMorph: 0.9,
-      length: 4, rate: 8, attack: 0.001, decay: 3.5,
-      filterFreq: 12000,
-      effects: [{ type: 'reverb', sizeSec: 6, mix: 0.45 }],
+      name: 'низкий том', waveform: 'wave', freq: 95,
+      wave: { partials: [
+        { type: 'sine', ratio: 1, amp: 1, decay: .32 },
+        { type: 'sine', ratio: 1.59, amp: .28, decay: .12 },
+        { type: 'sine', ratio: 2.14, amp: .12, decay: .06 },
+        { type: 'noise', ratio: 1, amp: .1, decay: .018 },
+      ] },
+      length: 4, rate: 8, attack: .004, decay: .36, sustain: 0,
+      pitchDrop: 1.45, pitchTime: .065, filterFreq: 2800,
     },
   },
   {
@@ -811,7 +819,7 @@ const convertPresetV39 = (p: {
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [...RAW_PRESETS.map((p, index) => ({
   ...convertPresetV39(p), id: `factory-v39-${String(index + 1).padStart(3, '0')}`,
   tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'], packId: 'core-v39',
-})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' })), ...EXPANDED_BANK].map(p => ({ ...p,
+})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' })), ...EXPANDED_BANK, ...CHARACTER_BANK].map(p => ({ ...p,
   track: { ...p.track, recommendedHz: recommendedHz(p.track) } }));
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр

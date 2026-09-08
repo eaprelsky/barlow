@@ -68,7 +68,7 @@ const basses: [string,string,number,number,number,number][] = [
 ];
 basses.forEach(([id,name,ratio,depth,decay,filterFreq])=>add(id,name,'бас',['bass','бас',id.includes('fm')||depth>0?'FM':'sub'],
   `Бас от 55 Гц; ${depth?`FM ×${ratio}, индекс ${depth}`:id==='acid'||id==='reese'?'пила':'синус'}; фильтр ${filterFreq} Гц.`,55,
-  { decay,sustain:id==='pure-sub'||id==='reese'?0.8:0.15,filterFreq,filterQ:id==='acid'?6:0.8,
+  { attack:id==='pure-sub'?0.025:0.002,decay,sustain:id==='pure-sub'||id==='reese'?0.8:0.15,filterFreq,filterQ:id==='acid'?6:0.8,
     filterEnvAmount:id==='acid'?18:0,filterEnvTime:0.16,
     unisonVoices:id==='reese'?3:1,unisonDetune:9,unisonSpread:0.25,
     wave:depth?{partials:fm(ratio,depth,decay*0.5)}:id==='acid'||id==='reese'?recipe('saw').wave:{partials:[sine()]} }));
@@ -109,7 +109,7 @@ pads.forEach(([id,name,ratio,attack,filterFreq])=>add(id,name,'фоны',['pad',
   { attack,decay:3.5,sustain:0.85,filterFreq,unisonVoices:3,unisonDetune:id==='ice'?17:8,unisonSpread:0.8,
     filterEnvAmount:id==='dark-pad'?-12:0,filterEnvTime:2,
     formants:id==='choir-pad'?[{freq:350,gain:2},{freq:800,gain:2},{freq:2300,gain:2}]:undefined,
-    wave:{partials:[sine(),sine(2,0.3),sine(3,0.12),...(ratio?[sine(ratio,0.2)]:[]),...(id==='dust-pad'?[noise(0.15,3)]:[])]} }));
+    wave:{partials:[sine(),sine(2,0.3),sine(3,0.12),...(ratio?[sine(ratio,0.2)]:[]),...(id==='dust-pad'?[{ type: 'noise' as const, ratio: 1, amp: 0.035 }]:[])]} }));
 
 add('data-rain','дождь данных','прочее',['FX','glitch','цифровой'],'Короткий негармоничный FM-сигнал; для редких россыпей на верхних рядах.',880,{decay:0.055,wave:{partials:fm(7.13,4,0.025)}});
 add('power-down','отключение питания','прочее',['FX','fall','падение'],'Падение тона на две октавы за 1.2 с; растянутый хвост FM.',90,{decay:1.5,pitchDrop:4,pitchTime:1.2,wave:{partials:fm(1.41,2,0.8)}});
