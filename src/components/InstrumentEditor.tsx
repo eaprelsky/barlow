@@ -513,7 +513,7 @@ export function InstrumentEditor({
           {!isSample && <div className="mseg-toolbar" data-ob="synthesis-mode"><label>синтез <select aria-label="Способ синтеза" value={inst.wave?.wavetable ? 'table' : inst.wave?.va ? 'va' : 'operators'} onChange={e => onChangeInst({ wave: { ...(inst.wave ?? wave), wavetable: e.target.value === 'table' ? tableRecipe() : undefined, va: e.target.value === 'va' ? { shape: 'saw', pulseWidth: .5 } : undefined } }, true)}><option value="operators">операторы · FM</option><option value="table">wavetable · кадры</option><option value="va">VA · аналоговые формы</option></select></label></div>}
           {!isSample && inst.wave?.wavetable && <WavetableEditor value={inst.wave.wavetable} onChange={wavetable => onChangeInst({ wave: { ...inst.wave!, wavetable } })} />}
           {!isSample && inst.wave?.va && <div className="mseg-toolbar" data-ob="va-oscillator"><label>форма <select aria-label="Форма VA" value={inst.wave.va.shape} onChange={e => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, shape: e.target.value as 'saw' } } })}><option value="saw">пила</option><option value="pulse">импульс</option><option value="triangle">треугольник</option></select></label><label>ширина импульса, % <NumField ariaLabel="Ширина импульса VA, %" disabled={inst.wave.va.shape !== 'pulse'} value={inst.wave.va.pulseWidth * 100} min={5} max={95} step={.1} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pulseWidth: v / 100 } } })} /></label><span>Яркость и резонанс — во вкладке «тембр».</span></div>}
-          {!isSample && (inst.wave?.wavetable || inst.wave?.va) && <div className="mseg-toolbar"><label>унисон <NumField ariaLabel="Унисон нового синтеза" value={inst.unisonVoices ?? 1} min={1} max={8} step={1} onChange={unisonVoices => onChangeInst({ unisonVoices })} /></label><label>расстройка, ц <NumField ariaLabel="Расстройка нового синтеза" value={inst.unisonDetune ?? 12} min={0} max={50} step={.5} onChange={unisonDetune => onChangeInst({ unisonDetune })} /></label><label>вибрато, ц <NumField ariaLabel="Вибрато нового синтеза" value={inst.vibratoDepth ?? 0} min={0} max={1200} step={1} onChange={vibratoDepth => onChangeInst({ vibratoDepth })} /></label></div>}
+          {!isSample && (inst.wave?.wavetable || inst.wave?.va) && <div className="mseg-toolbar"><label>унисон <NumField help="instrument.unisonVoices" ariaLabel="Унисон нового синтеза" value={inst.unisonVoices ?? 1} min={1} max={8} step={1} onChange={unisonVoices => onChangeInst({ unisonVoices })} /></label><label>расстройка, ц <NumField help="instrument.unisonDetune" ariaLabel="Расстройка нового синтеза" value={inst.unisonDetune ?? 12} min={0} max={50} step={.5} onChange={unisonDetune => onChangeInst({ unisonDetune })} /></label><label>вибрато, ц <NumField help="instrument.vibratoDepth" ariaLabel="Вибрато нового синтеза" value={inst.vibratoDepth ?? 0} min={0} max={1200} step={1} onChange={vibratoDepth => onChangeInst({ vibratoDepth })} /></label></div>}
           {!isSample && !inst.wave?.wavetable && !inst.wave?.va && (
             <div className="we-wave-layers">
               <div className="we-wave-left">
@@ -604,11 +604,11 @@ export function InstrumentEditor({
                             ? 'Убрать строку (её модуляторы снимутся тоже)'
                             : 'Убрать строку'
                         }
-                        onClick={() => removePartial(i)}
+                        data-help="operator-delete" onClick={() => removePartial(i)}
                       >
                         ×
                       </button>
-                      <label title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
+                      <label data-help="operator-ratio" title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
                         ×
                         <NumField
                           value={Math.round(p.ratio * 100) / 100} min={0.25} max={64} step={0.25} narrow
@@ -616,14 +616,14 @@ export function InstrumentEditor({
                         />
                       </label>
                       {p.mod === undefined ? (
-                        <label title="Громкость строки в сумме, %">
+                        <label data-help="operator-level" title="Громкость строки в сумме, %">
                           <NumField
                             value={Math.round(p.amp * 100)} min={0} max={100} step={5} narrow
                             onChange={(v) => setPartial(i, { amp: v / 100 })}
                           />%
                         </label>
                       ) : (
-                        <label title="Глубина модуляции (индекс): девиация частоты цели = индекс × частота ноты × множитель строки. 1–3 — мягкие тембры, 5+ — ржа и металл">
+                        <label data-help="operator-level" title="Глубина модуляции (индекс): девиация частоты цели = индекс × частота ноты × множитель строки. 1–3 — мягкие тембры, 5+ — ржа и металл">
                           <NumField
                             value={Math.round(p.amp * 10) / 10} min={0} max={24} step={0.1} narrow
                             onChange={(v) => setPartial(i, { amp: v })}
@@ -632,7 +632,7 @@ export function InstrumentEditor({
                       )}
                       <select
                         value={p.type}
-                        title="Форма строки"
+                        data-help="operator-shape" title="Форма строки"
                         onChange={(e) => setPartial(i, { type: e.target.value as WavePartial['type'] })}
                       >
                         {(Object.keys(PARTIAL_TYPE_LABELS) as WavePartial['type'][]).map((t) => (
@@ -640,14 +640,14 @@ export function InstrumentEditor({
                         ))}
                       </select>
                       <label title="Собственный хвост строки (T60): гаснет сам и переживает релиз ноты — звон колокола, темнеющая струна. 0 — живёт под общей огибающей">
-                        <NumField
+                        <NumField help="operator-tail"
                           value={p.decay ?? 0} min={0} max={8} step={0.05} narrow
                           onChange={(v) => setPartial(i, v <= 0.001 ? { decay: undefined } : { decay: v })}
                         />
                       </label>
                       <select
                         value={p.mod === undefined ? 'sum' : String(p.mod)}
-                        title="Маршрут: в сумму или модулировать частоту другой строки (FM-оператор)"
+                        data-help="operator-route" title="Маршрут: в сумму или модулировать частоту другой строки (FM-оператор)"
                         onChange={(e) => {
                           const v = e.target.value;
                           setPartial(i, v === 'sum' ? { mod: undefined } : { mod: Number(v) });
@@ -665,7 +665,7 @@ export function InstrumentEditor({
                     </div>
                   ))}
                   <div className="we-row">
-                    <button onClick={addPartial} title="Добавить строку-оператор">+ строка</button>
+                    <button data-help="operator-add" onClick={addPartial} title="Добавить строку-оператор">+ строка</button>
                     {hasNoise && (
                       <label title="Размер зерна шумовых строк, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
                         зерно шума, мс
@@ -698,19 +698,19 @@ export function InstrumentEditor({
                     </span>
                   )}
                   <span className={'knob-row' + (scratchMode ? ' dim' : '')}>
-                    <Knob
+                    <Knob help="instrument.unisonVoices"
                       label="голоса"
                       title="Унисон: сколько расстроенных копий играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире (супер-пила = пила + унисон). Двойной клик — точное число"
                       value={st.unisonVoices ?? 1} min={1} max={8} step={1}
                       onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
                     />
-                    <Knob
+                    <Knob help="instrument.unisonDetune"
                       label="детюн"
                       title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
                       value={st.unisonDetune ?? 12} min={0} max={50} step={1}
                       onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
                     />
-                    <Knob
+                    <Knob help="instrument.unisonSpread"
                       label="разброс"
                       title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
                       value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
@@ -720,19 +720,19 @@ export function InstrumentEditor({
                 </div>
                 <div className="group sub knob-row">
                   <span className="sub-cap">вибрато</span>
-                  <Knob
+                  <Knob help="instrument.vibratoRate"
                     label="скорость"
                     title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
                     value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
                     onChange={(vibratoRate) => onChangeInst({ vibratoRate })}
                   />
-                  <Knob
+                  <Knob help="instrument.vibratoDepth"
                     label="глубина"
                     title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
                     value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
                     onChange={(vibratoDepth) => onChangeInst({ vibratoDepth })}
                   />
-                  <Knob
+                  <Knob help="instrument.vibratoDelay"
                     label="задержка"
                     title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
                     value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
@@ -751,15 +751,15 @@ export function InstrumentEditor({
                     <div className="formant-row" key={i}>
                       <button
                         className="remove"
-                        title="Убрать формант"
+                        data-help="formant-delete" title="Убрать форманту"
                         onClick={() =>
                           onChangeInst({ formants: (st.formants ?? []).filter((_, j) => j !== i) })
                         }
                       >
                         ×
                       </button>
-                      <label title="Частота бугра, Гц">
-                        <NumField
+                      <label data-help="formant-frequency" title="Частота форманты, Гц">
+                        <NumField help="formant-frequency"
                           value={Math.round(b.freq)} min={80} max={9000} step={10} narrow
                           onChange={(freq) =>
                             onChangeInst({
@@ -768,7 +768,7 @@ export function InstrumentEditor({
                           }
                         />
                       </label>
-                      <label title="Громкость бугра, ×">
+                      <label data-help="formant-gain" title="Уровень форманты, ×">
                         <NumField
                           value={Math.round(b.gain * 100) / 100} min={0} max={2} step={0.05} narrow
                           onChange={(gain) =>
@@ -782,7 +782,7 @@ export function InstrumentEditor({
                   ))}
                   {(st.formants ?? []).length < 5 && (
                     <button
-                      title="Добавить формантный бугор (вокальная гласная — три бугра, заготовка «вокал» ставит их сама)"
+                      data-help="formant-add" title="Добавить формантный бугор (вокальная гласная — три бугра, заготовка «вокал» ставит их сама)"
                       onClick={() => onChangeInst({ formants: [...(st.formants ?? []), { freq: 800, gain: 1 }] })}
                     >
                       + формант
@@ -875,14 +875,14 @@ export function InstrumentEditor({
                 <span className="we-sep" />
                 <label title="Начало куска, с">
                   старт
-                  <NumField
+                  <NumField help="instrument.sampleStart"
                     value={Math.round(regStart * 1000) / 1000} min={0} max={Math.max(0.001, dur - 0.001)} step={0.01} narrow
                     onChange={(v) => onChangeInst({ sampleStart: +v.toFixed(4) })}
                   />
                 </label>
                 <label title="Конец куска, с">
                   конец
-                  <NumField
+                  <NumField help="instrument.sampleEnd"
                     value={Math.round(regEnd * 1000) / 1000} min={0.001} max={dur} step={0.01} narrow
                     onChange={(v) => onChangeInst({ sampleEnd: +v.toFixed(4) })}
                   />
@@ -952,7 +952,7 @@ export function InstrumentEditor({
               </label>
               <label title="Частота исходной записи; используется только для тонального сэмпла">
                 тоника записи, Гц
-                <NumField value={inst.rootHz ?? 440} {...parameterRange('instrument.rootHz')}
+                <NumField help="instrument.rootHz" value={inst.rootHz ?? 440} {...parameterRange('instrument.rootHz')}
                   onChange={(rootHz) => onChangeInst({ rootHz })} />
               </label>
             </div>
@@ -974,12 +974,12 @@ export function InstrumentEditor({
           {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={track.patterns.length < 128} />}
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
             <div className="inline sampler-tuning">
-              <label><input type="checkbox" checked={inst.sampleReverse ?? false}
+              <label><input data-help="sample-reverse" type="checkbox" checked={inst.sampleReverse ?? false}
                 onChange={(e) => onChangeInst({ sampleReverse: e.target.checked })} />реверс фрагмента</label>
-              <label><input type="checkbox" checked={inst.sampleLoop ?? false}
+              <label><input data-help="sample-loop" type="checkbox" checked={inst.sampleLoop ?? false}
                 onChange={(e) => onChangeInst({ sampleLoop: e.target.checked })} />петля на длину ноты</label>
               {inst.sampleLoop && <label title="Сглаживание стыка; ограничено половиной фрагмента. Первая атака сохраняется">
-                стык, мс <NumField value={inst.loopCrossfadeMs ?? 10} {...parameterRange('instrument.loopCrossfadeMs')}
+                стык, мс <NumField help="instrument.loopCrossfadeMs" value={inst.loopCrossfadeMs ?? 10} {...parameterRange('instrument.loopCrossfadeMs')}
                   onChange={(loopCrossfadeMs) => onChangeInst({ loopCrossfadeMs })} />
               </label>}
             </div>
@@ -1008,19 +1008,19 @@ export function InstrumentEditor({
               </span>
               <label title="Длина осколка (зерна) в миллисекундах: 20–60 — почти крап, 100–300 — тёплое облако, 400+ — почти слышимый сэмпл">
                 зерно, мс
-                <NumField value={st.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => onChangeInst({ grainSizeMs })} />
+                <NumField help="instrument.grainSizeMs" value={st.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => onChangeInst({ grainSizeMs })} />
               </label>
               <label title="Сколько зёрен выпускает одна нота — плотность облака. 1–3 — редкие брызги, 15+ — сплошной поток">
                 зёрен на ноту
-                <NumField value={st.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => onChangeInst({ grainCount: Math.round(grainCount) })} />
+                <NumField help="instrument.grainCount" value={st.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => onChangeInst({ grainCount: Math.round(grainCount) })} />
               </label>
               <label title="Откуда в сэмпле брать осколки: 0 — начало, 0.5 — середина, 1 — конец">
                 позиция
-                <NumField value={Math.round((st.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainPos: v / 100 })} />
+                <NumField help="instrument.grainPos" value={Math.round((st.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainPos: v / 100 })} />
               </label>
               <label title="Разброс позиций зёрен вокруг заданной точки: 0 — все из одного места, 1 — по всему сэмпла">
                 разброс
-                <NumField value={Math.round((st.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainScatter: v / 100 })} />
+                <NumField help="instrument.grainScatter" value={Math.round((st.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainScatter: v / 100 })} />
               </label>
             </>
           )}
@@ -1391,19 +1391,19 @@ export function InstrumentEditor({
               decayEditable={!st.noteSteps}
             />
             <div className="env-fields">
-              <Knob
+              <Knob help="instrument.attack"
                 label="атака, мс"
                 title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие. Двойной клик — точное число"
                 value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
                 onChange={(ms) => onChangeInst({ attack: Math.max(0.0005, ms / 1000) })}
               />
-              <Knob
+              <Knob help="instrument.sustain"
                 label="плато, %"
                 title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит. Двойной клик — точное число"
                 value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
                 onChange={(v) => onChangeInst({ sustain: v / 100 })}
               />
-              <Knob
+              <Knob help="instrument.decay"
                 label="спад, с"
                 title={
                   st.waveform === 'sample'
@@ -1415,13 +1415,13 @@ export function InstrumentEditor({
               />
             </div></>}
             <div className="env-fields">
-              <Knob
+              <Knob help="instrument.pitchDrop"
                 label="падение, ×"
                 title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения. Двойной клик — точное число"
                 value={st.pitchDrop} min={1} max={16} step={0.5}
                 onChange={(pitchDrop) => onChangeInst({ pitchDrop })}
               />
-              <Knob
+              <Knob help="instrument.pitchTime"
                 label="время падения, с"
                 title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12. Двойной клик — точное число"
                 value={st.pitchTime} min={0} max={2} step={0.01}
@@ -1444,47 +1444,47 @@ export function InstrumentEditor({
           <div className="group sub" data-ob="voice-color">
             <span className="sub-cap">характер голоса — до эффектов дорожки</span>
             <div className="mseg-toolbar">
-              <label>ring, % <NumField ariaLabel="Доля ring, %" value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
-              <label>частота × <NumField ariaLabel="Частота ring, ×" value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>
-              <label>wavefold <NumField ariaLabel="Wavefold" value={inst.foldDrive ?? 0} min={0} max={8} step={.1} onChange={foldDrive => onChangeInst({ foldDrive })} /></label>
-              <select aria-label="Качество wavefold" value={inst.synthQuality ?? '4x'} onChange={e => onChangeInst({ synthQuality: e.target.value as '2x' | '4x' })}><option value="4x">качество 4×</option><option value="2x">экономия 2×</option></select>
+              <label>ring, % <NumField help="instrument.ringMix" ariaLabel="Доля ring, %" value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
+              <label>частота × <NumField help="instrument.ringRatio" ariaLabel="Частота ring, ×" value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>
+              <label>wavefold <NumField help="instrument.foldDrive" ariaLabel="Wavefold" value={inst.foldDrive ?? 0} min={0} max={8} step={.1} onChange={foldDrive => onChangeInst({ foldDrive })} /></label>
+              <select data-help="wave-quality" aria-label="Качество wavefold" value={inst.synthQuality ?? '4x'} onChange={e => onChangeInst({ synthQuality: e.target.value as '2x' | '4x' })}><option value="4x">качество 4×</option><option value="2x">экономия 2×</option></select>
             </div>
             <div className="mseg-toolbar">
-              <label>comb, % <NumField ariaLabel="Доля comb, %" value={(inst.combMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ combMix: v / 100 })} /></label>
-              <label>резонанс, Гц <NumField ariaLabel="Резонанс comb, Гц" value={inst.combHz ?? 220} min={40} max={4000} step={1} onChange={combHz => onChangeInst({ combHz })} /></label>
-              <label>звонкость, % <NumField ariaLabel="Звонкость comb, %" value={(inst.combFeedback ?? .5) * 100} min={0} max={85} step={1} onChange={v => onChangeInst({ combFeedback: v / 100 })} /></label>
+              <label>comb, % <NumField help="instrument.combMix" ariaLabel="Доля comb, %" value={(inst.combMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ combMix: v / 100 })} /></label>
+              <label>резонанс, Гц <NumField help="instrument.combHz" ariaLabel="Резонанс comb, Гц" value={inst.combHz ?? 220} min={40} max={4000} step={1} onChange={combHz => onChangeInst({ combHz })} /></label>
+              <label>звонкость, % <NumField help="instrument.combFeedback" ariaLabel="Звонкость comb, %" value={(inst.combFeedback ?? .5) * 100} min={0} max={85} step={1} onChange={v => onChangeInst({ combFeedback: v / 100 })} /></label>
             </div>
           </div>
           {/* Вибрато и унисон переехали на «источник» (v39): это слои
               тембра рядом с таблицей операторов, а не вкладка фильтров. */}
           <div className="group sub knob-row" data-ob="timbre-tab">
             <span className="sub-cap">фильтры</span>
-            <Knob
+            <Knob help="instrument.filterLow"
               label="низ"
               title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай. Двойной клик — точное число"
               value={st.filterLow} min={20} max={4000} step={10} log
               onChange={(filterLow) => onChangeInst({ filterLow })}
             />
-            <Knob
+            <Knob help="instrument.filterFreq"
               label="верх"
               title="Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"
               value={st.filterFreq} min={60} max={12000} step={10} log
               onChange={(filterFreq) => onChangeInst({ filterFreq })}
             />
-            <Knob
+            <Knob help="instrument.filterQ"
               label="резонанс"
               title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе. Двойной клик — точное число"
               value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
               onChange={(filterQ) => onChangeInst({ filterQ })}
             />
-            <Knob
+            <Knob help="instrument.filterEnvAmount"
               label="огиб. ↑↓"
               bipolar
               title="Огибающая фильтра: старт в полутонах от ручки «верх». Плюс — яркая атака-плак, минус — тёмный свелл; за «время» фильтр съезжает к базе. Двойной клик — точное число"
               value={st.filterEnvAmount ?? 0} min={-24} max={24} step={0.5}
               onChange={(filterEnvAmount) => onChangeInst({ filterEnvAmount })}
             />
-            <Knob
+            <Knob help="instrument.filterEnvTime"
               label="время"
               title="Огибающая фильтра: за сколько секунд фильтр съезжает к базе. 0.05–0.2 — щипок, 1+ — плавный свелл. Двойной клик — точное число"
               value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}

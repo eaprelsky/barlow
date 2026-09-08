@@ -121,7 +121,7 @@ export function SoundBrowser({
     if (next.has(id)) next.delete(id); else next.add(id);
     try { saveSoundFavorites(next); } catch (e) { setFavoriteState(s => ({ ...s, error: String(e) })); }
   };
-  const star = (id: string, name: string) => <button className="sb-favorite" aria-label={`Избранное: ${name}`}
+  const star = (id: string, name: string) => <button className="sb-favorite" data-help="favorite" aria-label={`Избранное: ${name}`}
     aria-pressed={favorites.has(id)} title={favorites.has(id) ? 'Убрать из избранного' : 'Добавить в избранное'}
     onClick={() => toggleFavorite(id)}>{favorites.has(id) ? '★' : '☆'}</button>;
 
@@ -260,7 +260,7 @@ export function SoundBrowser({
     const current = p.name === targetPresetName;
     const card = (
       <>
-        <button className="sb-apply" disabled={!applyTo} onClick={() => {
+        <button className="sb-apply" data-help="preset-apply" data-help-detail={p.hint} disabled={!applyTo} onClick={() => {
           if (!applyTo) return;
           onApply(applyTo, p);
           if (needsSample) onTab('smp');
@@ -293,7 +293,7 @@ export function SoundBrowser({
         {star(presetFavoriteId(p), p.name)}
         {user ? (
           <button
-            className="inst-del"
+            className="inst-del" data-help="preset-delete"
             aria-label={`удалить пресет ${p.name}`}
             title="Удалить пресет"
             onClick={(e) => {
@@ -325,7 +325,7 @@ export function SoundBrowser({
         <span className="scenes-label">инструменты</span>
         <HelpHint guide="browser" step={1} label="Гид: найти и выбрать звук" />
         <span className="spacer" />
-        <button onClick={onClose} title="Скрыть панель">скрыть</button>
+        <button data-help="panel-close" onClick={onClose} title="Скрыть панель">скрыть</button>
       </div>
       {/* Вкладки: пресеты и сэмплы — явные, не теряются. Сэмпл-пресет
           без сэмпла сам перебрасывает сюда на «сэмплы». Вкладка
@@ -360,7 +360,7 @@ export function SoundBrowser({
         />
         {query !== '' && (
           <button
-            className="search-clear"
+            className="search-clear" data-help="search-clear"
             title="Очистить поиск"
             aria-label="очистить поиск"
             onClick={() => setQuery('')}
@@ -370,13 +370,13 @@ export function SoundBrowser({
         )}
       </div>
       <div className="sb-filters">
-        {tab === 'inst' && <label className="sb-pack">пакет <select aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
+        {tab === 'inst' && <label className="sb-pack">пакет <select data-help="library-pack" aria-label="Пакет звуков" value={pack} onChange={e => setPack(e.target.value)}>
           <option value="">все пакеты</option>
           {SOUND_PACKS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetPackOf(s) === p.id).length})</option>)}
         </select></label>}
-        <label><input type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
+        <label><input data-help="favorites-only" type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
         <span role="status">найдено: {tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>
-        {(pack || favoritesOnly || query) && <button onClick={() => { setPack(''); setFavoritesOnly(false); setQuery(''); }}>сбросить фильтры</button>}
+        {(pack || favoritesOnly || query) && <button data-help="filters-reset" onClick={() => { setPack(''); setFavoritesOnly(false); setQuery(''); }}>сбросить фильтры</button>}
       </div>
       {favoriteState.error && <p className="error" role="alert">{favoriteState.error}</p>}
       {libraryError && <p className="error" role="alert">{libraryError} <button onClick={refreshSamples}>обновить список</button></p>}
@@ -404,7 +404,7 @@ export function SoundBrowser({
             {groups.map((g) => (
               <div className="sb-cat" key={g.cat}>
                 <div
-                  className="sb-cat-label"
+                  className="sb-cat-label" data-help="library-category"
                   role={q ? 'heading' : 'button'}
                   aria-level={q ? 3 : undefined}
                   tabIndex={q ? undefined : 0}

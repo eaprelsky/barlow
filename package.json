@@ -29,6 +29,7 @@
     "test:locks": "node scripts/note-edits.test.mjs && node scripts/locks-contract.mjs",
     "test:restart": "node scripts/restart-contract.mjs",
     "test:help": "node scripts/help-v53-contract.mjs",
+    "test:help-coverage": "node scripts/help-everywhere-contract.mjs",
     "test:synthesis": "node scripts/synthesis-contract.mjs",
     "test:scenes": "node scripts/scenes-contract.mjs",
     "test:layers": "node scripts/layers-contract.mjs",

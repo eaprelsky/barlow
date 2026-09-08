@@ -10,6 +10,7 @@ import { NumField } from './NumField';
 import { useEditGesture } from './editGesture';
 
 interface Props {
+  help?: string;
   value: number;
   min: number;
   max: number;
@@ -44,6 +45,7 @@ function arc(p0: number, p1: number, r: number, c: number): string {
 }
 
 export function Knob({
+  help,
   value,
   min,
   max,
@@ -124,7 +126,7 @@ export function Knob({
 
   if (editing) {
     return (
-      <span className="knob-wrap" title={title}>
+      <span className="knob-wrap" title={title} data-help={help}>
         <NumField
           value={Number(value.toFixed(4))}
           min={min}
@@ -146,7 +148,7 @@ export function Knob({
   }
 
   return (
-    <span className="knob-wrap" title={title}>
+    <span className="knob-wrap" title={title} data-help={help}>
       <svg
         ref={svgRef}
         className="knob"

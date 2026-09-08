@@ -51,6 +51,7 @@ import { slugify } from './utils/slug';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
 import { PointHelp } from './onboarding/PointHelp';
+import { HELP_MODE_EVENT } from './onboarding/helpMode';
 import type { GuideRun } from './onboarding/Onboarding';
 import {
   guideById,
@@ -257,6 +258,11 @@ export default function App() {
   // контролы не активируются. F1 — вход/выход.
   const [pointHelp, setPointHelp] = useState(false);
   const [obRun, setObRun] = useState<GuideRun | null>(null);
+  useEffect(() => {
+    const enter = () => { setObRun(null); setShowHelpMenu(false); setPointHelp(true); };
+    window.addEventListener(HELP_MODE_EVENT, enter);
+    return () => window.removeEventListener(HELP_MODE_EVENT, enter);
+  }, []);
   const [helpInvite, setHelpInvite] = useState(needsInvite);
   const obRef = useRef<GuideRun | null>(null);
   obRef.current = obRun;
@@ -315,6 +321,8 @@ export default function App() {
         setShowHelp(false);
       } else if (e.key === 'F1') {
         e.preventDefault();
+        setObRun(null);
+        setShowHelpMenu(false);
         setPointHelp((v) => !v);
       } else if (e.key === '?' && !typing) {
         e.preventDefault();
@@ -1450,7 +1458,7 @@ export default function App() {
         <AudioStatus engine={engine} playing={playing} />
         <label data-ob="bpm" title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
           темп
-          <NumField
+          <NumField help="patch.bpm"
             value={patch.bpm} min={30} max={300}
             onChange={(bpm) => {
               const v = Math.round(bpm);
@@ -1502,13 +1510,15 @@ export default function App() {
             не открывались — кнопка пульсирует, приглашая. */}
         <span className="menu">
           <button
-            className={(showHelpMenu ? 'on ' : '') + (helpInvite ? 'help-btn pulse' : 'help-btn')}
-            onClick={() => setShowHelpMenu((v) => !v)}
-            title="Гиды по задачам и шпаргалка"
+            className={(pointHelp ? 'on ' : '') + (helpInvite ? 'help-btn pulse' : 'help-btn')}
+            onClick={() => { setShowHelpMenu(false); setObRun(null); setPointHelp(v => !v); }}
+            aria-label="Что это?" aria-pressed={pointHelp} data-help="point-help"
+            title="Что это? Выбрать элемент и узнать о нём (F1)"
             data-ob="help"
           >
             ?
           </button>
+          <button className="help-guides-btn" data-help="help-guides" onClick={() => setShowHelpMenu(v => !v)}>гиды</button>
           {showHelpMenu && (
             <HelpMenu
               onClose={() => {
@@ -1651,13 +1661,13 @@ export default function App() {
         <button
           className="undo-btn"
           disabled={historyState.past.length === 0 && (!historyState.gesture || historyState.gesture.base === patch)}
-          onClick={undo}
+          data-help="undo" onClick={undo}
           title="Отменить (Ctrl+Z)"
         >↶</button>
         <button
           className="undo-btn"
           disabled={historyState.future.length === 0}
-          onClick={redo}
+          data-help="redo" onClick={redo}
           title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
         >↷</button>
         <input
@@ -1996,7 +2006,7 @@ export default function App() {
                 </label>
                 <label title="Темп этого пункта (30–300). 0 — как в шапке патча">
                   bpm
-                  <NumField
+                  <NumField help="scene-tempo"
                     value={it.bpm ?? 0} min={0} max={300}
                     onChange={(bpm) => chainSetItem(i, { bpm: bpm >= 30 ? Math.round(bpm) : undefined })}
                   />

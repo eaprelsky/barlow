@@ -90,7 +90,7 @@ export function RollTools({
         title="Несущая строя — базовая частота, от которой шкала отсчитывает высоты. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше"
       >
         тоника
-        <NumField
+        <NumField help="track.freq"
           narrow w={64} wheel
           value={track.freq} min={20} max={9000} step={0.1}
           onChange={(freq) => onTrack({ freq })}
@@ -124,7 +124,7 @@ export function RollTools({
         title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже"
       >
         фаза
-        <NumField
+        <NumField help="track.phase"
           narrow w={56} wheel
           value={track.phase} min={-64} max={64} step={1}
           onChange={(phase) => onTrack({ phase: Math.round(phase) })}

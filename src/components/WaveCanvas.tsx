@@ -303,7 +303,7 @@ export function WaveCanvas({
 
   return (
     <div className="wave-canvas-wrap">
-      <div className="wc-toolbar">
+      <div className="wc-toolbar" data-help="wave-view">
         {toolBtn('−', 'Отдалить', () => zoomBy(1.6))}
         {toolBtn('+', 'Приблизить', () => zoomBy(1 / 1.6))}
         {toolBtn('⟶', 'Прокрутить вправо', () =>

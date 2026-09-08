@@ -1,12 +1,13 @@
 // Режим «что это?»: курсор-справочник по интерфейсу. Наведение
 // подсвечивает ближайший контрол с карточкой (реестр cards.ts), клик
 // показывает карточку — сами контролы НЕ нажимаются: изучение не
-// правит патч. Esc или клик мимо — выход; из карточки можно прыгнуть
+// правит патч. Esc закрывает карточку, затем режим; из карточки можно прыгнуть
 // в гид, где про этот контрол рассказывают по шагам.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { HelpCard } from './cards';
-import { cardOf } from './cards';
+import { resolveHelp, type HelpMatch } from './helpResolver';
+import { createPortal } from 'react-dom';
 import { cardPosition } from './Onboarding';
 import { launchGuide } from './guides';
 
@@ -22,42 +23,36 @@ const SIDES: Record<string, string[]> = {
   top: ['top', 'right', 'left', 'bottom'],
 };
 
-/** Inner guide anchors may have no card; use the nearest documented control. */
-function helpTarget(target: Element | null): Element | null {
-  let element = target?.closest('[data-ob]');
-  while (element) {
-    if (cardOf(element.getAttribute('data-ob'))) return element;
-    element = element.parentElement?.closest('[data-ob]');
-  }
-  return null;
+function rectOf(el: Element): Rect {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
 export function PointHelp({ onExit }: { onExit: () => void }) {
-  const [hover, setHover] = useState<{ key: string; rect: Rect; element: Element } | null>(null);
-  const [sel, setSel] = useState<{ key: string; rect: Rect; element: Element } | null>(null);
+  const [hover, setHover] = useState<{ key: string; rect: Rect; element: Element; card: HelpCard } | null>(null);
+  const [sel, setSel] = useState<{ key: string; rect: Rect; element: Element; card: HelpCard } | null>(null);
+  const [host, setHost] = useState<Element>(document.querySelector('dialog[open]') ?? document.body);
+  const focusBefore = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    const previous = focusBefore.current;
+    document.documentElement.classList.add('point-help-active');
+    const observer = new MutationObserver(() => setHost([...document.querySelectorAll('dialog[open]')].at(-1) ?? document.body));
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+    return () => { observer.disconnect(); document.documentElement.classList.remove('point-help-active'); if (previous?.isConnected) previous.focus(); };
+  }, []);
+  const selectMatch = useCallback((match: HelpMatch) => setSel({ ...match, rect: rectOf(match.element) }), []);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [cardSize, setCardSize] = useState<Rect>({ left: 0, top: 0, width: 360, height: 140 });
 
-  const rectOf = (el: Element): Rect => {
-    const r = el.getBoundingClientRect();
-    return { left: r.left, top: r.top, width: r.width, height: r.height };
-  };
+
 
   // Наведение: подсвечиваем только контролы с карточкой — остальное
   // не реагирует, режим тихий.
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      const el = helpTarget(e.target instanceof Element ? e.target : null);
-      const key = el?.getAttribute('data-ob') ?? null;
-      const card = cardOf(key);
-      if (!el || !card) {
-        setHover(null);
-        return;
-      }
-      setHover((prev) => {
-        const rect = rectOf(el);
-        return prev && prev.element === el ? prev : { key: key as string, rect, element: el };
-      });
+      const match = resolveHelp(e.target instanceof Element ? e.target : null);
+      if (!match) { setHover(null); return; }
+      setHover(prev => prev?.element === match.element ? prev : { ...match, rect: rectOf(match.element) });
     };
     document.addEventListener('mousemove', onMove);
     return () => document.removeEventListener('mousemove', onMove);
@@ -69,28 +64,27 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
   // подавляет совместимые mouse-события, так что это единственная
   // точка, где клик виден целиком. Остальное — чистый swallow.
   useEffect(() => {
-    const inCard = (e: Event) => !!cardRef.current && e.composedPath().includes(cardRef.current);
+    const inCard = (e: Event) => e.target instanceof Element && !!e.target.closest('.ph-card,.ph-badge');
     const onPointerDown = (e: PointerEvent) => {
-      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const el = helpTarget(e.target instanceof Element ? e.target : null);
-      const key = el?.getAttribute('data-ob') ?? null;
-      if (el && cardOf(key)) {
-        setSel({ key: key as string, rect: rectOf(el), element: el });
-      } else {
-        onExit();
-      }
+      const match = resolveHelp(e.target instanceof Element ? e.target : null);
+      if (match) selectMatch(match);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         if (sel) setSel(null);
         else onExit();
         return;
+      }
+      if (inCard(e)) return;
+      if (e.key === 'Tab') return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        const match = resolveHelp(document.activeElement);
+        if (match) selectMatch(match);
       }
       // Пока режим жив — кроме F1 (вход/выход), клавиши до контролов не идут
       if (e.key !== 'F1') {
@@ -99,21 +93,21 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
       }
     };
     const swallow = (e: Event) => {
-      if (document.querySelector('dialog[open]')) return;
       if (inCard(e)) return;
+      if (e.type === 'wheel' && !(e.target instanceof Element && e.target.closest('input,[role=slider]'))) return;
       e.preventDefault();
       e.stopPropagation();
     };
-    const events = ['mousedown', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu', 'pointerup', 'touchstart', 'touchend'];
+    const events = ['beforeinput', 'paste', 'cut', 'drop', 'dragstart', 'pointermove', 'wheel', 'input', 'change', 'mousedown', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu', 'pointerup', 'touchstart', 'touchend'];
     document.addEventListener('pointerdown', onPointerDown, true);
-    events.forEach((n) => document.addEventListener(n, swallow, true));
+    events.forEach((n) => document.addEventListener(n, swallow, { capture: true, passive: false }));
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
       events.forEach((n) => document.removeEventListener(n, swallow, true));
       document.removeEventListener('keydown', onKey, true);
     };
-  }, [onExit, sel]);
+  }, [onExit, sel, selectMatch]);
 
   // Подсветка ездит за вёрсткой (скролл, панели).
   useEffect(() => {
@@ -145,18 +139,21 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
     if (el && (el.offsetWidth !== cardSize.width || el.offsetHeight !== cardSize.height)) {
       setCardSize({ left: 0, top: 0, width: el.offsetWidth, height: el.offsetHeight });
     }
-  });
+  }, [sel, cardSize.width, cardSize.height]);
 
   const showGuide = useCallback((card: HelpCard) => {
     if (!card.guide) return;
     const trackId = sel?.element.closest('[data-track-id]')?.getAttribute('data-track-id');
-    launchGuide(card.guide.id, { step: card.guide.step, scope: trackId ? `[data-track-id="${CSS.escape(trackId)}"]` : undefined });
+    launchGuide(card.guide.id, { step: card.guide.step, scope: sel?.element.closest('[data-guide-scope]')?.getAttribute('data-guide-scope') ?? (trackId ? `[data-track-id="${CSS.escape(trackId)}"]` : undefined) });
   }, [sel]);
 
-  const card = sel ? cardOf(sel.key) : null;
+  const card = sel?.card;
   const pos = sel ? cardPosition(sel.rect, cardSize, SIDES.bottom) : null;
 
-  return (
+  const selectedElement = sel?.element;
+  useEffect(() => { if (selectedElement) cardRef.current?.focus(); }, [selectedElement]);
+
+  return createPortal(
     <div className="ph-overlay">
       {hover && (
         <div
@@ -164,9 +161,9 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
           style={{ left: hover.rect.left - 3, top: hover.rect.top - 3, width: hover.rect.width + 6, height: hover.rect.height + 6 }}
         />
       )}
-      <div className="ph-badge">режим «что это?» — тыкни в контрол · Esc — выйти</div>
+      <div className="ph-badge"><span>Что это? Выбери элемент · Esc — выйти</span><button onClick={onExit} aria-label="Выйти из справки">✕</button></div>
       {sel && card && pos && (
-        <div className="ob-card ph-card" ref={cardRef} style={{ left: pos.left, top: pos.top }}>
+        <div className="ob-card ph-card" role="dialog" aria-label={card.title} tabIndex={-1} ref={cardRef} style={{ left: pos.left, top: pos.top }}>
           <div className="ob-cap">
             <b>{card.title}</b>
             <button className="ob-x" title="Закрыть карточку (режим живёт)" onClick={() => setSel(null)}>
@@ -174,8 +171,10 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
             </button>
           </div>
           <p className="ob-say">{card.text}</p>
+          {card.how && <p>{card.how}</p>}
+          {card.example && <p className="ph-example"><b>Попробуй: </b>{card.example}</p>}
           <div className="ob-foot">
-            {card.guide ? (
+            {card.guide && host === document.body ? (
               <button className="ob-next" onClick={() => showGuide(card)}>
                 показать в гиде ▸
               </button>
@@ -189,6 +188,6 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
           </div>
         </div>
       )}
-    </div>
+    </div>, host
   );
 }

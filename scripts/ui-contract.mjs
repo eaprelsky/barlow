@@ -46,7 +46,11 @@ try {
   await dialog.waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'отмена');
   await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), '?');
+  await page.keyboard.press('Shift+Tab');
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'удалить');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), '?');
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'отмена');
   await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
@@ -56,9 +60,9 @@ try {
   await page.getByRole('button', { name: 'яркость · длина · ширина', exact: true }).click();
   const macro = page.locator('.macro-editor svg.knob').first();
   await macro.focus(); await macro.press('End');
-  assert.equal(await macro.getAttribute('aria-valuenow'),'1');
+  assert.equal(await macro.getAttribute('aria-valuenow'),'100');
   await page.keyboard.press('Control+z');
-  assert.equal(await macro.getAttribute('aria-valuenow'),'0.5');
+  assert.equal(await macro.getAttribute('aria-valuenow'),'50');
   console.log('PASS editable macro keyboard gesture and undo');
   await page.keyboard.press('Control+k');
   const search = page.getByRole('textbox', { name: 'поиск звука' });

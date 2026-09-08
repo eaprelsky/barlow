@@ -1,3 +1,4 @@
+import { requestPointHelp } from '../onboarding/helpMode';
 // Хост глобальных диалогов в эстетике приложения — рендерится один раз
 // в App. Логика очереди живёт в dialog.ts (там же confirmDialog/alertDialog).
 
@@ -23,7 +24,7 @@ export function DialogHost() {
     const previous = document.activeElement as HTMLElement | null;
     dialog.showModal();
     // The first action is cancellation; dangerous actions never take default focus.
-    (dialog.querySelector('input') ?? dialog.querySelector('button'))?.focus();
+    (dialog.querySelector('input') ?? dialog.querySelector('button:not(.modal-point-help)'))?.focus();
     return () => { if (dialog.open) dialog.close(); if (previous?.isConnected) previous.focus(); };
   }, [first]);
 
@@ -32,7 +33,7 @@ export function DialogHost() {
   return (
     <dialog
       ref={dialogRef}
-      className="modal native-dialog"
+      className="modal native-dialog" data-help="dialog"
       aria-labelledby={titleId}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeDialog(first, !!req.onlyOk); }
@@ -45,6 +46,7 @@ export function DialogHost() {
         if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) closeDialog(first, !!req.onlyOk);
       }}
     >
+        <button className="modal-point-help" type="button" data-help="point-help" aria-label="Что это?" onClick={requestPointHelp}>?</button>
         <h3 id={titleId}>{req.title}</h3>
         {req.text && <p id={textId}>{req.text}</p>}
         {req.input && (
@@ -63,9 +65,9 @@ export function DialogHost() {
           />
         )}
         <div className="modal-btns">
-          {!req.onlyOk && <button onClick={() => closeDialog(first, false)}>{req.cancelLabel ?? 'отмена'}</button>}
+          {!req.onlyOk && <button data-help="dialog-cancel" onClick={() => closeDialog(first, false)}>{req.cancelLabel ?? 'отмена'}</button>}
           <button
-            className={req.danger ? 'danger' : ''}
+            data-help="dialog-confirm" className={req.danger ? 'danger' : ''}
             onClick={() => closeDialog(first, true)}
           >
             {req.okLabel ?? 'ок'}

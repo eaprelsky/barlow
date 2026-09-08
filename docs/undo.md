@@ -21,3 +21,7 @@
   прикрывает). Сторонние эффекты (confirm и т.п.) НЕ звать внутри
   setPatch-updater'а: StrictMode в dev прогоняет апдейтеры дважды.
   window.alert/confirm не использовать — только alertDialog/confirmDialog.
+
+- NumField при blur не повторяет уже применённое значение; реальная правка
+  начинает/возобновляет жест. Это исключает пустую команду undo после
+  точного ввода в Knob при StrictMode/autofocus.

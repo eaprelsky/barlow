@@ -1,3 +1,4 @@
+import { requestPointHelp } from '../onboarding/helpMode';
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { trapModalTab } from './modalFocus';
@@ -10,7 +11,7 @@ export function Modal({ label, className = '', onClose, children }: {
     const el = ref.current!;
     const previous = document.activeElement as HTMLElement | null;
     el.showModal();
-    (el.querySelector<HTMLElement>('[data-initial-focus]') ?? el.querySelector<HTMLElement>('button, input:not([type="file"])'))?.focus();
+    (el.querySelector<HTMLElement>('[data-initial-focus]') ?? el.querySelector<HTMLElement>('button:not(.modal-point-help), input:not([type="file"])'))?.focus();
     return () => { if (el.open) el.close(); if (previous?.isConnected) previous.focus(); };
   }, []);
   return <dialog ref={ref} className={`modal native-dialog ${className}`} aria-label={label}
@@ -18,5 +19,5 @@ export function Modal({ label, className = '', onClose, children }: {
     onMouseDown={e => {
       const r = e.currentTarget.getBoundingClientRect();
       if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) onClose();
-    }}>{children}</dialog>;
+    }}><button className="modal-point-help" type="button" data-help="point-help" aria-label="Что это?" onClick={requestPointHelp}>?</button>{children}</dialog>;
 }

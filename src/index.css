@@ -3554,9 +3554,20 @@ svg.auto-lane {
 
 .macro-editor { padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .macro-editor summary { cursor: pointer; }
-.macro-item { min-width: 90px; padding: 6px; }
-.macro-item details { max-width: 420px; }
-.macro-item input, .macro-item select { max-width: 180px; }
+.macro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)); gap: 8px; margin: 10px 0; align-items: start; }
+.macro-item { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.macro-head { display: flex; align-items: center; gap: 16px; min-height: 82px; }
+.macro-head > div { display: grid; gap: 8px; }
+.macro-head .knob-wrap { min-width: 84px; max-width: 150px; }
+.macro-head .knob-label { white-space: normal; overflow-wrap: anywhere; }
+.macro-item details { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+.macro-item input, .macro-item select { width: 100%; min-width: 0; box-sizing: border-box; }
+.macro-item input { margin: 8px 0; }
+.macro-binding { display: grid; grid-template-columns: minmax(0, 1fr) 75px 26px; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+.macro-binding .knob-label { font-size: 10px; }
+.macro-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.layer-envelope { display: flex; align-items: start; gap: 24px; padding: 8px 4px; }
+.layer-envelope .knob-wrap { min-width: 78px; }
 .sampler-tuning { gap: 20px; flex-wrap: wrap; }
 .sampler-tuning label { display: inline-flex; align-items: center; gap: 6px; }
 .sample-zones { padding: 8px 0; }
@@ -3644,3 +3655,20 @@ svg.auto-lane {
 .wavetable-editor { max-width: 780px; width: 100%; }
 .layer-row { column-gap: 12px; }
 .layer-name { min-width: 0; width: 100%; }
+
+/* The document owns the help cursor; a pointer-transparent overlay cannot. */
+html.point-help-active, html.point-help-active * { cursor: help !important; }
+html.point-help-active .ph-card, html.point-help-active .ph-card * { cursor: auto !important; }
+html.point-help-active .ph-card button { cursor: pointer !important; }
+.ph-card { max-width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.ph-card p { line-height: 1.55; }
+.ph-card .ph-example { color: var(--text-dim); }
+.ph-card .ph-example b { color: var(--accent); font-weight: normal; }
+.ph-badge { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+.help-guides-btn { font-size: 11px; }
+
+.modal-point-help { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; padding: 0; color: var(--accent-2); }
+.native-dialog > h3 { padding-right: 32px; }
+
+.ph-card .ob-say { font-weight: 400; }
+.ph-card:focus-visible { outline: none; border-color: var(--accent-2); }

@@ -16,10 +16,10 @@ export function WavetableEditor({ value, onChange }: { value: Wavetable; onChang
   };
   return <div className="wavetable-editor" data-ob="wavetable">
     <div className="mseg-toolbar">
-      <label>кадр <select aria-label="Кадр wavetable" value={index} onChange={e => select(+e.target.value)}>{value.frames.map((_, i) => <option key={i} value={i}>{i + 1}</option>)}</select></label>
-      <select aria-label="Форма кадра" value="" onChange={e => replace(tableFrame(e.target.value as 'sine'))}><option value="" disabled>форма кадра…</option><option value="sine">синус</option><option value="triangle">треугольник</option><option value="saw">пила</option><option value="pulse">импульс</option></select>
-      <button disabled={value.frames.length >= 8} onClick={() => { onChange({ ...value, frames: [...value.frames, [...value.frames[index]]] }); select(value.frames.length); }}>+ копия кадра</button>
-      <button disabled={value.frames.length <= 2} onClick={() => { onChange({ ...value, frames: value.frames.filter((_, i) => i !== index) }); select(Math.max(0, index - 1)); }}>удалить кадр</button>
+      <label>кадр <select data-help="wave-frame" aria-label="Кадр wavetable" value={index} onChange={e => select(+e.target.value)}>{value.frames.map((_, i) => <option key={i} value={i}>{i + 1}</option>)}</select></label>
+      <select data-help="wave-frame-shape" aria-label="Форма кадра" value="" onChange={e => replace(tableFrame(e.target.value as 'sine'))}><option value="" disabled>форма кадра…</option><option value="sine">синус</option><option value="triangle">треугольник</option><option value="saw">пила</option><option value="pulse">импульс</option></select>
+      <button data-help="wave-frame-add" disabled={value.frames.length >= 8} onClick={() => { onChange({ ...value, frames: [...value.frames, [...value.frames[index]]] }); select(value.frames.length); }}>+ копия кадра</button>
+      <button data-help="wave-frame-delete" disabled={value.frames.length <= 2} onClick={() => { onChange({ ...value, frames: value.frames.filter((_, i) => i !== index) }); select(Math.max(0, index - 1)); }}>удалить кадр</button>
     </div>
     <svg viewBox="0 0 560 120" preserveAspectRatio="none" className="mseg-graph" aria-label="Рисование кадра wavetable" tabIndex={0} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); drag.current = false; last.current = null; gesture.cancel(); } }}
       onPointerDown={e => { drag.current = true; last.current = null; gesture.begin(); e.currentTarget.setPointerCapture(e.pointerId); draw(e); }}
@@ -29,8 +29,8 @@ export function WavetableEditor({ value, onChange }: { value: Wavetable; onChang
       {value.frames.map((frame, i) => <polyline key={i} points={frame.map((v, n) => `${n / 127 * 560},${60 - v * 55}`).join(' ')} fill="none" stroke={i === index ? 'var(--accent)' : 'var(--border)'} strokeWidth={i === index ? 2 : 1} />)}
     </svg>
     <div className="mseg-toolbar">
-      <label>начало, % <NumField ariaLabel="Позиция wavetable, %" value={value.position * 100} min={0} max={100} step={1} onChange={v => onChange({ ...value, position: v / 100 })} /></label>
-      <label>проход, % <NumField ariaLabel="Проход wavetable, %" value={value.sweep * 100} min={-100} max={100} step={1} onChange={v => onChange({ ...value, sweep: v / 100 })} /></label>
+      <label>начало, % <NumField help="wave-position" ariaLabel="Позиция wavetable, %" value={value.position * 100} min={0} max={100} step={1} onChange={v => onChange({ ...value, position: v / 100 })} /></label>
+      <label>проход, % <NumField help="wave-sweep" ariaLabel="Проход wavetable, %" value={value.sweep * 100} min={-100} max={100} step={1} onChange={v => onChange({ ...value, sweep: v / 100 })} /></label>
       <span>0 — статичный тембр · +100 — до последнего кадра за ноту</span>
     </div>
     <span className="sub-cap">Рисуй выбранный кадр мышью или выбери форму. Кадры смешиваются плавно, высота ноты сохраняется.</span>

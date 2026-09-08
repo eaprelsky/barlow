@@ -1023,15 +1023,15 @@ export const TrackRow = memo(function TrackRow({
             <path d="M8 13H1.6V4.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
           </svg>
         </button>
-        <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
+        <button className="track-del" data-help="track-delete" title="Удалить трек" onClick={() => onRemove(track.id)}>
           <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
             <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
           </svg>
         </button>
         <div className="collapsed-row">
-          <button className="fold" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
+          <button className="fold" data-help="fold-open" title="Развернуть трек" onClick={() => onToggleCollapse(track.id)}>▸</button>
           <span className={activeStep >= 0 ? 'live-dot on' : 'live-dot'}>●</span>
-          <input className="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
+          <input className="track-name" data-help="track-name" value={track.name} onChange={(e) => change({ name: e.target.value })} />
           <button
             className="inst-chip"
             data-ob="inst-chip"
@@ -1185,7 +1185,7 @@ export const TrackRow = memo(function TrackRow({
             <path d="M8 13H1.6V4.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
           </svg>
         </button>
-        <button className="track-del" title="Удалить трек" onClick={() => onRemove(track.id)}>
+        <button className="track-del" data-help="track-delete" title="Удалить трек" onClick={() => onRemove(track.id)}>
         <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true">
           <path d="M1 3h10M4 3V1h4v2M2.5 3l1 10h5l1-10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>
@@ -1306,12 +1306,12 @@ export const TrackRow = memo(function TrackRow({
             </div>
           </div>
           <div className="track-voicing" data-ob="track-voicing">
-            <label><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> новая нота глушит предыдущую</label>
-            {track.mono && <label data-ob="portamento" title="Плавное скольжение между одиночными нотами. 0 — выключено; первая нота и аккорды без скольжения.">portamento, мс <NumField value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
-            <label>группа глушения <select aria-label="Группа глушения" value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
+            <label data-help="mono"><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> новая нота глушит предыдущую</label>
+            {track.mono && <label data-ob="portamento" title="Плавное скольжение между одиночными нотами. 0 — выключено; первая нота и аккорды без скольжения.">скольжение, мс <NumField help="portamento" value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
+            <label data-help="choke-group">группа глушения <select aria-label="Группа глушения" value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
               <option value={0}>нет</option>{Array.from({ length: 16 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
             </select></label>
-            {track.chokeGroup && <label>приоритет <NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
+            {track.chokeGroup && <label data-help="choke-priority">приоритет <NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
             {track.mono && (track.portamentoSec ?? 0) > 0 && <span>{inst.waveform === 'sample' && inst.sampleMode === 'scratch' ? 'Portamento не действует на скрэтч: высоту задаёт жест.' : 'Одиночные ноты скользят от предыдущей высоты, в том числе после паузы. Атака огибающей повторяется.'}</span>}
             <span>В группе новая атака глушит прежние. Одновременно: больший приоритет, затем нижний трек.</span>
           </div>
@@ -1340,13 +1340,13 @@ export const TrackRow = memo(function TrackRow({
                   <span className="auto-hint" title="Кривые активного эскиза управляют параметрами во время игры; ручки задают базу для остальных эскизов">автоматизация</span>}
                 {fx.type === 'delay' ? (
                   <>
-                    <Knob
+                    <Knob help="effect.timeSec"
                       label="время, мс"
                       title="Через сколько миллисекунд повтор (при темпе 118: восьмая ≈ 254 мс). Двойной клик — точное число"
                       value={Math.round(fx.timeSec * 1000)} min={10} max={2000} step={10} log
                       onChange={(ms) => updateDelay(i, { timeSec: ms / 1000 })}
                     />
-                    <Knob
+                    <Knob help="effect.feedback"
                       label="фидбек"
                       title="Затухание повторов: 0% — один повтор, 80% — длинное эхо. Двойной клик — точное число"
                       value={Math.round(fx.feedback * 100)} min={0} max={90} step={5}
@@ -1368,7 +1368,7 @@ export const TrackRow = memo(function TrackRow({
                     onChange={(drive) => updateEffect(i, 'dist', { drive })}
                   />
                 ) : fx.type === 'chorus' ? (
-                  <Knob
+                  <Knob help="mod-rate"
                     label="скорость, Гц"
                     title="Скорость разжижения: 0.2–0.8 Гц — мягкое течение, выше 3 — рыскающий. Двойной клик — точное число"
                     value={fx.rate} min={0.05} max={8} step={0.05} log
@@ -1382,7 +1382,7 @@ export const TrackRow = memo(function TrackRow({
                     onChange={(bits) => updateEffect(i, 'lofi', { bits: Math.round(bits) })}
                   />
                 )}
-                <Knob
+                <Knob help="effect.mix"
                   label="микс"
                   title="Сколько эффекта подмешать к чистому звуку. Двойной клик — точное число"
                   value={Math.round(fx.mix * 100)} min={0} max={100} step={5}
@@ -1467,7 +1467,7 @@ export const TrackRow = memo(function TrackRow({
           <div className="sketch-bar">
             <label title="Сколько шагов в цикле эскиза. Разные длины образуют полиритмию; рациональные отношения дают общий период повторения" data-ob="length">
               длина
-              <NumField narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+              <NumField help="pattern.length" narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
             </label>
             <label title="Длительность шага этого эскиза. «Точёные» (1/8 точ.) — шаги плывут относительно других треков: полиметрия" data-ob="rate">
               шаг
@@ -1949,7 +1949,7 @@ export const TrackRow = memo(function TrackRow({
                           ))}
                         </select>
                       )}
-                      <Knob
+                      <Knob help="mod-rate"
                         label="скорость"
                         title="Скорость колебаний, Гц: 0.2 — период 5 секунд; 4–8 — вибрато. Двойной клик — точное число"
                         value={modRateHz(m, bpm)} min={0.01} max={40} step={0.05} log

@@ -6,7 +6,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GUIDES, guideById, isGuideSeen, launchGuide, markInvited } from './guides';
-import type { Guide, GuideStart } from './guides';
+import type { Guide } from './guides';
+import { requestPointHelp } from './helpMode';
 
 export interface GuideRun {
   guideId: string;
@@ -214,7 +215,7 @@ export function Onboarding({
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (document.querySelector('dialog[open]')) return;
-      if (e.key === 'Escape') return; // уйдёт в обычный обработчик — выход
+      if (e.key === 'Escape' || e.key === 'F1') return; // уйдёт в обычный обработчик — выход
       e.preventDefault();
       e.stopPropagation();
     };
@@ -321,7 +322,7 @@ export function Onboarding({
   );
 }
 
-/** Кнопка-вопросик зоны: запускает гид сценария (можно с конкретного шага). */
+/** All question buttons enter the same inspection mode. Tour metadata stays available to the resolver. */
 export function HelpHint({
   guide,
   step,
@@ -337,11 +338,12 @@ export function HelpHint({
   return (
     <button
       className="ob-hint"
-      title={label ?? 'Интерактивный гид: что здесь можно сделать'}
+      title="Что это? Выбери элемент, чтобы открыть объяснение (F1)"
+      data-help="point-help" data-guide-id={guide} data-guide-step={step} data-guide-scope={scope} data-guide-label={label}
       aria-label="гид"
       onClick={(e) => {
         e.stopPropagation();
-        launchGuide(guide, { scope, step } satisfies GuideStart);
+        requestPointHelp();
       }}
     >
       ?

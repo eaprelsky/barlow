@@ -3,6 +3,7 @@ import { useEditGesture } from './editGesture';
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 
 interface Props {
+  help?: string;
   value: number;
   min: number;
   max: number;
@@ -32,7 +33,7 @@ const PX_PER_STEP = 4; // пикселей на один шаг
 // стереть, поставить '.'), нормализация при blur/Enter — и крутилка:
 // потяни поле вертикально, Shift — мелкий шаг. Порог отделяет клик-в-поле
 // от начала драга, поэтому набор текста не ломается.
-export function NumField({ value, min, max, step = 1, title, ariaLabel, disabled, narrow, w, wheel, autoFocus, onFocus, onBlur, onKeyDown, onChange }: Props) {
+export function NumField({ help, value, min, max, step = 1, title, ariaLabel, disabled, narrow, w, wheel, autoFocus, onFocus, onBlur, onKeyDown, onChange }: Props) {
   const gesture = useEditGesture();
   const initial = useRef(value);
   const cancelled = useRef(false);
@@ -68,14 +69,15 @@ export function NumField({ value, min, max, step = 1, title, ariaLabel, disabled
     setDraft(raw);
     if (raw.trim() === '') return;
     const n = Number(raw.replace(',', '.'));
-    if (Number.isFinite(n) && n >= min && n <= max) onChange(n);
+    if (Number.isFinite(n) && n >= min && n <= max && n !== value) { gesture.begin(); onChange(n); }
   };
 
   const settle = () => {
     if (cancelled.current) { cancelled.current = false; return; }
     if (draft === null) return;
     const n = draft.trim() === '' ? NaN : Number(draft.replace(',', '.'));
-    onChange(Number.isFinite(n) ? clamp(n) : initial.current);
+    const next = Number.isFinite(n) ? clamp(n) : initial.current;
+    if (next !== value) { gesture.begin(); onChange(next); }
     setDraft(null);
   };
 
@@ -96,6 +98,7 @@ export function NumField({ value, min, max, step = 1, title, ariaLabel, disabled
     const px = e.shiftKey ? PX_PER_STEP * 10 : PX_PER_STEP;
     const nv = clamp(Math.round((d.v0 + (dy / px) * step) / step) * step);
     setDraft(String(Number(nv.toFixed(4))));
+    gesture.begin();
     onChange(nv);
   };
 
@@ -107,7 +110,7 @@ export function NumField({ value, min, max, step = 1, title, ariaLabel, disabled
   };
 
   return (
-    <input
+    <input data-help={help}
       ref={inputRef}
       className={narrow ? 'narrow' : undefined}
       style={w ? { width: `${w}px` } : undefined}
