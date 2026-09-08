@@ -50,6 +50,8 @@ import { sampleAssets } from './music/sampleZones';
 import { slugify } from './utils/slug';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
+import { HelpSearch } from './onboarding/HelpSearch';
+import type { HelpEntry } from './onboarding/helpSearchIndex';
 import { PointHelp } from './onboarding/PointHelp';
 import { HELP_MODE_EVENT, publishPointHelp } from './onboarding/helpMode';
 import type { GuideRun } from './onboarding/Onboarding';
@@ -255,6 +257,11 @@ export default function App() {
   const [showMix, setShowMix] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   // Онбординг: меню гидов у «?» и текущий гид (id + шаг + зона-скоуп).
+  const [showHelpSearch,setShowHelpSearch] = useState(false);
+  const [helpDestination,setHelpDestination] = useState<{entry:HelpEntry;trackId:string}|null>(null);
+  const [helpArrival,setHelpArrival] = useState('');
+  const openHelpSearch = useCallback(()=>{setPointHelp(false);setObRun(null);setShowHelpMenu(false);setShowHelpSearch(true);},[]);
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.ctrlKey&&e.code==='Slash'){e.preventDefault();e.stopImmediatePropagation();openHelpSearch();}};window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);},[openHelpSearch]);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   // Режим «что это?»: клик по контролу показывает его карточку (cards.ts),
   // контролы не активируются. F1 — вход/выход.
@@ -427,6 +434,36 @@ export default function App() {
     editorTrack && patch.tracks.some((t) => t.id === editorTrack)
       ? editorTrack
       : null;
+
+  const navigateHelp = (entry:HelpEntry,trackId:string):string|undefined => {
+    if(document.querySelector('[data-help-navigation-blocked="true"]')) return 'Сначала примени или отбрось черновик волны либо заверши запись/загрузку. Поиск сохраняет твою работу.';
+    if(document.querySelectorAll('dialog[open]').length>1) return 'Сначала закрой исходное диалоговое окно, затем повтори переход из поиска.';
+    const loc=entry.location;if(!loc)return;
+    setShowHelpSearch(false);setPointHelp(false);setObRun(null);setHelpArrival('');
+    setTrackQuery('');setHideSceneMuted(false);
+    if(['track','snd','env','timbre'].includes(loc.panel)) {
+      setUi(u=>({...u,collapsed:{...u.collapsed,[trackId]:false}}));
+      if(loc.panel==='track')setEditorTrack(null);
+      else {setEditorTrack(trackId);setEditorTab(loc.panel as InstEditorTab);}
+    } else openGuidePanel(loc.panel);
+    setHelpDestination({entry,trackId});
+  };
+  useEffect(()=>{
+    if(!helpDestination)return;
+    const {entry,trackId}=helpDestination,loc=entry.location!;
+    let frame=0,attempts=0,marked:HTMLElement|null=null;
+    const run=()=>{
+      const scoped=['track','snd','env','timbre'].includes(loc.panel);
+      const root=scoped?document.querySelector(`[data-track-id="${CSS.escape(trackId)}"]`):document;
+      if(loc.panel==='track') {const mode=root?.querySelector<HTMLButtonElement>('[data-ob="mode-track"]');if(mode&&!mode.classList.contains('on'))mode.click();}
+      const visible=(selector:string)=>Array.from(root?.querySelectorAll<HTMLElement>(selector)??[]).find(e=>e.getBoundingClientRect().height>0);
+      const target=visible(loc.selector)??visible(loc.fallback);
+      if((!target||attempts<2)&&attempts++<12){frame=requestAnimationFrame(run);return;}
+      setHelpArrival(`${entry.card.title}. ${loc.path}${target?'':' Настройка пока скрыта: следуй этому пути.'}`);
+      if(target){marked=target;target.scrollIntoView({block:'center',behavior:'instant'});target.classList.add('help-found-target');}
+    };frame=requestAnimationFrame(run);
+    return()=>{cancelAnimationFrame(frame);marked?.classList.remove('help-found-target');};
+  },[helpDestination]);
 
   // Движок всегда видит актуальный патч — редактирование без остановки.
   useEffect(() => {
@@ -1530,6 +1567,7 @@ export default function App() {
           >
             ?
           </button>
+          <button data-help="help-search" onClick={openHelpSearch} title="Поиск по справке (Ctrl+/)">найти в справке</button>
           <button className="help-guides-btn" data-help="help-guides" onClick={() => setShowHelpMenu(v => !v)}>гиды</button>
           {showHelpMenu && (
             <HelpMenu
@@ -2160,6 +2198,8 @@ export default function App() {
       {wavExport && <WavExport patch={wavExport.patch} sceneId={wavExport.sceneId} backend={engine}
         onClose={() => setWavExport(null)} onExport={renderWav} />}
       <DialogHost />
+      {showHelpSearch && <HelpSearch onClose={()=>setShowHelpSearch(false)} onNavigate={navigateHelp} tracks={patch.tracks.map(t=>({id:t.id,name:t.name}))} initialTrack={editorActive??patch.tracks[0]?.id??''} />}
+      {helpArrival&&<aside className="help-arrival" data-help="help-search-arrival" role="status"><span>{helpArrival}</span><button aria-label="Закрыть подсказку перехода" onClick={()=>{setHelpArrival('');setHelpDestination(null);}}>×</button></aside>}
       {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}
       {obRun && (
         <Onboarding run={obRun} onDone={stopGuide} onStep={stepGuide} onOpenPanel={openGuidePanel} />

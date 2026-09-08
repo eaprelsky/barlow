@@ -400,7 +400,7 @@ export function InstrumentEditor({
   const tryClose = async () => { await settleDraft(); onClose(); };
 
   return (
-    <div className="wave-editor inst-editor" data-ob="inst-panel">
+    <div className="wave-editor inst-editor" data-ob="inst-panel" data-help-navigation-blocked={dirty || scratchArmed || scratchLive || fileBusy ? "true" : undefined}>
       {layerSource && <div className="layer-source-heading" data-help="layer-source-editor"><strong>Слой: {inst.name}</strong><span>источник голоса</span></div>}
       <div className="we-head">
         <span className="tabs we-tabs" data-ob="we-tabs">
