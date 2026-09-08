@@ -1,6 +1,7 @@
 import type { InstrumentPreset } from './instrumentPresets';
 export const SOUND_PACKS = [
   { id: 'core-v39', name: 'Основы', description: 'Исходная палитра и два сэмплерных шаблона' },
+  { id: 'idm-02', name: 'IDM 02', description: '60 тембров wavetable, VA, ring, wavefold и comb' },
   { id: 'idm-01', name: 'IDM 01', description: '68 синтетических рецептов для электронной музыки' },
   { id: 'user', name: 'Мои инструменты', description: 'Сохранённые тобой тембры' },
 ];

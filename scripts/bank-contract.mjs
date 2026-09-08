@@ -49,5 +49,5 @@ try {
   writeFileSync(root + '/tmp/bank-qa.json', JSON.stringify(result, null, 2));
   for (const r of result) console.log(`${r.pass ? 'PASS' : 'FAIL'} ${r.id} ${r.name} RMS=${r.rms.toFixed(5)} peak=${r.peak.toFixed(4)}`);
   console.log(`bank: ${result.filter(r=>r.pass).length}/${result.length}`);
-  if (result.length !== 120 || result.some(r=>!r.pass)) process.exitCode=1;
+  if (result.length !== 180 || result.some(r=>!r.pass)) process.exitCode=1;
 } finally { await browser?.close(); vite.kill(); }

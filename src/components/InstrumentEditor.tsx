@@ -1,3 +1,8 @@
+import { WavetableEditor } from './WavetableEditor';
+import { tableRecipe } from '../music/wavetable';
+import { LayerEditor } from './LayerEditor';
+import { MsegEditor } from './MsegEditor';
+import { MSEG_SHAPES } from '../music/mseg';
 import { recommendedHz } from '../music/audition';
 import type { SamplePCM } from '../audio/pcm';
 // Большой редактор инструмента дорожки: «раздвинутый» режим карточки
@@ -443,6 +448,7 @@ export function InstrumentEditor({
         </button>
         <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
       </div>
+      <LayerEditor inst={inst} onChange={onChangeInst} />
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
       {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}
         title="Остановить загрузку и применение результата. Уже отправленное задание провайдер может выполнить и списать оплату">прекратить ожидание</button></div>}
@@ -504,7 +510,11 @@ export function InstrumentEditor({
               канвас — сумма (модуляторы видны фазовой модуляцией целей),
               правки — в черновик; унисон, вибрато, форманты и заготовка —
               универсальные слои правой панелью, к строкам не привязаны. */}
-          {!isSample && (
+          {!isSample && <div className="mseg-toolbar" data-ob="synthesis-mode"><label>синтез <select aria-label="Способ синтеза" value={inst.wave?.wavetable ? 'table' : inst.wave?.va ? 'va' : 'operators'} onChange={e => onChangeInst({ wave: { ...(inst.wave ?? wave), wavetable: e.target.value === 'table' ? tableRecipe() : undefined, va: e.target.value === 'va' ? { shape: 'saw', pulseWidth: .5 } : undefined } }, true)}><option value="operators">операторы · FM</option><option value="table">wavetable · кадры</option><option value="va">VA · аналоговые формы</option></select></label></div>}
+          {!isSample && inst.wave?.wavetable && <WavetableEditor value={inst.wave.wavetable} onChange={wavetable => onChangeInst({ wave: { ...inst.wave!, wavetable } })} />}
+          {!isSample && inst.wave?.va && <div className="mseg-toolbar" data-ob="va-oscillator"><label>форма <select aria-label="Форма VA" value={inst.wave.va.shape} onChange={e => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, shape: e.target.value as 'saw' } } })}><option value="saw">пила</option><option value="pulse">импульс</option><option value="triangle">треугольник</option></select></label><label>ширина импульса, % <NumField ariaLabel="Ширина импульса VA, %" disabled={inst.wave.va.shape !== 'pulse'} value={inst.wave.va.pulseWidth * 100} min={5} max={95} step={.1} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pulseWidth: v / 100 } } })} /></label><span>Яркость и резонанс — во вкладке «тембр».</span></div>}
+          {!isSample && (inst.wave?.wavetable || inst.wave?.va) && <div className="mseg-toolbar"><label>унисон <NumField ariaLabel="Унисон нового синтеза" value={inst.unisonVoices ?? 1} min={1} max={8} step={1} onChange={unisonVoices => onChangeInst({ unisonVoices })} /></label><label>расстройка, ц <NumField ariaLabel="Расстройка нового синтеза" value={inst.unisonDetune ?? 12} min={0} max={50} step={.5} onChange={unisonDetune => onChangeInst({ unisonDetune })} /></label><label>вибрато, ц <NumField ariaLabel="Вибрато нового синтеза" value={inst.vibratoDepth ?? 0} min={0} max={1200} step={1} onChange={vibratoDepth => onChangeInst({ vibratoDepth })} /></label></div>}
+          {!isSample && !inst.wave?.wavetable && !inst.wave?.va && (
             <div className="we-wave-layers">
               <div className="we-wave-left">
                 <div className="we-canvas-stack" data-ob="we-wave-canvas">
@@ -1364,6 +1374,8 @@ export function InstrumentEditor({
       {tab === 'env' && (
         <div className="we-body">
           <div className="env-tab" data-ob="env-tab">
+            <div className="mseg-toolbar" data-ob="envelope-mode"><span>громкость ноты</span><select aria-label="Режим огибающей" value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
+            {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={ampMseg => onChangeInst({ ampMseg })} /> : <>
             <span className="sub-cap">форма ноты — громкость и падение тона на одной оси времени</span>
             <NoteGraph
               attack={st.attack}
@@ -1401,6 +1413,8 @@ export function InstrumentEditor({
                 value={st.decay} min={0.01} max={4} step={0.01}
                 onChange={(decay) => onChangeInst({ decay })}
               />
+            </div></>}
+            <div className="env-fields">
               <Knob
                 label="падение, ×"
                 title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения. Двойной клик — точное число"
@@ -1427,6 +1441,20 @@ export function InstrumentEditor({
 
       {tab === 'timbre' && (
         <div className="we-body">
+          <div className="group sub" data-ob="voice-color">
+            <span className="sub-cap">характер голоса — до эффектов дорожки</span>
+            <div className="mseg-toolbar">
+              <label>ring, % <NumField ariaLabel="Доля ring, %" value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
+              <label>частота × <NumField ariaLabel="Частота ring, ×" value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>
+              <label>wavefold <NumField ariaLabel="Wavefold" value={inst.foldDrive ?? 0} min={0} max={8} step={.1} onChange={foldDrive => onChangeInst({ foldDrive })} /></label>
+              <select aria-label="Качество wavefold" value={inst.synthQuality ?? '4x'} onChange={e => onChangeInst({ synthQuality: e.target.value as '2x' | '4x' })}><option value="4x">качество 4×</option><option value="2x">экономия 2×</option></select>
+            </div>
+            <div className="mseg-toolbar">
+              <label>comb, % <NumField ariaLabel="Доля comb, %" value={(inst.combMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ combMix: v / 100 })} /></label>
+              <label>резонанс, Гц <NumField ariaLabel="Резонанс comb, Гц" value={inst.combHz ?? 220} min={40} max={4000} step={1} onChange={combHz => onChangeInst({ combHz })} /></label>
+              <label>звонкость, % <NumField ariaLabel="Звонкость comb, %" value={(inst.combFeedback ?? .5) * 100} min={0} max={85} step={1} onChange={v => onChangeInst({ combFeedback: v / 100 })} /></label>
+            </div>
+          </div>
           {/* Вибрато и унисон переехали на «источник» (v39): это слои
               тембра рядом с таблицей операторов, а не вкладка фильтров. */}
           <div className="group sub knob-row" data-ob="timbre-tab">

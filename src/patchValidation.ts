@@ -1,5 +1,7 @@
+import { validWavetable, validVA } from './music/wavetable.ts';
 // Bounded validation before migrations or asset I/O; legacy versions retain
 // their own optional fields and are converted by normalizePatch afterwards.
+import { validMseg } from './music/mseg.ts';
 import { validNoteLocks } from './music/noteLocks.ts';
 import { validSampleSlices } from './music/sampleSlices.ts';
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -69,7 +71,26 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       }
     }
   }
+  const sounds = [...instruments];
   for (const inst of instruments) {
+    if (inst.baseVoiceGain !== undefined && (typeof inst.baseVoiceGain !== 'number' || inst.baseVoiceGain < 0 || inst.baseVoiceGain > 1)) return false;
+    if (inst.layers === undefined) continue;
+    if (!Array.isArray(inst.layers) || !unique(inst.layers, 3)) return false;
+    for (const layer of inst.layers) {
+      if (!record(layer.sound) || layer.sound.layers !== undefined || layer.sound.baseVoiceGain !== undefined
+        || typeof layer.name !== 'string' || layer.name.length > 160
+        || typeof layer.gain !== 'number' || layer.gain < 0 || layer.gain > 1
+        || typeof layer.ratio !== 'number' || layer.ratio < .125 || layer.ratio > 8) return false;
+      sounds.push(layer.sound);
+    }
+  }
+  for (const inst of sounds) {
+    if (record(inst.wave) && (!validWavetable(inst.wave.wavetable) || !validVA(inst.wave.va) || inst.wave.wavetable !== undefined && inst.wave.va !== undefined)) return false;
+    for (const [field, lo, hi] of [['ringMix',0,1],['ringRatio',.125,16],['foldDrive',0,8],['combMix',0,1],['combHz',40,4000],['combFeedback',0,.85]] as const) {
+      const v = inst[field]; if (v !== undefined && (typeof v !== 'number' || v < lo || v > hi)) return false;
+    }
+    if (inst.synthQuality !== undefined && inst.synthQuality !== '2x' && inst.synthQuality !== '4x') return false;
+    if (!validMseg(inst.ampMseg)) return false;
     if (inst.recommendedHz !== undefined && (typeof inst.recommendedHz !== 'number' || inst.recommendedHz < 20 || inst.recommendedHz > 9000)) return false;
     if (!validSampleSlices(inst.sampleSlices)) return false;
     if (inst.sampleId !== undefined && (typeof inst.sampleId !== 'string' || !/^[a-f0-9]{64}$/.test(inst.sampleId))) return false;

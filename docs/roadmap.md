@@ -7,9 +7,14 @@
 audio-to-audio, `src/ai/providers.ts` — провайдер-агностик), огибающая
 перехода сцен (fadeIn/fadeOut на эскизе, рампы в armSceneExit движка),
 редактор волны (обрезка сэмпла sampleStart/End, своя волна из парциалов
-`Track.wave`, FFT-разложение сэмпла: `components/WaveEditor.tsx`,
+`Instrument.wave`, FFT-разложение сэмпла: `components/InstrumentEditor.tsx`,
 `music/fft.ts`), арпеджиатор (`audio/arp.ts`, типы как в Ableton),
 интерактивный онбординг (`src/onboarding/`).
+
+MSEG, до четырёх голосов инструмента, wavetable/VA, ring/wavefold/comb,
+180 звучащих пресетов и два шаблона. Контракты: mseg.md, layers.md,
+synthesis-v53.md, scene-transitions.md. Проверка полноты перед расширением
+до 300 — coverage-review-v53.md.
 
 ## Дальше
 

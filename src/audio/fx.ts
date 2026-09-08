@@ -1,3 +1,4 @@
+import { sampleTime } from './sampleTime';
 // Цепочка трека (фильтры → эффекты → панорама → громкость → сайдчейн)
 // и мастер (громкость → компрессия → лимитер → пан + слой шума).
 // Выделено из engine.ts без изменений логики — модуль переносится в
@@ -40,6 +41,8 @@ export interface TrackChain {
   filter: BiquadFilterNode;
   panner: StereoPannerNode;
   gain: GainNode;
+  sceneGain: GainNode;
+  sceneEnvelopeSig?: string;
   // Гейт сайдчейна: живёт отдельно от gain, чтобы качаться поверх
   // эффективной громкости эскиза.
   duck: GainNode;
@@ -49,12 +52,7 @@ export interface TrackChain {
   fx: FxNodes[];
   // Сигнатура набора модуляций и эффектов: изменилась — цепочка пересобирается.
   modSig: string;
-  // Переходная огибающая сцены: рампы входа/выхода на gain.gain.
-  // boundary — граница, к которой уходит эскиз; entryEnd — конец входа
-  // следующего. Пока план жив, scheduler не пере-применяет громкость.
-  fadePlan?: { boundary: number; nextSceneId: string; entryEnd: number } | null;
-  // До этого времени (audio clock) громкость под управлением плана.
-  fadeHold?: number;
+
 }
 
 export const modsSigOf = (mods: Mod[]) =>
@@ -280,6 +278,7 @@ export interface MasterNodes {
 }
 
 export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt: number | null = 0): TrackChain {
+  if (startAt !== null) startAt = sampleTime(startAt, ctx.sampleRate);
   track = resolveMacros(track);
   const lease = reserveChain(ctx, track);
   try { return { ...makeChainGraph(ctx, track, dest, bpm, seed, startAt), resourceLease: lease, deferredStart: startAt === null }; }
@@ -291,6 +290,7 @@ export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: Aud
 export function startChain(chain: TrackChain, at: number): void {
   if (!chain.deferredStart) return;
   chain.deferredStart = false;
+  at = sampleTime(at, chain.hp.context.sampleRate);
   for (const m of chain.mods) m.src.start(at);
   for (const f of chain.fx) {
     f.mix.start(at); f.timeControl?.source.start(at); f.feedbackControl?.source.start(at); f.lfo?.start(at);
@@ -314,12 +314,13 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
   const duck = ctx.createGain(); // сайдчейн-гейт, обычно открыт (1)
   panner.connect(gain);
   gain.connect(duck);
-  duck.connect(dest);
+  const sceneGain = ctx.createGain();
+  duck.connect(sceneGain); sceneGain.connect(dest);
   // Тумбометр — тупиковое ответвление: анализатору не нужен выход,
   // он читает поток на проход.
   const meter = ctx.createAnalyser();
   meter.fftSize = 512;
-  duck.connect(meter);
+  sceneGain.connect(meter);
 
   // Эффекты: фильтры → (dry|wet каждого эффекта) → панорама.
   // dry и wet — кроссфейд: обработанный сигнал приходит только через
@@ -398,6 +399,7 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
     panner,
     gain,
     duck,
+    sceneGain,
     meter,
     mods,
     fx,
@@ -407,6 +409,7 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
 
 export function disposeChain(chain: TrackChain): void {
   chain.resourceLease?.release();
+  chain.sceneGain.disconnect();
   for (const m of chain.mods) {
     try {
       m.src.stop();

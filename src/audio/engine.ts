@@ -1,3 +1,6 @@
+import { sampleTime } from './sampleTime';
+import { scheduleSceneEnvelope } from './sceneEnvelope';
+import { instrumentVoices, soundingSampleAssets } from '../music/layers';
 import { selectChokeEvents } from './chokeEvents';
 // Аудио-движок: lookahead-планировщик (паттерн "A Tale of Two Clocks").
 // UI-поток каждые 25 мс планирует ноты на 120 мс вперёд по часам
@@ -15,7 +18,6 @@ import { selectChokeEvents } from './chokeEvents';
 
 import type { Mod, Note, Patch, Scene, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { resolveMacros } from '../music/macros';
-import { sampleAssets } from '../music/sampleZones';
 import { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { DecodedAssets } from './decodedAssets';
 import { copySamplePCM, type SamplePCM } from './pcm';
@@ -165,10 +167,10 @@ export class AudioEngine implements AudioBackend {
   private previewRequest = 0;
   private previewCleanup: (() => void) | null = null;
   private async loadSoundSample(st: SoundingTrack): Promise<void> {
-    if (st.waveform !== 'sample') return;
+    if (!soundingSampleAssets(st).length) return;
     const ctx = this.ensureCtx();
-    if (st.sampleMode === 'scratch') await ensureScratchModule(ctx);
-    for (const asset of sampleAssets(st)) {
+    if (instrumentVoices(st).some(v => v.gain > 0 && v.sound.waveform === 'sample' && v.sound.sampleMode === 'scratch')) await ensureScratchModule(ctx);
+    for (const asset of soundingSampleAssets(st)) {
       await this.loadSample(asset.sampleId, asset.sampleName);
     }
   }
@@ -187,7 +189,7 @@ export class AudioEngine implements AudioBackend {
   private patchAssetIds(patch: Patch): string[] {
     return patch.tracks.flatMap(t => {
       const st = stOf(patch, t);
-      return st.waveform === 'sample' ? sampleAssets(st).map(a => a.sampleId) : [];
+      return soundingSampleAssets(st).map(a => a.sampleId);
     });
   }
   private async loadMainSample(st: SoundingTrack, scratch = false): Promise<AudioBuffer | null> {
@@ -384,12 +386,6 @@ export class AudioEngine implements AudioBackend {
     const ctx = this.ctx;
     if (!ctx || !this.master) return chain;
     const t0 = ctx.currentTime;
-    // Переходная огибающая сыграла — план снимается, громкость снова
-    // под управлением scheduler'а.
-    if (chain.fadePlan && t0 > chain.fadePlan.entryEnd + 0.05) {
-      chain.fadePlan = null;
-      chain.fadeHold = undefined;
-    }
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
       const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
@@ -405,9 +401,8 @@ export class AudioEngine implements AudioBackend {
     if (!autoOf('filterFreq')) chain.filter.frequency.setTargetAtTime(track.filterFreq, t0, 0.03);
     chain.filter.Q.setTargetAtTime(track.filterQ ?? 0.8, t0, 0.03);
     if (!autoOf('pan')) chain.panner.pan.setTargetAtTime(eff.pan * 2 - 1, t0, 0.03);
-    // Во время запланированного перехода сцен громкость на плане рамп —
-    // setTarget здесь затёр бы их; вернёмся к обычному режиму после входа.
-    if (!autoOf('volume') && (chain.fadeHold === undefined || t0 >= chain.fadeHold)) {
+    // Scene gain is independent; automation owns the fader when present.
+    if (!autoOf('volume')) {
       chain.gain.gain.setTargetAtTime(eff.volume, t0, 0.03);
     }
     eff.mods.forEach((m, i) => {
@@ -437,7 +432,7 @@ export class AudioEngine implements AudioBackend {
       } else if (e.type === 'lofi' && n.shaper) {
         n.shaper.curve = lofiCurve(e.bits);
       } else if (e.type === 'chorus') {
-        n.lfo?.frequency.setTargetAtTime(e.rate, t0, 0.05);
+        if (n.lfo && n.lfo.frequency.value !== e.rate) n.lfo.frequency.setTargetAtTime(e.rate, t0, 0.05);
       }
     });
     return chain;
@@ -474,109 +469,32 @@ export class AudioEngine implements AudioBackend {
     this.armSceneExit(this.sceneAdvanceTime);
   }
 
-  /** Переходная огибающая сцены: рампы на chain.gain. Уходящий эскиз
-   *  затухает к границе (его fadeOut), входящий нарастает после неё
-   *  (его fadeIn) — у каждой партии свой характер вступления и ухода.
-   *
-   *  Вызывается, когда граница становится известна (цепочка — конец
-   *  текущего пункта; ручной клик — ближайший такт). Смена сцены в
-   *  applyNextScene план не трогает: рампы расставлены заранее.
-   *  Повторный вызов с той же границей и той же следующей сценой —
-   *  no-op; с другой (перенаведение клика) — хвост перестраивается:
-   *  идущий вход не рвётся, достраиваем после него.
-   *
-   *  boundary = null, cancel = true — переход отменён (выход из
-   *  цепочки): снимаем рампы. null без cancel — план сыгран до конца
-   *  (сцена применена), события добьют вход, нового ухода нет.
-   *
-   *  Известное ограничение: смена темпа в середине длинного выхода
-   *  растягивает границу (setBpm), но не уже запланированные рампы —
-   *  стык слегка съезжает; на слух незаметно, редкий случай. */
-  private armSceneExit(boundary: number | null, opts?: { cancel?: boolean }): void {
-    const ctx = this.ctx;
-    const patch = this.patch;
+  /** The same independent scene envelope drives live and explicit WAV exports.
+   * Retargeting/tempo changes replace only this gain, never fader automation. */
+  private armSceneExit(boundary: number | null, _opts?: { cancel?: boolean }): void {
+    const ctx = this.ctx, patch = this.patch;
     if (!ctx || !patch) return;
-    const now = ctx.currentTime;
-    const nextId = this.pendingSceneId
-      ? this.validScene(this.pendingSceneId)
-      : patch.followChain && !this.manualMode
-        ? this.validScene(patch.chain[(this.chainPos + 1) % Math.max(1, patch.chain.length)]?.sceneId ?? '')
-        : '';
-    const nextScene = patch.scenes.find((s) => s.id === nextId);
-    const curScene = this.scene();
     for (const track of patch.tracks) {
-      const chain = this.chains.get(track.id);
-      const clock = this.clocks.get(track.id);
+      const chain = this.chains.get(track.id), clock = this.clocks.get(track.id);
       if (!chain || !clock) continue;
-      const g = chain.gain.gain;
-      const plan = chain.fadePlan;
-      // Тот же переход — план уже стоит.
-      if (boundary !== null && plan && plan.boundary === boundary && plan.nextSceneId === nextId) continue;
-      const curP = patternInScene(track, curScene);
-      const volCur = effectiveParams(track, curP).volume;
-      const fadeInCur = Math.max(0.001, curP?.fadeIn ?? 0.005);
-      const fadeOutCur = Math.max(0, curP?.fadeOut ?? 0.05);
-      const inP = patternInScene(track, nextScene);
-      const volIn = effectiveParams(track, inP).volume;
-      const fadeInIn = Math.max(0.001, inP?.fadeIn ?? 0.005);
-      const hasPlan = !!plan && plan.entryEnd > now + 0.001;
-
-      if (boundary === null) {
-        if (opts?.cancel && hasPlan) {
-          // Переход отменён до границы — рампы не нужны.
-          g.cancelScheduledValues(now);
-          g.setValueAtTime(g.value, now);
-        }
-        if (hasPlan && !opts?.cancel) {
-          // Сцена уже применена: событиям входа дать отыграть.
-          chain.fadeHold = plan!.entryEnd;
-        } else if (!hasPlan && !opts?.cancel && clock.resetTime > now + 0.001) {
-          // Границы дальше нет, но партия только входит (старт/вливание) —
-          // входной фейд от resetTime.
-          g.setValueAtTime(0, clock.resetTime);
-          g.linearRampToValueAtTime(volCur, clock.resetTime + fadeInCur);
-          chain.fadeHold = clock.resetTime + fadeInCur;
-        } else {
-          chain.fadeHold = undefined;
-        }
-        chain.fadePlan = null;
-        continue;
-      }
-
-      // Опорная точка, до которой на параметре уже есть события:
-      // вход прошлого плана или вход свежей цепочки от resetTime.
-      let anchor: number;
-      if (hasPlan) {
-        anchor = plan!.entryEnd;
-      } else if (clock.resetTime > now + 0.001) {
-        // Свежая цепочка: старт игры или вливание трека на ходу. До
-        // resetTime голосов нет — значение на параметре не важно.
-        g.setValueAtTime(0, clock.resetTime);
-        g.linearRampToValueAtTime(volCur, clock.resetTime + fadeInCur);
-        anchor = clock.resetTime + fadeInCur;
-      } else {
-        // Свободный параметр: фиксируем текущее значение и строим переход.
-        g.cancelScheduledValues(now);
-        g.setValueAtTime(g.value, now);
-        g.setTargetAtTime(volCur, now, 0.02);
-        anchor = now;
-      }
-      const exitFrom = Math.max(anchor, boundary - fadeOutCur);
-      if (exitFrom > anchor + 0.001) g.setValueAtTime(volCur, exitFrom);
-      if (fadeOutCur > 0.001) {
-        g.linearRampToValueAtTime(0, boundary);
-      } else {
-        g.setValueAtTime(0, boundary);
-      }
-      const entryEnd = boundary + fadeInIn;
-      g.linearRampToValueAtTime(volIn, entryEnd);
-      chain.fadePlan = { boundary, nextSceneId: nextId, entryEnd };
-      chain.fadeHold = entryEnd;
+      const pattern = patternInScene(track, this.scene());
+      const plan = { start: clock.resetTime, end: boundary, fadeIn: pattern?.fadeIn ?? .005, fadeOut: pattern?.fadeOut ?? .05 };
+      const sig = JSON.stringify(plan);
+      if (chain.sceneEnvelopeSig === sig) continue;
+      scheduleSceneEnvelope(chain.sceneGain.gain, plan, ctx.currentTime);
+      chain.sceneEnvelopeSig = sig;
     }
   }
 
   private applyNextScene(t: number): void {
     this.pendingNotes.clear();
+    this.voiceBudget.endScene(t);
+    // Every occurrence owns its graph/LFO phase. Old FX cannot reopen in the new scene.
+    for (const chain of this.chains.values()) {
+      chain.sceneGain.gain.setValueAtTime(0, t);
+      this.retireChain(chain, t);
+    }
+    this.chains.clear(); this.meters.clear();
     this.sceneOccurrence++;
     const patch = this.patch!;
     // Темп-карта: bpm нового пункта цепочки действует с его границы —
@@ -641,7 +559,7 @@ export class AudioEngine implements AudioBackend {
       }
     }
     this.preparationMs = performance.now() - preparationStart;
-    this.startAt = ctx.currentTime + .1;
+    this.startAt = sampleTime(ctx.currentTime + .1, ctx.sampleRate);
     for (const chain of this.chains.values()) startChain(chain, this.startAt);
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
@@ -998,7 +916,7 @@ export class AudioEngine implements AudioBackend {
     void (async () => {
       const patch = this.patch;
       if (!patch) return;
-      const releaseAssets = this.sampleCache.pin(sampleAssets(st).map(a => a.sampleId));
+      const releaseAssets = this.sampleCache.pin(soundingSampleAssets(st).map(a => a.sampleId));
       let assetsOwnedByPreview = false;
       try {
         try {
@@ -1012,7 +930,7 @@ export class AudioEngine implements AudioBackend {
         if (!this.master || !this.noiseBuffer) return;
         // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
         // без объяснений; говорим.
-        if (st.waveform === 'sample' && !sampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
+        if (instrumentVoices(st).filter(v => v.gain > 0).every(v => v.sound.waveform === 'sample') && !soundingSampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
           this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
           return;
         }
@@ -1239,6 +1157,7 @@ export class AudioEngine implements AudioBackend {
             this.armSceneExit(this.sceneAdvanceTime);
           }
           if (chain) chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
+          this.armSceneExit(this.sceneAdvanceTime);
           this.blockedTracks.delete(track.id);
         } catch (e) {
           if (!(e instanceof ChainBudgetError)) throw e;
@@ -1279,7 +1198,7 @@ export class AudioEngine implements AudioBackend {
               chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
             } else if (c.target === 'pan') {
               chain.panner.pan.setTargetAtTime(v * 2 - 1, at, 0.03);
-            } else if (c.target === 'volume' && (chain.fadeHold === undefined || ctx.currentTime >= chain.fadeHold)) {
+            } else if (c.target === 'volume') {
               chain.gain.gain.setTargetAtTime(eff.volume * v, at, 0.03);
             } else if (c.target.startsWith('fx')) {
               fxParamOf(chain.fx, c.target, c.fxId)?.setTargetAtTime(autoToParam(c.target, v), at, 0.03);
@@ -1333,7 +1252,7 @@ export class AudioEngine implements AudioBackend {
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8, options?: WavRenderOptions): Promise<Blob> {
     const plan = planRender(patch, fallbackSceneId, fallbackBars, options);
     const memory = renderMemoryBudget.reserve(plan.memoryBytes);
-    const assets = new Set(plan.parts.flatMap(p => p.st.waveform === 'sample' ? sampleAssets(p.st).map(a => a.sampleId) : []));
+    const assets = new Set(plan.parts.flatMap(p => soundingSampleAssets(p.st).map(a => a.sampleId)));
     const release = this.sampleCache.pin(assets);
     try {
       for (const part of plan.parts) await this.loadSoundSample(part.st);
@@ -1355,7 +1274,7 @@ export class AudioEngine implements AudioBackend {
     const ctx = new OfflineAudioContext(channels, Math.ceil(duration * sampleRate), sampleRate);
     // Worklet-модули грузятся на каждый контекст отдельно (live и offline —
     // разные глобальные скоупы), иначе AudioWorkletNode не создастся.
-    if (plan.parts.some(p=>p.st.waveform==='sample' && p.st.sampleMode==='scratch')) await ensureScratchModule(ctx);
+    if (plan.parts.some(p=>instrumentVoices(p.st).some(v=>v.gain>0 && v.sound.waveform==='sample' && v.sound.sampleMode==='scratch'))) await ensureScratchModule(ctx);
     const master = connectMaster(ctx, patch.masterVolume, patch.masterComp ?? 0);
     master.setPan(patch.masterPan ?? 0.5, 0);
     if (patch.masterNoise === 'white' || patch.masterNoise === 'pink') {
@@ -1374,26 +1293,19 @@ export class AudioEngine implements AudioBackend {
         const { track, st, pattern, bpm, start, end } = part;
         const eff = effectiveParams(track, pattern);
         const naturalFinal = options?.tail === 'natural' && part.itemIndex === plan.finalItemIndex;
-        const output = options ? ctx.createGain() : master.input;
-        if (options) {
-          output.connect(master.input);
-          if (!naturalFinal) {
-            output.gain.setValueAtTime(1, Math.max(start, end - .005));
-            output.gain.linearRampToValueAtTime(0, end);
-          }
-        }
-        const chain = makeChain(ctx, { ...st, ...eff }, output, bpm, patch.performanceSeed, start);
+        const chain = makeChain(ctx, { ...st, ...eff }, master.input, bpm, patch.performanceSeed, start);
         chainsByKey.set(part.key, chain);
-        const fadeIn = Math.max(0.001, pattern.fadeIn ?? 0.005);
-        const fadeOut = Math.max(0, pattern.fadeOut ?? 0.05);
-        const gg = chain.gain.gain;
-        gg.setValueAtTime(0, start);
-        gg.linearRampToValueAtTime(eff.volume, start + fadeIn);
-        if (!naturalFinal) {
+        if (options) {
+          scheduleSceneEnvelope(chain.sceneGain.gain, { start, end: naturalFinal ? null : end,
+            fadeIn: pattern.fadeIn ?? .005, fadeOut: pattern.fadeOut ?? .05 });
+        } else {
+          // Legacy API keeps its historical golden envelope. All user exports pass options.
+          const fadeIn = Math.max(.001, pattern.fadeIn ?? .005), fadeOut = Math.max(0, pattern.fadeOut ?? .05);
+          const gg = chain.gain.gain;
+          gg.setValueAtTime(0, start); gg.linearRampToValueAtTime(eff.volume, start + fadeIn);
           const exitFrom = Math.max(start + fadeIn, end - fadeOut);
-          if (exitFrom < end - 0.001) gg.setValueAtTime(eff.volume, exitFrom);
-          if (fadeOut > 0.001) gg.linearRampToValueAtTime(0, end);
-          else gg.setValueAtTime(0, end);
+          if (exitFrom < end - .001) gg.setValueAtTime(eff.volume, exitFrom);
+          if (fadeOut > .001) gg.linearRampToValueAtTime(0, end); else gg.setValueAtTime(0, end);
         }
         for (const step of part.steps) {
           for (const c of pattern.automation ?? []) {
@@ -1414,7 +1326,9 @@ export class AudioEngine implements AudioBackend {
       const roundRobin = new SampleRoundRobin();
       const pitchMemory = new PitchMemory();
       const soloAttacks = monophonicAttacks(plan.events, ev => ({ owner: ev.part.track.id, at: ev.at, noteCount: ev.notes.length }));
+      let voiceScene = -1;
       for (const ev of plan.events) {
+        if (voiceScene !== ev.part.itemIndex) { voiceBudget.endScene(ev.part.start); voiceScene = ev.part.itemIndex; }
         const { track, st, itemIndex } = ev.part;
         voiceBudget.prune(ev.at);
         if (!voiceBudget.allows(st, ev.notes))

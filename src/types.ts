@@ -1,3 +1,4 @@
+import { validWavetable, validVA, type Wavetable, type VirtualAnalog } from './music/wavetable';
 // Модель патча. Патч = сериализуемые данные (JSON), с которыми работают
 // UI, аудио-движок и (в будущем) ИИ-агент. Это контракт между слоями.
 //
@@ -13,6 +14,7 @@ import { validPatchInput } from './patchValidation';
 import { PARAMETERS, normalizeParameter, parameterAt, type ParameterId } from './parameters';
 import { normalizeMacros, type SoundMacro } from './music/macros';
 import { normalizeSampleZones, type SampleZone } from './music/sampleZones';
+import { normalizeMseg, type Mseg } from './music/mseg';
 import { normalizeNoteLocks } from './music/noteLocks';
 import { normalizeSampleSlices, type SampleSlice } from './music/sampleSlices';
 
@@ -87,6 +89,8 @@ export interface WavePartial {
 /** Своя волна: аддитивный тембр из парциалов. Компактный JSON в патче
  *  и пресетах; целые синус-парциалы движок сливает в один PeriodicWave. */
 export interface WaveDef {
+  wavetable?: Wavetable;
+  va?: VirtualAnalog;
   partials: WavePartial[];
   // Размер зерна шумовых парциалов, мс (характер «крупы»).
   noiseGrainMs?: number;
@@ -162,6 +166,8 @@ export function normalizeWave(raw: unknown): WaveDef | undefined {
   const grain = (raw as { noiseGrainMs?: unknown }).noiseGrainMs;
   return {
     partials,
+    wavetable: validWavetable((raw as WaveDef).wavetable) ? (raw as WaveDef).wavetable && structuredClone((raw as WaveDef).wavetable) : undefined,
+    va: validVA((raw as WaveDef).va) ? (raw as WaveDef).va && { ...(raw as WaveDef).va! } : undefined,
     noiseGrainMs: clamp(typeof grain === 'number' ? grain : 40, 5, 500, 40),
   };
 }
@@ -427,7 +433,26 @@ export function autoToParam(target: AutoTarget, v: number): number {
  *  падение тона, фильтры, вибрато. Сущность патча (v34): дорожка
  *  ссылается на инструмент по id; шаринг по ссылке — opt-in на будущее,
  *  по умолчанию экземпляр у дорожки свой. */
+export interface InstrumentLayer {
+  id: string;
+  name: string;
+  gain: number;
+  ratio: number;
+  /** Flat voice snapshot; shared track effects remain outside the instrument. */
+  sound: Omit<Instrument, 'id' | 'name' | 'layers' | 'baseVoiceGain'>;
+}
 export interface Instrument {
+  ringMix?: number;
+  ringRatio?: number;
+  foldDrive?: number;
+  combMix?: number;
+  combHz?: number;
+  combFeedback?: number;
+  synthQuality?: '2x' | '4x';
+  layers?: InstrumentLayer[];
+  baseVoiceGain?: number;
+  /** Amplitude envelope over the note; absent preserves the classic envelope. */
+  ampMseg?: Mseg;
   id: string;
   // Имя инструмента (при создании наследует имя дорожки/пресета).
   name: string;
@@ -512,7 +537,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
-  'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
+  'ringMix', 'ringRatio', 'foldDrive', 'combMix', 'combHz', 'combFeedback', 'synthQuality', 'layers', 'baseVoiceGain', 'ampMseg', 'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
   'attack', 'decay', 'sustain', 'pitchDrop', 'pitchTime',
@@ -585,7 +610,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 50;
+export const PATCH_VERSION = 53;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -626,6 +651,11 @@ export function makeInstrument(
     attack: partial.attack ?? 0.002,
     decay: partial.decay ?? 0.25,
     sustain: partial.sustain,
+    ringMix: partial.ringMix, ringRatio: partial.ringRatio, foldDrive: partial.foldDrive,
+    combMix: partial.combMix, combHz: partial.combHz, combFeedback: partial.combFeedback, synthQuality: partial.synthQuality,
+    ampMseg: normalizeMseg(partial.ampMseg),
+    layers: normalizeLayers(partial.layers),
+    baseVoiceGain: partial.baseVoiceGain,
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
@@ -976,6 +1006,16 @@ function normalizeInstrument(
     attack: clamp(t.attack ?? 0.002, 0, 1, 0.002),
     decay: clamp(t.decay ?? 0.25, 0.01, 4, 0.25),
     sustain: clamp(t.sustain ?? 0, 0, 1, 0),
+    ringMix: typeof t.ringMix === 'number' ? clamp(t.ringMix, 0, 1, 0) : undefined,
+    ringRatio: typeof t.ringRatio === 'number' ? clamp(t.ringRatio, .125, 16, 1) : undefined,
+    foldDrive: typeof t.foldDrive === 'number' ? clamp(t.foldDrive, 0, 8, 0) : undefined,
+    combMix: typeof t.combMix === 'number' ? clamp(t.combMix, 0, 1, 0) : undefined,
+    combHz: typeof t.combHz === 'number' ? clamp(t.combHz, 40, 4000, 220) : undefined,
+    combFeedback: typeof t.combFeedback === 'number' ? clamp(t.combFeedback, 0, .85, .5) : undefined,
+    synthQuality: t.synthQuality === '2x' ? '2x' : t.synthQuality === '4x' ? '4x' : undefined,
+    ampMseg: normalizeMseg(t.ampMseg),
+    layers: normalizeLayers(t.layers),
+    baseVoiceGain: typeof t.baseVoiceGain === 'number' ? clamp(t.baseVoiceGain, 0, 1, 1) : undefined,
     sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
     recommendedHz: typeof t.recommendedHz === 'number' ? clamp(t.recommendedHz, 20, 9000, 220) : undefined,
@@ -1338,4 +1378,17 @@ export function normalizePatch(p: Patch): Patch {
     tracks,
     instruments,
   };
+}
+
+function normalizeLayers(raw: unknown): InstrumentLayer[] | undefined {
+  if (!Array.isArray(raw) || !raw.length) return undefined;
+  const seen = new Set<string>();
+  return raw.slice(0, 3).flatMap((l, n) => {
+    if (!l || typeof l !== 'object' || !l.sound || typeof l.sound !== 'object') return [];
+    const id = typeof l.id === 'string' && l.id.length > 0 ? l.id.slice(0, 128) : `layer-${n}`;
+    if (seen.has(id)) return []; seen.add(id);
+    const normalized = normalizeInstrument({ ...l.sound, layers: undefined, baseVoiceGain: undefined }, id, 'слой');
+    const { id: _id, name: _name, layers: _layers, baseVoiceGain: _gain, ...sound } = normalized;
+    return [{ id, name: typeof l.name === 'string' ? l.name.slice(0, 160) : 'слой', gain: clamp(l.gain, 0, 1, .5), ratio: clamp(l.ratio, .125, 8, 1), sound }];
+  });
 }

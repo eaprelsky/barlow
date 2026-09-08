@@ -4,6 +4,7 @@
 import type { Instrument, Track } from '../types';
 import { INSTRUMENT_FIELDS } from '../types';
 import { recipeForLegacy } from './waveRecipes';
+import { EXPANDED_BANK } from './expandedBank';
 import { IDM_BANK } from './idmBank';
 import { recommendedHz } from './audition';
 const SOUND_FIELDS = INSTRUMENT_FIELDS.filter((f): f is Exclude<typeof f, 'fmRatio' | 'fmIndex' | 'voiceMorph' | 'ksLife'> =>
@@ -810,7 +811,7 @@ const convertPresetV39 = (p: {
 export const INSTRUMENT_PRESETS: InstrumentPreset[] = [...RAW_PRESETS.map((p, index) => ({
   ...convertPresetV39(p), id: `factory-v39-${String(index + 1).padStart(3, '0')}`,
   tags: [p.category, p.track.waveform === 'sample' ? 'sample' : 'synthesis'], packId: 'core-v39',
-})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' }))].map(p => ({ ...p,
+})), ...IDM_BANK.map(p => ({ ...p, packId: 'idm-01' })), ...EXPANDED_BANK].map(p => ({ ...p,
   track: { ...p.track, recommendedHz: recommendedHz(p.track) } }));
 
 // Пользовательские пресеты: «сохрани как инструмент» — настроенный тембр

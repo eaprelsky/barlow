@@ -1,3 +1,9 @@
+import { stopSource } from './sourceLifecycle';
+import { periodicFrames, scanFrame } from './wavetable';
+import { voiceColor } from './voiceColor';
+import { sampleTime } from './sampleTime';
+import { instrumentVoices } from '../music/layers';
+import { scheduleMseg } from '../music/mseg';
 // Голоса: рождение ноты в Web Audio-графе. triggerVoice отвязан от
 // конкретного контекста — им пользуются и live-планировщик, и
 // оффлайн-рендер WAV (это же — точка сверки с Rust-движком по golden WAV).
@@ -125,7 +131,7 @@ export function duckVoice(v: Voice, t: number): void {
       continue;
     }
     try {
-      sched.stop(v.stopAt);
+      stopSource(sched, v.stopAt);
     } catch {
       /* уже остановлен */
     }
@@ -224,7 +230,7 @@ function scheduleGrainCloud(
         gAmp.connect(amp);
       }
       src.start(at, offset, Math.min(regEnd - offset, windowSec * maxRate + 0.02));
-      src.stop(at + windowSec + 0.02);
+      stopSource(src, at + windowSec + 0.02);
       sources.push(src);
       lastEnd = Math.max(lastEnd, at + windowSec);
     }
@@ -236,7 +242,7 @@ function scheduleGrainCloud(
   amp.gain.setValueAtTime(peak, Math.max(time + Math.min(0.02, dur * 0.2), lastEnd));
   amp.gain.exponentialRampToValueAtTime(0.0001, lastEnd + 0.01);
   // Вибрато-LFO облака останавливается вместе с последним зерном.
-  if (vibLfo) vibLfo.stop(lastEnd + 0.06);
+  if (vibLfo) stopSource(vibLfo, lastEnd + 0.06);
   return lastEnd + 0.05;
 }
 
@@ -263,6 +269,20 @@ export function triggerVoice(
   roundRobinOwner = track.id,
   performance?: { pitchMemory?: PitchMemory; allowGlide?: boolean },
 ): Voice {
+  // One sample clock for live/offline origins; epsilon prevents floating floor drift.
+  time = sampleTime(time, ctx.sampleRate);
+  if (track.layers?.length || track.baseVoiceGain !== undefined) {
+    const mix = ctx.createGain(); mix.connect(chain.hp);
+    const voices = instrumentVoices(track);
+    mix.gain.value = 1 / Math.max(1, voices.reduce((sum, v) => sum + v.gain, 0));
+    const played = voices.filter(v => v.gain > 0).map(({ sound, gain, key }) => {
+      const buffer = sound.sampleId ? sampleById?.(sound.sampleId) ?? (sound.sampleId === track.sampleId ? sample : null) : null;
+      const voice = triggerVoice(ctx, { ...chain, hp: mix } as TrackChain, noise, buffer, sound, notes, time, stepSec,
+        durSec, sampleById, random, roundRobin, key ? `${roundRobinOwner}/layer/${key}` : roundRobinOwner, performance);
+      voice.amp.gain.value *= gain; return voice;
+    });
+    return { amp: mix, sources: played.flatMap(v => v.sources), stopAt: Math.max(time, ...played.map(v => v.stopAt)) };
+  }
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);
   amp.connect(chain.hp);
@@ -367,8 +387,12 @@ function triggerNoteVoice(
       g.connect(sink);
     });
   }
+  const msegGain = track.ampMseg ? ctx.createGain() : undefined;
+  if (msegGain) { msegGain.connect(voiceIn); voiceIn = msegGain; }
+  const color = voiceColor(ctx, voiceIn, track, freqs[0], time);
+  voiceIn = color.input;
   amp.connect(voiceIn);
-  const sources: (AudioScheduledSourceNode | AudioWorkletNode)[] = [];
+  const sources: (AudioScheduledSourceNode | AudioWorkletNode)[] = [...color.sources];
   // Реальная длина голоса: vibBus ниже замыкается на эту переменную,
   // значение присваивается после расчёта огибающей (до первого вызова).
   let stopAt = time + 0.05;
@@ -384,8 +408,16 @@ function triggerNoteVoice(
     }
     pitchSource.connect(param);
   };
+  for (const source of color.sources) attachPitch(source.detune);
   const finish = (): Voice => {
-    pitchSource?.stop(stopAt);
+    if (msegGain && track.ampMseg) {
+      // Replace legacy amplitude shaping; operator decay remains part of the timbre.
+      amp.gain.cancelScheduledValues(time);
+      amp.gain.setValueAtTime(peak, time);
+      scheduleMseg(msegGain.gain, track.ampMseg, time, voiceLen);
+    }
+    stopAt = color.finish(stopAt);
+    if (pitchSource) stopSource(pitchSource, stopAt);
     return { amp, sources, stopAt };
   };
 
@@ -404,7 +436,7 @@ function triggerNoteVoice(
       vibOut = ctx.createGain();
       lfo.connect(vibOut);
       lfo.start(time);
-      lfo.stop(stopAt);
+      stopSource(lfo, stopAt);
       sources.push(lfo);
     }
     const g = ctx.createGain();
@@ -444,7 +476,7 @@ function triggerNoteVoice(
     durSec ??
     (track.noteSteps && track.noteSteps > 0
       ? track.noteSteps * stepSec
-      : attack + track.decay);
+      : track.ampMseg?.seconds ?? attack + track.decay);
   const gates = notes.map((nt) => {
     if (typeof nt.len === 'number' && nt.len > 0) {
       const lenSec = clampNum(nt.len, 0.05, 64) * stepSec;
@@ -457,12 +489,12 @@ function triggerNoteVoice(
   // Готовая длина арп-доли уже включает гейт; «тянуть до перебоя» —
   // только для обычных нот без сетки.
   let voiceLen = durSec !== undefined ? durSec : baseLen * maxGate;
-  if (durSec === undefined && !track.noteSteps && !notes.some(nt => nt.len !== undefined) && sus >= 0.99) {
+  if (!track.ampMseg && durSec === undefined && !track.noteSteps && !notes.some(nt => nt.len !== undefined) && sus >= 0.99) {
     voiceLen = Math.max(voiceLen, 16);
     sus = 1 - 0.05 / voiceLen;
   }
   if (track.waveform === 'sample' && (track.sampleMode ?? 'plain') === 'grain') {
-    if (!sample) return { amp, sources, stopAt: time };
+    if (!sample) return finish();
     const lastEnd = scheduleGrainCloud(ctx, amp, sample, track, rows, notes, time, peak, sources, voiceLen, regStart, regEnd, random,
       glide ? { attach: attachPitch, maxRatio: Math.max(1, glide.fromHz / glide.toHz) } : undefined);
     stopAt = lastEnd;
@@ -603,7 +635,7 @@ function triggerNoteVoice(
         // Играем обрезанный кусок: offset и длительность — в секундах буфера.
         if (src.loop) src.start(time, 0);
         else src.start(time, prepared ? 0 : regStart, Math.max(0.001, regEnd - regStart));
-        src.stop(stopAt);
+        stopSource(src, stopAt);
         sources.push(src);
       }
     });
@@ -648,6 +680,25 @@ function triggerNoteVoice(
       return g;
     };
 
+    if (wave.wavetable || wave.va) {
+      const frames = periodicFrames(ctx, wave), from = wave.wavetable?.position ?? 0;
+      const to = Math.max(0, Math.min(1, from + (wave.wavetable?.sweep ?? 0)));
+      freqs.forEach((f, fi) => {
+        for (let i = 0; i < uniN; i++) {
+          const k = uniN > 1 ? i / (uniN - 1) * 2 - 1 : 0, dest = uniDest(fi, k);
+          frames.forEach((pw, n) => {
+            const osc = ctx.createOscillator(), mix = ctx.createGain();
+            osc.setPeriodicWave(pw); osc.frequency.value = drop ? f * track.pitchDrop : f;
+            if (drop) { osc.frequency.setValueAtTime(f * track.pitchDrop, time); osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime); }
+            osc.detune.value = k * uniDet; attachPitch(osc.detune); vibBus(1)?.connect(osc.detune);
+            scanFrame(mix.gain, n, frames.length, from, to, time, voiceLen);
+            osc.connect(mix); mix.connect(dest); osc.start(time); stopSource(osc, stopAt); sources.push(osc);
+          });
+        }
+      });
+      return finish();
+    }
+
     if (plain) {
       // Быстрый путь: без хвостов и маршрутов целые синусы склеиваются
       // в один PeriodicWave (дёшево), остальные — отдельными
@@ -682,6 +733,7 @@ function triggerNoteVoice(
             osc.setPeriodicWave(pw);
             attachPitch(osc.detune);
             if (det !== 0) osc.detune.value = det;
+            osc.frequency.value = drop ? f * track.pitchDrop : f;
             if (drop) {
               osc.frequency.setValueAtTime(f * track.pitchDrop, time);
               osc.frequency.exponentialRampToValueAtTime(f, time + track.pitchTime);
@@ -692,7 +744,7 @@ function triggerNoteVoice(
             if (vb) vb.connect(osc.detune);
             osc.connect(dest);
             osc.start(time);
-            osc.stop(stopAt);
+            stopSource(osc, stopAt);
             sources.push(osc);
           }
           for (const p of solo) {
@@ -710,7 +762,7 @@ function triggerNoteVoice(
               src.connect(g);
               g.connect(dest);
               src.start(time, from);
-              src.stop(stopAt);
+              stopSource(src, stopAt);
               sources.push(src);
               continue;
             }
@@ -719,6 +771,7 @@ function triggerNoteVoice(
             attachPitch(osc.detune);
             if (det !== 0) osc.detune.value = det;
             const pf = f * p.ratio;
+            osc.frequency.value = drop ? pf * track.pitchDrop : pf;
             if (drop) {
               osc.frequency.setValueAtTime(pf * track.pitchDrop, time);
               osc.frequency.exponentialRampToValueAtTime(pf, time + track.pitchTime);
@@ -732,7 +785,7 @@ function triggerNoteVoice(
             osc.connect(g);
             g.connect(dest);
             osc.start(time);
-            osc.stop(stopAt);
+            stopSource(osc, stopAt);
             sources.push(osc);
           }
         }
@@ -777,6 +830,7 @@ function triggerNoteVoice(
         osc.type = p.type === 'saw' ? 'sawtooth' : p.type;
         attachPitch(osc.detune);
         const pf = f * p.ratio;
+        osc.frequency.value = drop ? pf * track.pitchDrop : pf;
         if (drop) {
           osc.frequency.setValueAtTime(pf * track.pitchDrop, time);
           osc.frequency.exponentialRampToValueAtTime(pf, time + track.pitchTime);
@@ -829,7 +883,7 @@ function triggerNoteVoice(
         }
         if (p.type === 'noise') (src as AudioBufferSourceNode).start(time, noiseAt[ri]);
         else (src as OscillatorNode).start(time);
-        src.stop(stopAt);
+        stopSource(src, stopAt);
         sources.push(src);
       });
     };

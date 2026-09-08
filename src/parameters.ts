@@ -5,6 +5,12 @@ const spec = (owner: Owner, label: string, min: number, max: number, step: numbe
   ({ owner, label, min, max, step, initial, unit, scale });
 
 export const PARAMETERS = {
+  'instrument.ringMix': spec('instrument', 'ring: доля', 0, 1, .01, 0),
+  'instrument.ringRatio': spec('instrument', 'ring: частота', .125, 16, .01, 1, '×'),
+  'instrument.foldDrive': spec('instrument', 'wavefold', 0, 8, .1, 0),
+  'instrument.combMix': spec('instrument', 'comb: доля', 0, 1, .01, 0),
+  'instrument.combHz': spec('instrument', 'comb: резонанс', 40, 4000, 1, 220, 'Гц', 'log'),
+  'instrument.combFeedback': spec('instrument', 'comb: звонкость', 0, .85, .01, .5),
   'track.portamentoSec': spec('track', 'portamento', 0, 4, 0.01, 0, 'с'),
   'effect.mix': spec('effect', 'микс эффекта', 0, 1, 0.01, 0.3, '%'),
   'effect.timeSec': spec('effect', 'время эха', 0.01, 2, 0.01, 0.28, 'с', 'log'),

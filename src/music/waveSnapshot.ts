@@ -1,3 +1,4 @@
+import { tableFrame, frameWeight } from './wavetable';
 // Рендер цикла волны для канваса редактора (v39). Прежде здесь жили
 // снапшоты моделей (синус, FM, колокол…) — модели стали строками-
 // операторами (music/waveRecipes.ts), и канал рисует таблицу напрямую:
@@ -69,5 +70,8 @@ export function renderOpCycle(wave: WaveDef | undefined): Float32Array | null {
 /** Цикл звучащего инструмента: таблица его волны; сэмпл не рисуем. */
 export function renderInstrumentCycle(inst: Instrument): Float32Array | null {
   if (inst.waveform !== 'wave') return null;
+  const table = inst.wave?.wavetable;
+  if (table) return Float32Array.from({ length: CYCLE_N }, (_, n) => table.frames.reduce((v, f, i) => v + f[Math.floor(n * f.length / CYCLE_N)] * frameWeight(table.position, i, table.frames.length), 0));
+  if (inst.wave?.va) { const f = tableFrame(inst.wave.va.shape, inst.wave.va.pulseWidth); return Float32Array.from({ length: CYCLE_N }, (_, n) => f[Math.floor(n * f.length / CYCLE_N)]); }
   return renderOpCycle(inst.wave);
 }

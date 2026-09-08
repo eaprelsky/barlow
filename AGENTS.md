@@ -62,5 +62,9 @@ docs/gotchas.md — там пойманные грабли.
 - docs/bridge.md — дебаг-мост MCP (WebSocket, set_param, смоук).
 - docs/ai.md — провайдеры ИИ и ключи.
 - docs/publishing.md — веб/десктоп сборка и публикация, долгие команды.
+- docs/mseg.md, docs/layers.md — огибающие по точкам и плоские голоса.
+- docs/synthesis-v53.md — wavetable/VA, ring/fold/comb и границы качества.
+- docs/scene-transitions.md — общий live/WAV переход и фаза.
+- docs/coverage-review-v53.md — проверка спецификаций/справки перед этапом 5.
 - docs/roadmap.md — что готово, что дальше, планы (i18n, рефакторинг).
 - docs/UX-AUDIT.md — аудит интерфейса.
