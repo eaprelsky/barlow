@@ -8,9 +8,10 @@ export function addResources(a: ChainResources, b: ChainResources): ChainResourc
   return { chains: a.chains + b.chains, nodes: a.nodes + b.nodes, bufferBytes: a.bufferBytes + b.bufferBytes };
 }
 export function estimateChainResources(st: Pick<SoundingTrack, 'effects' | 'mods'>, sampleRate = 44100): ChainResources {
-  let nodes = 8, bufferBytes = 0;
+  let nodes = 9, bufferBytes = 0;
   for (const fx of st.effects ?? []) {
-    nodes += fx.type === 'delay' ? 18 : fx.type === 'chorus' ? 13 : 10;
+    nodes += 1; // bypass control
+    nodes += fx.type === 'eq' ? 15 : fx.type === 'delay' ? 18 : fx.type === 'chorus' ? 13 : 10;
     // Four raw stereo impulses allows room for convolver processing/storage.
     // This is deliberately conservative, not a measured browser allocation.
     if (fx.type === 'reverb') bufferBytes += Math.ceil(fx.sizeSec * sampleRate) * 2 * 4 * 4;

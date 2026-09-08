@@ -1,3 +1,4 @@
+import { updateEq } from './equalizer';
 import { sampleTime } from './sampleTime';
 import { scheduleSceneEnvelope } from './sceneEnvelope';
 import { instrumentVoices, soundingSampleAssets } from '../music/layers';
@@ -421,6 +422,8 @@ export class AudioEngine implements AudioBackend {
       if (!n) return;
       const id = effectId(e, i);
       if (!autoOf('fxMix', id)) n.mix.offset.setTargetAtTime(e.mix, t0, 0.03);
+      n.bypassGain.gain.setTargetAtTime(e.type === 'eq' && e.bypass ? 0 : 1, t0, .015);
+      if (e.type === 'eq' && n.eq) updateEq(n.eq, e.bands, t0);
       if (e.type === 'delay') {
         if (!autoOf('fxTime', id)) n.timeControl?.source.offset.setTargetAtTime(e.timeSec, t0, 0.05);
         if (!autoOf('fxFeedback', id)) n.feedbackControl?.source.offset.setTargetAtTime(e.feedback, t0, 0.05);

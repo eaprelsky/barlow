@@ -1,3 +1,5 @@
+import { EqEditor } from './EqEditor';
+import { newEqBand } from '../music/equalizer';
 import type { SamplePCM } from '../audio/pcm';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
@@ -883,6 +885,7 @@ export const TrackRow = memo(function TrackRow({
         if (j !== i) return e;
         const mix = e.mix;
         const id = effectId(e, j);
+        if (type === 'eq') return { id, type: 'eq', bands: [newEqBand()], mix: 1 };
         if (type === 'delay') return { id, type: 'delay', timeSec: 0.28, feedback: 0.35, mix };
         if (type === 'reverb') return { id, type: 'reverb', sizeSec: 1.8, mix };
         if (type === 'dist') return { id, type: 'dist', drive: 6, mix };
@@ -1338,7 +1341,7 @@ export const TrackRow = memo(function TrackRow({
                 </select>
                 {pattern.automation?.some(c => c.target.startsWith('fx') && sameAddress(c, c.target, effectId(fx, i), effects)) &&
                   <span className="auto-hint" title="Кривые активного эскиза управляют параметрами во время игры; ручки задают базу для остальных эскизов">автоматизация</span>}
-                {fx.type === 'delay' ? (
+                {fx.type === 'eq' ? <><button data-help="eq-bypass" aria-label="Обход эквалайзера" aria-pressed={!!fx.bypass} onClick={()=>updateEffect(i,'eq',{bypass:!fx.bypass})}>{fx.bypass?'обход':'EQ вкл'}</button><EqEditor bands={fx.bands} onChange={bands=>updateEffect(i,'eq',{bands})}/></> : fx.type === 'delay' ? (
                   <>
                     <Knob help="effect.timeSec"
                       label="время, мс"
@@ -1391,6 +1394,7 @@ export const TrackRow = memo(function TrackRow({
                     else if (fx.type === 'reverb') updateReverb(i, { mix: mix / 100 });
                     else if (fx.type === 'dist') updateEffect(i, 'dist', { mix: mix / 100 });
                     else if (fx.type === 'chorus') updateEffect(i, 'chorus', { mix: mix / 100 });
+                    else if(fx.type === 'eq') updateEffect(i, 'eq', {mix:mix/100});
                     else updateEffect(i, 'lofi', { mix: mix / 100 });
                   }}
                 />

@@ -1,3 +1,4 @@
+import { estimateChainResources } from './chainBudget';
 import { stopSource } from './sourceLifecycle';
 import { instrumentVoices } from '../music/layers';
 import type { SoundingTrack, Note } from '../types';
@@ -16,7 +17,7 @@ function noteCost(st: SoundingTrack): number {
 }
 export function estimateVoiceNodes(st: SoundingTrack, notes: number | readonly Note[]): number {
   if (st.layers?.length || st.baseVoiceGain !== undefined) return 1 + instrumentVoices(st).filter(v => v.gain > 0).reduce((n, v) => n + estimateVoiceNodes(v.sound, notes), 0);
-  return 1 + (typeof notes === 'number' ? notes * noteCost(st)
+  return 1 + (st.voiceEffects?.length ? estimateChainResources({effects:st.voiceEffects,mods:[]}).nodes + 2 : 0) + (typeof notes === 'number' ? notes * noteCost(st)
     : notes.reduce((sum, note) => sum + noteCost(withNoteLocks(st, note.locks)), 0));
 }
 

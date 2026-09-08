@@ -1,3 +1,6 @@
+import { makeEffectRack, disposeEffects } from './fx';
+import { reserveChain } from './chainBudget';
+import { localEffectTail } from './localEffectTail';
 import { stopSource } from './sourceLifecycle';
 import { periodicFrames, scanFrame, tableMotion } from './wavetable';
 import { voiceColor } from './voiceColor';
@@ -283,6 +286,21 @@ export function triggerVoice(
       voice.amp.gain.value *= gain; return voice;
     });
     return { amp: mix, sources: played.flatMap(v => v.sources), stopAt: Math.max(time, ...played.map(v => v.stopAt)) };
+  }
+  if(track.voiceRange) {
+    const r=track.voiceRange, rows=scaleOf(track);
+    notes=notes.filter(nt=>{const hz=track.freq*(rows[Math.min(rows.length-1,Math.max(0,Math.round(nt.n)))]??1)*octMulOf(nt);
+      return hz>=r.minHz && hz<=r.maxHz && nt.vel>=r.minVelocity && nt.vel<=r.maxVelocity;});
+  }
+  if(track.voiceEffects?.length && notes.some(nt=>nt.vel>0)) {
+    const effects=track.voiceEffects, lease=reserveChain(ctx,{effects,mods:[]});
+    const output=ctx.createGain(); output.connect(chain.hp);
+    const rack=makeEffectRack(ctx,effects,0,time);rack.output.connect(output);
+    const voice=triggerVoice(ctx,{...chain,hp:rack.input} as TrackChain,noise,sample,{...track,voiceEffects:undefined,voiceRange:undefined},notes,time,stepSec,durSec,sampleById,random,roundRobin,roundRobinOwner,performance);
+    const stopAt=voice.stopAt+localEffectTail(effects), done=ctx.createConstantSource();done.offset.value=0;done.connect(output);
+    done.onended=()=>{disposeEffects(rack.fx);rack.input.disconnect();rack.output.disconnect();output.disconnect();done.disconnect();lease.release();};
+    done.start(time);done.stop(stopAt);
+    return {amp:output,sources:[...voice.sources,done],stopAt};
   }
   const amp = ctx.createGain();
   amp.gain.value = 1 / Math.max(1, notes.length);

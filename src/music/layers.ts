@@ -10,7 +10,7 @@ export function voiceSnapshot(inst: Instrument): InstrumentLayer['sound'] {
 export function instrumentVoices(st: SoundingTrack): { sound: SoundingTrack; gain: number; key: string }[] {
   const base = { ...st, layers: undefined, baseVoiceGain: undefined };
   return [{ sound: base, gain: st.baseVoiceGain ?? 1, key: '' }, ...(st.layers ?? []).map(layer => ({
-    sound: resolveMacros({ ...base, ...layer.sound, freq: st.freq * layer.ratio }), gain: layer.gain, key: layer.id,
+    sound: resolveMacros({ ...base, ...layer.sound, voiceEffects:layer.sound.voiceEffects, voiceRange:layer.sound.voiceRange, freq: st.freq * layer.ratio }), gain: layer.gain, key: layer.id,
   }))];
 }
 

@@ -1,3 +1,4 @@
+import { VoiceProcessing } from './VoiceProcessing';
 import { saveBlob as saveInstrumentBlob } from '../platform';
 import { exportInstrument } from '../audio/instrumentFile';
 import { WavetableEditor } from './WavetableEditor';
@@ -471,6 +472,7 @@ export function InstrumentEditor({
         <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
         </>}
       </div>
+      {layerSource && <VoiceProcessing sound={inst} onChange={onChangeInst} />}
       {!layerSource && <LayerEditor inst={inst} onChange={onChangeInst} onEditSource={async id => { await settleDraft(); onEditLayer?.(id); }} />}
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
       {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}

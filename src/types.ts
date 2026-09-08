@@ -1,3 +1,4 @@
+import { normalizeEqBands, type EqBand } from './music/equalizer';
 import { validWavetable, validVA, type Wavetable, type VirtualAnalog } from './music/wavetable';
 // Модель патча. Патч = сериализуемые данные (JSON), с которыми работают
 // UI, аудио-движок и (в будущем) ИИ-агент. Это контракт между слоями.
@@ -279,7 +280,8 @@ export type Effect = { id?: string } & (
   | { type: 'reverb'; sizeSec: number; mix: number }
   | { type: 'dist'; drive: number; mix: number }
   | { type: 'chorus'; rate: number; mix: number }
-  | { type: 'lofi'; bits: number; mix: number });
+  | { type: 'lofi'; bits: number; mix: number }
+  | { type: 'eq'; bands: EqBand[]; mix: number; bypass?: boolean });
 
 export const EFFECT_LABELS: Record<Effect['type'], string> = {
   delay: 'задержка (эхо)',
@@ -287,6 +289,7 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
   dist: 'перегруз',
   chorus: 'хорус',
   lofi: 'ло-фай (ступеньки)',
+  eq: 'эквалайзер',
 };
 
 /** Источник модуляции: LFO с формой / ступени S&H / плавный перлин-шум.
@@ -441,7 +444,10 @@ export interface InstrumentLayer {
   /** Flat voice snapshot; shared track effects remain outside the instrument. */
   sound: Omit<Instrument, 'id' | 'name' | 'layers' | 'baseVoiceGain'>;
 }
+export interface VoiceRange { minHz: number; maxHz: number; minVelocity: number; maxVelocity: number }
 export interface Instrument {
+  voiceEffects?: Effect[];
+  voiceRange?: VoiceRange;
   ringMix?: number;
   ringRatio?: number;
   foldDrive?: number;
@@ -539,6 +545,7 @@ export interface Instrument {
  *  миграции v33 → v34. fmRatio/fmIndex/voiceMorph/ksLife — легаси v38:
  *  новые инструменты их не получают, но со старых дорожек снимаются. */
 export const INSTRUMENT_FIELDS = [
+  'voiceEffects', 'voiceRange',
   'ringMix', 'ringRatio', 'foldDrive', 'combMix', 'combHz', 'combFeedback', 'synthQuality', 'layers', 'baseVoiceGain', 'ampMseg', 'pitchMseg', 'filterMseg', 'waveform', 'wave', 'macros', 'sampleZones', 'sampleSlices', 'sampleId', 'sampleName', 'sampleStart', 'sampleEnd', 'recommendedHz', 'rootHz', 'keyTracking',
   'sampleMode', 'sampleReverse', 'sampleLoop', 'loopCrossfadeMs', 'grainSizeMs', 'grainCount', 'grainPos', 'grainScatter',
   'scratchPoints', 'fmRatio', 'fmIndex', 'voiceMorph', 'ksLife',
@@ -612,7 +619,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 56;
+export const PATCH_VERSION = 57;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -660,6 +667,8 @@ export function makeInstrument(
     filterMseg: normalizeControlMseg(partial.filterMseg, true),
     layers: normalizeLayers(partial.layers),
     baseVoiceGain: partial.baseVoiceGain,
+    voiceEffects: partial.voiceEffects,
+    voiceRange: partial.voiceRange,
     sampleId: partial.sampleId,
     sampleName: partial.sampleName,
     sampleStart: partial.sampleStart,
@@ -821,9 +830,13 @@ export function normalizeEffects(raw: unknown): Effect[] {
       drive?: unknown;
       rate?: unknown;
       bits?: unknown;
+      bands?: unknown;
+      bypass?: unknown;
     };
     if (!e || typeof e !== 'object') continue;
-    if (e.type === 'delay') {
+    if (e.type === 'eq') {
+      out.push({type: 'eq', bands: normalizeEqBands(e.bands), mix: normalizeParameter('effect.mix', e.mix ?? 1), bypass: e.bypass === true});
+    } else if (e.type === 'delay') {
       out.push({
         type: 'delay',
         timeSec: normalizeParameter('effect.timeSec', e.timeSec),
@@ -1021,6 +1034,8 @@ function normalizeInstrument(
     pitchMseg: normalizeControlMseg(t.pitchMseg),
     filterMseg: normalizeControlMseg(t.filterMseg, true),
     layers: normalizeLayers(t.layers),
+    voiceEffects: Array.isArray(t.voiceEffects) ? normalizeEffects(t.voiceEffects).slice(0, 4) : undefined,
+    voiceRange: normalizeVoiceRange(t.voiceRange),
     baseVoiceGain: typeof t.baseVoiceGain === 'number' ? clamp(t.baseVoiceGain, 0, 1, 1) : undefined,
     sampleId: typeof t.sampleId === 'string' ? t.sampleId : undefined,
     sampleName: typeof t.sampleName === 'string' ? t.sampleName : undefined,
@@ -1411,4 +1426,10 @@ export interface InstrumentFile {
   tags?: string[];
   sound: Partial<Track & Instrument>;
   samples: { id: string; name: string; mime: string }[];
+}
+
+export function normalizeVoiceRange(raw: unknown): VoiceRange | undefined {
+ if(!raw || typeof raw!=='object') return undefined;
+ const r=raw as VoiceRange,minHz=clamp(r.minHz,1,24000,20),minVelocity=clamp(r.minVelocity,0,1,0);
+ return {minHz,maxHz:clamp(r.maxHz,minHz,24000,20000),minVelocity,maxVelocity:clamp(r.maxVelocity,minVelocity,1,1)};
 }

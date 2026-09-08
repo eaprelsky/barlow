@@ -1,3 +1,4 @@
+import { validEqBands } from './music/equalizer.ts';
 import { validWavetable, validVA } from './music/wavetable.ts';
 // Bounded validation before migrations or asset I/O; legacy versions retain
 // their own optional fields and are converted by normalizePatch afterwards.
@@ -53,6 +54,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       const ids = new Set<string>();
       for (const fx of t.effects) {
         if (!record(fx)) return false;
+        if (fx.type === 'eq' && (!validEqBands(fx.bands) || fx.bypass !== undefined && typeof fx.bypass !== 'boolean')) return false;
         if (fx.id !== undefined) { if (!id(fx.id) || ids.has(fx.id)) return false; ids.add(fx.id); }
       }
     }
@@ -85,6 +87,14 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
     }
   }
   for (const inst of sounds) {
+    if(inst.voiceRange!==undefined) {
+      const r=inst.voiceRange;
+      if(!record(r) || ![r.minHz,r.maxHz,r.minVelocity,r.maxVelocity].every(v=>typeof v==='number' && Number.isFinite(v))
+        || Number(r.minHz)<1 || Number(r.maxHz)>24000 || Number(r.minHz)>Number(r.maxHz)
+        || Number(r.minVelocity)<0 || Number(r.maxVelocity)>1 || Number(r.minVelocity)>Number(r.maxVelocity)) return false;
+    }
+    if(inst.voiceEffects!==undefined && (!Array.isArray(inst.voiceEffects) || inst.voiceEffects.length>4 || inst.voiceEffects.some(fx=>!record(fx) || !['eq','delay','reverb','dist','chorus','lofi'].includes(String(fx.type)) || fx.type==='eq' && !validEqBands(fx.bands)))) return false;
+
     if (record(inst.wave) && (!validWavetable(inst.wave.wavetable) || !validVA(inst.wave.va) || inst.wave.wavetable !== undefined && inst.wave.va !== undefined)) return false;
     for (const [field, lo, hi] of [['ringMix',0,1],['ringRatio',.125,16],['foldDrive',0,8],['combMix',0,1],['combHz',40,4000],['combFeedback',0,.85]] as const) {
       const v = inst[field]; if (v !== undefined && (typeof v !== 'number' || v < lo || v > hi)) return false;

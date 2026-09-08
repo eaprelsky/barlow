@@ -1,3 +1,4 @@
+import { localEffectTail } from './localEffectTail';
 import { msegDuration } from '../music/mseg';
 import { combTail } from './voiceColor';
 import { instrumentVoices } from '../music/layers';
@@ -26,7 +27,7 @@ export function voiceLifetimeBound(st: SoundingTrack, notes: Note[], stepSec: nu
     const grain = len + Math.min(2, Math.max(.01, (sound.grainSizeMs ?? 120) / 1000)) + .05;
     longest = Math.max(longest, combTail(sound) + (sound.waveform === 'sample' && sound.sampleMode === 'grain' ? grain : Math.max(body, partials) + .1));
   }
-  return longest;
+  return longest + localEffectTail(st.voiceEffects ?? []);
 }
 
 /** Serial tails add. Bound the modulated delay controls, whose summed signal

@@ -1,3 +1,4 @@
+import { VoiceProcessing } from './VoiceProcessing';
 import { useState } from 'react';
 import { instrumentOfFields, uid, type Instrument, type InstrumentLayer } from '../types';
 import { INSTRUMENT_PRESETS, loadUserPresets } from '../music/instrumentPresets';
@@ -15,6 +16,7 @@ export function LayerEditor({ inst, onChange, onEditSource }: { inst: Instrument
   return <details className="layer-editor" data-ob="instrument-layers" open={layers.length ? true : undefined}>
     <summary data-help="instrument-layers">слои <span>{layers.length + 1}/4 голосов</span></summary>
     <div className="layer-row" data-help="layer-base"><span>основной голос · редактор ниже</span><label data-help="layer-gain">уровень <NumField ariaLabel="Уровень основного голоса, %" value={(inst.baseVoiceGain ?? 1) * 100} min={0} max={100} step={1} onChange={v => onChange({ baseVoiceGain: v / 100 })} /> %</label><span /><span /></div>
+    <VoiceProcessing sound={inst} onChange={onChange} />
     {layers.map(l => <div key={l.id} className={`layer-row ${selected === l.id ? 'selected' : ''}`}>
       <button data-help="layer-edit" className="layer-name" onClick={() => select(selected === l.id ? '' : l.id)} title="Настроить источник и огибающую слоя">{selected === l.id ? '▾' : '▸'} {l.name}</button>
       <label data-help="layer-gain">уровень <NumField ariaLabel={`Уровень слоя ${l.name}, %`} value={l.gain * 100} min={0} max={100} step={1} onChange={v => update(l.id, { gain: v / 100 })} /> %</label>
@@ -26,6 +28,7 @@ export function LayerEditor({ inst, onChange, onEditSource }: { inst: Instrument
       {presets.map((p, i) => <option key={p.id ?? i} value={i}>{p.category} · {p.name}</option>)}
     </select></div>
     {layer && <div className="layer-detail">
+      <VoiceProcessing sound={layer.sound} onChange={(patch,command)=>update(layer.id,{sound:{...layer.sound,...patch}},command)} />
       <button data-help="layer-source-editor" onClick={() => onEditSource(layer.id)}>редактировать источник…</button>
       <div className="mseg-toolbar"><strong>{layer.name}</strong><select data-help="layer-source" aria-label="Заменить источник слоя" value="" onChange={e => { const p = presets[+e.target.value]; update(layer.id, { name: p.name, sound: voiceSnapshot(instrumentOfFields(p.track, 'snapshot', p.name)) }, true); }}><option value="" disabled>заменить тембр…</option>{presets.map((p, i) => <option key={p.id ?? i} value={i}>{p.category} · {p.name}</option>)}</select>
       <select data-help="envelope-mode" aria-label="Огибающая слоя" value={layer.sound.ampMseg ? 'points' : 'classic'} onChange={e => update(layer.id, { sound: { ...layer.sound, ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined } }, true)}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>

@@ -1,3 +1,4 @@
+import { instrumentVoices } from '../music/layers';
 import { selectChokeEvents } from './chokeEvents';
 import type { Patch, Pattern, SoundingTrack, Track, WavRenderOptions } from '../types';
 import { patternInScene, slotMuted } from '../types';
@@ -74,8 +75,12 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
   if (nodes > RENDER_LIMITS.estimatedNodes) throw new Error('WAV: превышен бюджет синтеза (100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
   const sounding = new Set(events.map(ev => ev.part.key));
   const activeParts = parts.filter(part => sounding.has(part.key));
-  const chainResources = activeParts.reduce((total, part) => addResources(total,
+  let chainResources = activeParts.reduce((total, part) => addResources(total,
     estimateChainResources({ effects: part.st.effects, mods: part.pattern.mods ?? part.st.mods })), emptyResources());
+  for (const ev of events) for (const voice of instrumentVoices(ev.part.st)) {
+    if (voice.gain > 0 && voice.sound.voiceEffects?.length)
+      chainResources = addResources(chainResources, estimateChainResources({effects:voice.sound.voiceEffects,mods:[]}));
+  }
   if (!resourcesFit(chainResources, OFFLINE_CHAIN_LIMITS)) throw new ChainBudgetError();
   let duration = options ? start : start + .95;
   if (options?.tail === 'natural') {

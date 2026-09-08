@@ -12,7 +12,6 @@ export function BridgeSettings({ session, status, onConnect, onDisconnect }: {
   const [error, setError] = useState('');
   return <details className="bridge-settings" data-help="bridge">
     <summary>Внешний помощник · {status.phase === 'connected' ? 'подключён' : 'не подключён'}</summary>
-    <p>Для управления проектом из внешнего ИИ-помощника.</p>
     <form onSubmit={e => {
       e.preventDefault(); const secret = canonicalSecret(code);
       if (!validSecret(secret)) { setError('Вставь код из 32 символов (цифры и a–f).'); return; }

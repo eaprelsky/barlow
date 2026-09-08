@@ -1,3 +1,4 @@
+import { makeEq } from './equalizer';
 import { sampleTime } from './sampleTime';
 // Цепочка трека (фильтры → эффекты → панорама → громкость → сайдчейн)
 // и мастер (громкость → компрессия → лимитер → пан + слой шума).
@@ -21,6 +22,7 @@ export interface FxNodes {
   id: string;
   type: Effect['type'];
   mix: ConstantSourceNode;
+  bypassGain: GainNode;
   mixDry: WaveShaperNode;
   mixWet: WaveShaperNode;
   dry: GainNode;
@@ -30,6 +32,7 @@ export interface FxNodes {
   timeControl?: BoundedParam;
   feedbackControl?: BoundedParam;
   convolver?: ConvolverNode;
+  eq?: BiquadFilterNode[];
   shaper?: WaveShaperNode;
   lfo?: OscillatorNode;
 }
@@ -76,14 +79,15 @@ export function makeBoundedParam(ctx: BaseAudioContext, param: AudioParam, value
 }
 /** One normalized control signal drives both equal-power branches. Manual,
  * automation and audio-rate modulation all meet at the same AudioParam. */
-export function makeMixControl(ctx: BaseAudioContext, dry: GainNode, wet: GainNode, value: number, startAt: number | null) {
+export function makeMixControl(ctx: BaseAudioContext, dry: GainNode, wet: GainNode, value: number, startAt: number | null, linear = false) {
   const mix = ctx.createConstantSource(); mix.offset.value = Math.min(1, Math.max(0, value));
   const mixDry = ctx.createWaveShaper(), mixWet = ctx.createWaveShaper();
-  mixDry.curve = dryCurve; mixWet.curve = wetCurve;
+  mixDry.curve = linear ? mixCurve(v=>1-v) : dryCurve; mixWet.curve = linear ? mixCurve(v=>v) : wetCurve;
   dry.gain.value = 0; wet.gain.value = 0;
-  mix.connect(mixDry); mix.connect(mixWet);
+  const bypassGain = ctx.createGain();
+  mix.connect(bypassGain); bypassGain.connect(mixDry); bypassGain.connect(mixWet);
   mixDry.connect(dry.gain); mixWet.connect(wet.gain); if (startAt !== null) mix.start(startAt);
-  return { mix, mixDry, mixWet };
+  return { mix, mixDry, mixWet, bypassGain };
 }
 export function fxParamOf(fx: FxNodes[], target: string, id?: string): AudioParam | null {
   const node = id === undefined ? fx[0] : fx.find(f => f.id === id);
@@ -277,26 +281,6 @@ export interface MasterNodes {
   setPan: (v: number, at: number) => void;
 }
 
-export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt: number | null = 0): TrackChain {
-  if (startAt !== null) startAt = sampleTime(startAt, ctx.sampleRate);
-  track = resolveMacros(track);
-  const lease = reserveChain(ctx, track);
-  try { return { ...makeChainGraph(ctx, track, dest, bpm, seed, startAt), resourceLease: lease, deferredStart: startAt === null }; }
-  catch (e) { lease.release(); throw e; }
-}
-
-/** Expensive graph construction can precede the transport anchor without
- * advancing LFO phase or starting control signals. Idempotent for live setup. */
-export function startChain(chain: TrackChain, at: number): void {
-  if (!chain.deferredStart) return;
-  chain.deferredStart = false;
-  at = sampleTime(at, chain.hp.context.sampleRate);
-  for (const m of chain.mods) m.src.start(at);
-  for (const f of chain.fx) {
-    f.mix.start(at); f.timeControl?.source.start(at); f.feedbackControl?.source.start(at); f.lfo?.start(at);
-  }
-}
-
 function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm: number, seed: number | undefined, startAt: number | null): TrackChain {
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
@@ -326,17 +310,100 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
   // dry и wet — кроссфейд: обработанный сигнал приходит только через
   // ветку обработки (delay/shaper/convolver); раньше wet дублировался
   // в sum напрямую — сухой сигнал смешивался дважды.
+  const rack = makeEffectRack(ctx, track.effects ?? [], seed, startAt);
+  filter.connect(rack.input);
+  const fx = rack.fx;
+  rack.output.connect(panner);
+  const mods: ModNodes[] = track.mods.map((m, index) => {
+    const src = makeModSource(ctx, { ...m, rate: modRateHz(m, bpm) }, seed === undefined ? undefined : seedOf(seed, track.id, index));
+    const depth = ctx.createGain();
+    depth.gain.value = modScale(m.target, m.depth, filter.frequency.value);
+    src.connect(depth);
+    let param: AudioParam | null = null;
+    if (m.target === 'pan') param = panner.pan;
+    else if (m.target === 'volume') param = gain.gain;
+    else if (m.target === 'filterFreq') param = filter.frequency;
+    else if (m.target.startsWith('fx')) param = fxParamOf(fx, m.target, m.fxId);
+    if (param) depth.connect(param);
+    if (startAt !== null) src.start(startAt);
+    return { src, depth };
+  });
+  return {
+    hp,
+    filter,
+    panner,
+    gain,
+    duck,
+    sceneGain,
+    meter,
+    mods,
+    fx,
+    modSig: `${modsSigOf(track.mods)}|${fxSigOf(track.effects ?? [])}`,
+  };
+}
+
+export function disposeChain(chain: TrackChain): void {
+  chain.resourceLease?.release();
+  chain.sceneGain.disconnect();
+  for (const m of chain.mods) {
+    try {
+      m.src.stop();
+    } catch {
+      /* уже остановлен */
+    }
+    m.src.disconnect();
+    m.depth.disconnect();
+  }
+  disposeEffects(chain.fx);
+  chain.hp.disconnect(); chain.filter.disconnect(); chain.panner.disconnect();
+  chain.gain.disconnect(); chain.duck.disconnect(); chain.meter.disconnect();
+
+}
+
+export function disposeEffects(nodes: FxNodes[]) {
+  for (const f of nodes) {
+    try { f.mix.stop(); } catch { /* stopped */ }
+    f.mix.disconnect(); f.mixDry.disconnect(); f.mixWet.disconnect();
+    for (const c of [f.timeControl, f.feedbackControl]) if (c) {
+      try { c.source.stop(); } catch { /* stopped */ }
+      c.source.disconnect(); c.scale.disconnect(); c.clamp.disconnect();
+    }
+    f.dry.disconnect();
+    f.wet.disconnect();
+    f.delay?.disconnect();
+    f.feedback?.disconnect();
+    f.bypassGain.disconnect();
+    f.convolver?.disconnect();
+    f.eq?.forEach(node => node.disconnect());
+    f.shaper?.disconnect();
+    if (f.lfo) {
+      try {
+        f.lfo.stop();
+      } catch {
+        /* уже остановлен */
+      }
+      f.lfo.disconnect();
+    }
+  }
+}
+
+export function makeEffectRack(ctx: BaseAudioContext, effects: Effect[], seed?: number, startAt: number | null = 0) {
   const fx: FxNodes[] = [];
-  let node: AudioNode = filter;
-  for (const [index, e] of (track.effects ?? []).entries()) {
+  const input = ctx.createGain();
+  let node: AudioNode = input;
+  for (const [index, e] of effects.entries()) {
     const sum = ctx.createGain();
     const dry = ctx.createGain();
     const wet = ctx.createGain();
-    const control = { ...makeMixControl(ctx, dry, wet, e.mix, startAt), id: effectId(e, index), type: e.type };
+    const control = { ...makeMixControl(ctx, dry, wet, e.mix, startAt, e.type === 'eq'), id: effectId(e, index), type: e.type };
+    if (e.type === 'eq' && e.bypass) control.bypassGain.gain.value = 0;
     node.connect(dry);
     dry.connect(sum);
     wet.connect(sum);
-    if (e.type === 'delay') {
+    if (e.type === 'eq') {
+      const eq = makeEq(ctx, e.bands); node.connect(eq[0]); eq[5].connect(wet);
+      fx.push({...control, dry, wet, eq});
+    } else if (e.type === 'delay') {
       const delay = ctx.createDelay(2.5);
       delay.delayTime.value = e.timeSec;
       const feedback = ctx.createGain();
@@ -378,75 +445,27 @@ function makeChainGraph(ctx: BaseAudioContext, track: SoundingTrack, dest: Audio
     }
     node = sum;
   }
-  node.connect(panner);
-  const mods: ModNodes[] = track.mods.map((m, index) => {
-    const src = makeModSource(ctx, { ...m, rate: modRateHz(m, bpm) }, seed === undefined ? undefined : seedOf(seed, track.id, index));
-    const depth = ctx.createGain();
-    depth.gain.value = modScale(m.target, m.depth, filter.frequency.value);
-    src.connect(depth);
-    let param: AudioParam | null = null;
-    if (m.target === 'pan') param = panner.pan;
-    else if (m.target === 'volume') param = gain.gain;
-    else if (m.target === 'filterFreq') param = filter.frequency;
-    else if (m.target.startsWith('fx')) param = fxParamOf(fx, m.target, m.fxId);
-    if (param) depth.connect(param);
-    if (startAt !== null) src.start(startAt);
-    return { src, depth };
-  });
-  return {
-    hp,
-    filter,
-    panner,
-    gain,
-    duck,
-    sceneGain,
-    meter,
-    mods,
-    fx,
-    modSig: `${modsSigOf(track.mods)}|${fxSigOf(track.effects ?? [])}`,
-  };
+  return { input, output: node, fx };
 }
 
-export function disposeChain(chain: TrackChain): void {
-  chain.resourceLease?.release();
-  chain.sceneGain.disconnect();
-  for (const m of chain.mods) {
-    try {
-      m.src.stop();
-    } catch {
-      /* уже остановлен */
-    }
-    m.src.disconnect();
-    m.depth.disconnect();
-  }
+export function makeChain(ctx: BaseAudioContext, track: SoundingTrack, dest: AudioNode, bpm = 120, seed?: number, startAt: number | null = 0): TrackChain {
+  if (startAt !== null) startAt = sampleTime(startAt, ctx.sampleRate);
+  track = resolveMacros(track);
+  const lease = reserveChain(ctx, track);
+  try { return { ...makeChainGraph(ctx, track, dest, bpm, seed, startAt), resourceLease: lease, deferredStart: startAt === null }; }
+  catch (e) { lease.release(); throw e; }
+}
+
+/** Expensive graph construction can precede the transport anchor without
+ * advancing LFO phase or starting control signals. Idempotent for live setup. */
+export function startChain(chain: TrackChain, at: number): void {
+  if (!chain.deferredStart) return;
+  chain.deferredStart = false;
+  at = sampleTime(at, chain.hp.context.sampleRate);
+  for (const m of chain.mods) m.src.start(at);
   for (const f of chain.fx) {
-    try { f.mix.stop(); } catch { /* stopped */ }
-    f.mix.disconnect(); f.mixDry.disconnect(); f.mixWet.disconnect();
-    for (const c of [f.timeControl, f.feedbackControl]) if (c) {
-      try { c.source.stop(); } catch { /* stopped */ }
-      c.source.disconnect(); c.scale.disconnect(); c.clamp.disconnect();
-    }
-    f.dry.disconnect();
-    f.wet.disconnect();
-    f.delay?.disconnect();
-    f.feedback?.disconnect();
-    f.convolver?.disconnect();
-    f.shaper?.disconnect();
-    if (f.lfo) {
-      try {
-        f.lfo.stop();
-      } catch {
-        /* уже остановлен */
-      }
-      f.lfo.disconnect();
-    }
+    f.mix.start(at); f.timeControl?.source.start(at); f.feedbackControl?.source.start(at); f.lfo?.start(at);
   }
-  chain.hp.disconnect();
-  chain.filter.disconnect();
-  chain.panner.disconnect();
-  chain.gain.disconnect();
-  chain.duck.disconnect();
-  chain.meter.disconnect();
 }
 
 /** Мастер: громкость → компрессия (плотность 0..1) → мягкий tanh-лимитер.
