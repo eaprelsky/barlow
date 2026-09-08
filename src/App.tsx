@@ -721,13 +721,13 @@ export default function App() {
   }, [setPatchStep]);
 
   const chainSetItem = useCallback(
-    (idx: number, item: Partial<{ sceneId: string; bars: number; bpm?: number }>) => {
-      setPatch((p) => ({
+    (idx: number, item: Partial<{ sceneId: string; bars: number; bpm?: number }>, command = false) => {
+      (command ? setPatchStep : setPatch)((p) => ({
         ...p,
         chain: p.chain.map((it, i) => (i === idx ? { ...it, ...item } : it)),
       }));
     },
-    [],
+    [setPatch, setPatchStep],
   );
 
   /** Переставить пункт цепочки драгом: порядок = арранжмент. */
@@ -1969,43 +1969,49 @@ export default function App() {
                 }}
               >
                 <span
-                  className="chain-grip"
-                  title="Перетащи — пункт встанет на новое место в цепочке"
+                  className="chain-grip" data-help="chain-order" role="button" tabIndex={0}
+                  aria-label={`Позиция ${i + 1}: переместить в цепочке`}
+                  onKeyDown={e => { if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); chainReorder(i, i - 1, 'before'); } if (e.key === 'ArrowRight' && i < patch.chain.length - 1) { e.preventDefault(); chainReorder(i, i + 1, 'after'); } }}
+                  title="Перетащи или используй стрелки влево/вправо"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', String(i));
                   }}
                 >
-                  ⠿
+                  {i + 1}
                 </span>
-                <select
+                <select className="chain-scene" data-help="chain-scene" aria-label={`Сцена в позиции ${i + 1}`}
+                  title={patch.scenes.find(s => s.id === it.sceneId)?.name}
                   value={it.sceneId}
-                  onChange={(e) => chainSetItem(i, { sceneId: e.target.value })}
+                  onChange={(e) => chainSetItem(i, { sceneId: e.target.value }, true)}
                 >
                   {patch.scenes.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
-                <label title="Сколько тактов звучит эта сцена">
-                  тактов
-                  <NumField
-                    value={it.bars} min={1} max={256}
-                    onChange={(bars) => chainSetItem(i, { bars: Math.round(bars) })}
-                  />
-                </label>
-                <label title="Темп этого пункта (30–300). 0 — как в шапке патча">
-                  bpm
-                  <NumField help="scene-tempo"
-                    value={it.bpm ?? 0} min={0} max={300}
-                    onChange={(bpm) => chainSetItem(i, { bpm: bpm >= 30 ? Math.round(bpm) : undefined })}
-                  />
-                </label>
-                <button className="remove" title="Убрать из цепочки" onClick={() => chainRemove(i)}>×</button>
+                <button className="remove" data-help="chain-remove" aria-label={`Убрать позицию ${i + 1}`} disabled={patch.chain.length <= 1} title="Убрать из цепочки" onClick={() => chainRemove(i)}>×</button>
+                <div className="chain-parameters">
+                  <label data-help="chain-bars">тактов
+                    <NumField ariaLabel={`Такты позиции ${i + 1}`} value={it.bars} min={1} max={256} w={48}
+                      onChange={bars => chainSetItem(i, { bars: Math.round(bars) })} />
+                  </label>
+                  <div className="chain-tempo" data-help="scene-tempo">
+                    <span>BPM</span>
+                    <div>
+                      <select aria-label={`Режим темпа позиции ${i + 1}`} value={it.bpm === undefined ? 'global' : 'custom'}
+                        onChange={e => chainSetItem(i, { bpm: e.target.value === 'custom' ? Math.round(patch.bpm) : undefined }, true)}>
+                        <option value="global">общий</option><option value="custom">свой</option>
+                      </select>
+                      <NumField help="scene-tempo" ariaLabel={`BPM позиции ${i + 1}`} value={it.bpm ?? patch.bpm} min={30} max={300} w={50} disabled={it.bpm === undefined}
+                        onChange={bpm => chainSetItem(i, { bpm: Math.round(bpm) })} />
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}
-          <button onClick={chainAdd}>+</button>
+          <button data-help="chain-add" aria-label="Добавить позицию в цепочку" onClick={chainAdd}>+</button>
           <HelpHint guide="arrangement" step={5} label="Гид: цепочка сцен" />
         </div>
       )}

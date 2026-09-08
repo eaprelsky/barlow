@@ -3705,3 +3705,16 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .control-envelope { width:100%; max-width:780px; }
 .control-envelope > .mseg-toolbar { min-height:52px; gap:16px; margin-bottom:8px; }
 .control-envelope input[type="checkbox"] { width:auto; min-width:0; margin:0 6px 0 0; accent-color:var(--accent); }
+
+/* Chain occurrences: name and order above, duration and tempo below. */
+.chain-panel { align-items:flex-start; gap:8px; }
+.chain-item { display:grid; grid-template-columns:18px minmax(0,1fr) 22px; width:212px; gap:6px; padding:8px; flex:none; }
+.chain-item .chain-grip { text-align:center; cursor:grab; font-variant-numeric:tabular-nums; }
+.chain-item .chain-scene { width:100%; min-width:0; font-weight:600; text-overflow:ellipsis; }
+.chain-item .remove { width:22px; min-width:0; padding:0; }
+.chain-parameters { grid-column:1 / -1; display:grid; grid-template-columns:48px minmax(0,1fr); gap:10px; }
+.chain-parameters > label, .chain-tempo { display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-size:10px; color:var(--text-dim); }
+.chain-tempo > div { display:flex; gap:4px; width:100%; }
+.chain-tempo select { width:74px; min-width:0; }
+.chain-item input { padding:4px; font-variant-numeric:tabular-nums; }
+.chain-item .chain-grip:focus-visible { outline:1px solid var(--accent); border-radius:3px; }
