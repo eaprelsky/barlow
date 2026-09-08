@@ -3777,3 +3777,15 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .workspace-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:8px; }
 .workspace-bar .view-shortcuts { padding:4px 0; flex:none; }
 .workspace-bar .autosave-strip { padding:0; }
+.section-heading { display:flex; align-items:center; gap:8px; width:100%; min-height:30px; }
+.section-heading strong { font-size:12px; font-weight:500; }
+.section-heading > button { width:28px; height:28px; padding:3px; }
+.mix-block.master { width:190px; max-width:190px; }
+.mix-panel { padding-top:6px; }
+.ai-panel > .section-heading, .ai-panel .seed-controls, .ai-panel .bridge-settings { flex-basis:100%; }
+.settings-group-label { color:var(--text-dim); font-size:11px; }
+.chain-item { grid-template-columns:28px minmax(0,1fr) 22px; }
+.chain-item .chain-grip { display:flex; flex-direction:column; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:4px; padding:2px; line-height:14px; }
+.chain-grip .drag-dots { font-size:19px; color:var(--text-dim); }
+.chain-item .chain-grip:hover { color:var(--accent); border-color:var(--accent); }
+.track-navigation { padding-top:12px; }

@@ -33,10 +33,11 @@ try {
     localStorage.setItem('barlow.onboarding.v1', JSON.stringify({ invited: true, seen: { main: true } }));
   });
   await page.goto(`http://127.0.0.1:${port}`);
-  await page.getByRole('button', { name: 'настройки', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Настройки', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Звук и подключения', exact: true }).click();
   await page.locator('.bridge-settings summary').click();
   assert.equal(host.state.connected, false);
-  await page.getByLabel('Код подключения', { exact: true }).fill(host.pairingCode);
+  await page.getByLabel('Код от помощника', { exact: true }).fill(host.pairingCode);
   await page.getByRole('button', { name: 'подключить', exact: true }).click();
   await until(() => host.state.connected);
   assert.deepEqual(host.state.capabilities, ['read']);

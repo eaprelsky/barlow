@@ -11,15 +11,15 @@ export function BridgeSettings({ session, status, onConnect, onDisconnect }: {
   const [transport, setTransport] = useState(session?.capabilities.includes('transport') ?? false);
   const [error, setError] = useState('');
   return <details className="bridge-settings" data-help="bridge">
-    <summary>Локальный агент · {status.phase === 'connected' ? 'подключён' : 'отключён'}</summary>
-    <p>Получи код командой live_status у локального агента. Подключение разрешает чтение проекта; дополнительные права выбери ниже.</p>
+    <summary>Внешний помощник · {status.phase === 'connected' ? 'подключён' : 'не подключён'}</summary>
+    <p>Для управления проектом из внешнего ИИ-помощника.</p>
     <form onSubmit={e => {
       e.preventDefault(); const secret = canonicalSecret(code);
       if (!validSecret(secret)) { setError('Вставь код из 32 символов (цифры и a–f).'); return; }
       try { onConnect({ secret, capabilities: ['read', ...(write ? ['write' as const] : []), ...(transport ? ['transport' as const] : [])] }); setError(''); }
       catch { setError('Не удалось сохранить подключение для этой вкладки. Проверь разрешение на хранилище.'); }
     }}>
-      <label>Код подключения <input data-help="bridge-code" type="password" autoComplete="off" spellCheck={false} value={code} maxLength={80}
+      <label title="Попроси помощника вызвать live_status через MCP barlow и передать код подключения. Это не API-ключ генерации звука.">Код от помощника <input data-help="bridge-code" type="password" autoComplete="off" spellCheck={false} value={code} maxLength={80}
         onChange={e => setCode(e.target.value)} /></label>
       <label><input data-help="bridge-write" type="checkbox" checked={write} onChange={e => setWrite(e.target.checked)} />редактировать проект</label>
       <label><input data-help="bridge-transport" type="checkbox" checked={transport} onChange={e => setTransport(e.target.checked)} />управлять воспроизведением</label>
@@ -30,6 +30,5 @@ export function BridgeSettings({ session, status, onConnect, onDisconnect }: {
       }}>отключить и забыть код</button>}
     </form>
     <p role="status">{error || status.message}</p>
-    <small>Код хранится до закрытия вкладки и действует до перезапуска локального агента. В файл проекта он не попадает. Изменения прав вступают в силу после нажатия «подключить».</small>
   </details>;
 }

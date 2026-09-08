@@ -65,8 +65,8 @@ try{
  await track.locator('[data-ob="mode-inst"]').click();await track.locator('.macro-editor > summary').click();await track.locator('.macro-item details > summary').first().click();await track.locator('.macro-editor').scrollIntoViewIfNeeded();await page.screenshot({path:root+'/tmp/help-tiles-library-1024.png'});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
 
 
- await page.getByRole('menuitem',{name:'Настройки',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Исполнение и ИИ',exact:true}).click();await inspect('settings');
- await page.getByRole('menuitem',{name:'Настройки',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Исполнение и ИИ',exact:true}).click();
+ await page.getByRole('menuitem',{name:'Настройки',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Звук и подключения',exact:true}).click();await inspect('settings');
+ await page.getByRole('menuitem',{name:'Настройки',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Звук и подключения',exact:true}).click();
  await page.locator('[data-ob="mixer-btn"]').click();await inspect('mixer');await page.locator('[data-ob="mixer-btn"]').click();
  await page.locator('[data-ob="chain-btn"]').click();await inspect('chain');await page.locator('[data-ob="chain-btn"]').click();
  // The inspection card must live in the native dialog's top layer.

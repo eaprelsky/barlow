@@ -1497,7 +1497,7 @@ export default function App() {
           {label:'Цепочка сцен',help:'chain-panel',checked:showChain,action:()=>setShowChain(v=>!v)},
         ]},
         {label:'Настройки',help:'ai-btn',anchor:'ai-btn',items:[
-          {label:'Исполнение и ИИ',help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
+          {label:'Звук и подключения',help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
         ]},
         {label:'Справка',help:'help-guides',items:[
           {label:'Найти в справке…',help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},
@@ -1623,21 +1623,20 @@ export default function App() {
       </div>
       {showMix && (
         <div className="mix-panel" data-ob="mix-panel">
+          <div className="section-heading" data-help="mix-master"><strong>микшер</strong><span className="spacer" /><HelpHint guide="mix" label="Гид: свести микс" /><button data-help="panel-close" aria-label="Скрыть микшер" title="Скрыть микшер" onClick={()=>setShowMix(false)}>×</button></div>
           <div className="mix-rack">
             <div className="mix-block master" data-ob="mix-master">
-        <SliderField
-          className="master-vol"
-          variant="label"
-          label="пан"
-          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
-          value={Math.round((patch.masterPan ?? 0.5) * 100)}
-          min={0} max={100} step={5}
-          display={panText(patch.masterPan ?? 0.5)}
-          onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
-        />
-
               <div className="mix-main">
                 <span className="mix-name">мастер</span>
+                <SliderField
+                  variant="mix"
+                  label="пан"
+                  title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
+                  value={Math.round((patch.masterPan ?? 0.5) * 100)}
+                  min={0} max={100} step={5}
+                  display={panText(patch.masterPan ?? 0.5)}
+                  onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
+                />
                 <label className="mix-ctl" title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает. Играет, пока играет транспорт">
                   <span className="mc-cap">шум</span>
                   <select
@@ -1728,16 +1727,13 @@ export default function App() {
             ))}
             {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
           </div>
-          <HelpHint guide="mix" label="Гид: свести микс" />
         </div>
       )}
 
       {showAi && (
         <div className="ai-panel" data-ob="ai-panel">
-          <BridgeSettings session={bridgeSession} status={bridgeStatus}
-            onConnect={value => { saveBridgeSession(value); setBridgeSession(value); }}
-            onDisconnect={() => { try { saveBridgeSession(null); } finally { setBridgeSession(null); } }} />
-          <div className="inline seed-controls">
+          <div className="section-heading" data-help="ai-btn"><strong>звук и подключения</strong><span className="spacer" /><HelpHint guide="ai" /><button data-help="panel-close" aria-label="Скрыть настройки" title="Скрыть настройки" onClick={()=>setShowAi(false)}>×</button></div>
+          <div className="inline seed-controls" data-help="playback-settings"><span className="settings-group-label">воспроизведение</span>
             <label title="Фиксировать случайный выбор нот, арпеджио и шумов при повторном старте и WAV-экспорте">
               <input type="checkbox" checked={patch.performanceSeed !== undefined}
                 onChange={e => setPatchStep(p=>({...p,performanceSeed:e.target.checked ? 1 : undefined}))} />повторяемый звук
@@ -1752,6 +1748,7 @@ export default function App() {
             const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
             return (
               <>
+                <span className="settings-group-label" data-help="ai-provider">генерация звука</span>
                 <label data-ob="ai-provider" title="Сервис ИИ. ElevenLabs — генерация звуков по описанию; fal.ai — тоже генерация плюс морфинг: преобразование сэмпла в слоте по описанию (audio-to-audio)">
                   сервис
                   <select value={ai.providerId} onChange={(e) => saveAi({ providerId: e.target.value })}>
@@ -1787,7 +1784,10 @@ export default function App() {
               </>
             );
           })()}
-          <HelpHint guide="ai" label="Гид: включить ИИ-генерацию" />
+          <BridgeSettings session={bridgeSession} status={bridgeStatus}
+            onConnect={value => { saveBridgeSession(value); setBridgeSession(value); }}
+            onDisconnect={() => { try { saveBridgeSession(null); } finally { setBridgeSession(null); } }} />
+
         </div>
       )}
       <div className="scenes" data-ob="scenes">
@@ -1916,7 +1916,7 @@ export default function App() {
                     e.dataTransfer.setData('text/plain', String(i));
                   }}
                 >
-                  {i + 1}
+                  <span className="drag-dots" aria-hidden="true">⠿</span><span>{i + 1}</span>
                 </span>
                 <select className="chain-scene" data-help="chain-scene" aria-label={`Сцена в позиции ${i + 1}`}
                   title={patch.scenes.find(s => s.id === it.sceneId)?.name}
