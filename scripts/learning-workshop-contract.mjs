@@ -14,7 +14,7 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(`http://127.0.0.1:${port}/tmp/learning-contract.html`);
  const result=await page.evaluate(async()=>{
-  const {learningProject,beginLearning,returnFromLearning,finishLearningReturn,resumeLearning}=await import('/src/music/learning.ts');
+  const {learningProject,beginLearning,returnFromLearning,finishLearningReturn,resumeLearning,soundLessons}=await import('/src/music/learning.ts');
   const {isPatch,normalizePatch}=await import('/src/types.ts');
   const {analyzeTimbre,estimateRoot}=await import('/src/audio/timbreAnalysis.ts');
   const {readTableWav,importTable}=await import('/src/music/wavetableImport.ts');
@@ -25,6 +25,7 @@ try{
   const p=learningProject(),lab=learningProject(true);check('learning patches valid',isPatch(p)&&isPatch(lab));check('normalization retains VA and wavetable without FM operators',!!lab.instruments[0].wave.va&&!!p.instruments[4].wave.wavetable);
   check('IDM miniature is 128 seconds with eight distinct scenes',p.chain.reduce((s,c)=>s+c.bars*4*60/(c.bpm??p.bpm),0)===128&&p.scenes.length===8);
   const original=structuredClone(lab);original.title='USER WORK';beginLearning(original,false);const again=beginLearning(p,true);check('second lesson cannot overwrite original',returnFromLearning(again).title==='USER WORK');finishLearningReturn();check('resume preserves latest learning work',resumeLearning(original).title===again.title);
+  const fmLab=structuredClone(lab);fmLab.instruments[0].wave={partials:[{type:'sine',ratio:1,amp:1},{type:'sine',ratio:2,amp:1,mod:0}]};check('FM lesson accepts routing to first operator',soundLessons[3].check(fmLab));
   check('invalid VA rejected',!validVA({shape:'pulse',pulseWidth:.5,pwmDepth:1}));
   const b=new AudioBuffer({length:2048*4,sampleRate:44100,numberOfChannels:1}),x=b.getChannelData(0);for(let i=0;i<x.length;i++)x[i]=.6*Math.sin(2*Math.PI*i/2048)+.1*Math.sin(2*Math.PI*100*i/2048);
   const bytes=await audioBufferToWav(b).arrayBuffer(),samples=readTableWav(bytes),frames=importTable(samples,2048,4);
