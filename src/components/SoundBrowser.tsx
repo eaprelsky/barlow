@@ -35,6 +35,8 @@ import { HelpHint } from '../onboarding/Onboarding';
 import { SOUND_COLLECTIONS, presetInCollection, presetMatches, soundMatches, presetFavoriteId, sampleFavoriteId, loadSoundFavorites, saveSoundFavorites, FAVORITES_KEY, FAVORITES_EVENT } from '../music/soundSearch';
 
 interface Props {
+  incomingFile?: File | null;
+  onIncomingHandled?: () => void;
   tracks: Track[];
   /** Дорожка, куда применяются пресеты/сэмплы по клику. */
   targetId: string | null;
@@ -62,6 +64,8 @@ function fmtSize(bytes: number): string {
 }
 
 export function SoundBrowser({
+  incomingFile,
+  onIncomingHandled,
   tracks,
   targetId,
   onTarget,
@@ -95,6 +99,9 @@ export function SoundBrowser({
     finally { if(request===importGeneration.current) setTransfer(null); }
   };
   const [query, setQuery] = useState('');
+  const incomingHandler=useRef({readInstrument,onIncomingHandled});
+  incomingHandler.current={readInstrument,onIncomingHandled};
+  useEffect(()=>{if(incomingFile){void incomingHandler.current.readInstrument(incomingFile);incomingHandler.current.onIncomingHandled?.();}},[incomingFile]);
   const [pack, setPack] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favoriteState, setFavoriteState] = useState(() => {

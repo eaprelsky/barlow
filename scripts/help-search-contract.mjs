@@ -28,7 +28,7 @@ try{
  await page.goto(`http://127.0.0.1:${port}`);
  const saved=()=>page.evaluate(async()=>{(await import('/src/storage.ts')).flushAutosave();return JSON.parse(localStorage.getItem('barlow.patch.v12'));});
  const before=await saved(),id=before.tracks[1].id;
- await page.getByRole('button',{name:'найти в справке',exact:true}).click();const query=page.getByLabel('Искать в справке',{exact:true});await query.fill('поратменте');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowUp');await query.press('Enter');
+ await page.getByRole('menuitem',{name:'Справка',exact:true}).click();await page.getByRole('menuitem',{name:/Найти в справке/}).click();const query=page.getByLabel('Искать в справке',{exact:true});await query.fill('поратменте');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowUp');await query.press('Enter');
  assert.match(await page.locator('.help-search-article h3').innerText(),/Портаменто/);assert.ok(await page.locator('.help-search-article').innerText().then(t=>t.includes('скольжение, мс')));
  await page.getByLabel('Дорожка для перехода').selectOption(id);
  for(const width of [1024,1440]){await page.setViewportSize({width,height:900});await page.screenshot({path:root+`/tmp/help-search-${width}.png`});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));const box=await page.getByRole('dialog',{name:'Поиск по справке'}).boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<=900);}

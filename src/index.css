@@ -3664,7 +3664,6 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .ph-card .ph-example { color: var(--text-dim); }
 .ph-card .ph-example b { color: var(--accent); font-weight: normal; }
 .ph-badge { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
-.help-guides-btn { font-size: 11px; }
 
 .modal-point-help { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; padding: 0; color: var(--accent-2); }
 .native-dialog > h3 { padding-right: 32px; }
@@ -3741,18 +3740,40 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .help-arrival { position:fixed; bottom:16px; right:18px; width:min(540px,calc(100vw - 48px)); z-index:80; display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:var(--panel); font-size:12px; line-height:1.5; box-shadow:0 4px 20px #0008; }
 .help-arrival span { flex:1; }
 .help-found-target { outline:2px solid var(--accent); outline-offset:5px; border-radius:3px; }
-.panel-switches { display:flex; align-items:center; gap:4px; padding:3px 6px; border:1px solid var(--border); border-radius:7px; }
-.panel-switches-label { color:var(--text-dim); font-size:11px; margin-right:5px; }
-.panel-switches button { display:inline-flex; align-items:center; gap:6px; }
-.file-menu-icon { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:6px; }
 .sb-head .sb-transfer { padding:0; gap:4px; }
 .sb-head .sb-transfer > button { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:28px; padding:4px; }
 .sb-head .sb-transfer [role="status"] { font-size:10px; }
 .sb-pack select { min-width:0; width:100%; }
-.project-strip { display:flex; align-items:center; gap:10px; width:100%; }
-.project-strip .title-input { min-width:80px; flex-shrink:1; }
-.project-strip .cycle-info { font-size:11px; cursor:help; }
-.project-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
-.project-actions .panel-switches { padding:3px; }
-.project-actions .panel-switches button { padding:6px 8px; }
-.panel-switches button[aria-pressed="true"] { background:rgba(242,178,99,.14); box-shadow:inset 0 -2px var(--accent); }
+/* Application navigation is independent of the library column. */
+.global-header { position:sticky; top:0; z-index:40; background:var(--bg); border-bottom:1px solid var(--border); }
+.main-menu { display:flex; align-items:center; height:36px; padding:0 16px; gap:20px; border-bottom:1px solid var(--border); font-size:13px; }
+.main-brand { color:var(--accent); font-weight:700; letter-spacing:1px; }
+.main-menu [role="menubar"] { display:flex; gap:2px; }
+.main-menu-group { position:relative; }
+.main-menu button { height:32px; padding:5px 10px; font-size:13px; line-height:20px; }
+.main-menu [role="menubar"] > div > button { border-color:transparent; background:transparent; }
+.main-menu button[aria-expanded="true"] { background:var(--panel-2); color:var(--accent); }
+.main-menu [role="menu"] { position:absolute; left:0; top:34px; min-width:290px; padding:6px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; box-shadow:0 8px 24px #0009; }
+.main-menu [role="menu"] button { display:flex; align-items:center; width:100%; height:34px; gap:8px; text-align:left; border:0; }
+.main-menu .menu-check { width:14px; flex:none; color:var(--accent); }
+.main-menu .menu-shortcut { margin-left:auto; font-size:11px; color:var(--text-dim); }
+.main-menu [role="menu"] .menu-separator { border-top:1px solid var(--border); margin-top:5px; }
+.transport-bar { height:52px; margin:0; padding:6px 16px; border:0; flex-wrap:nowrap; gap:12px; }
+.transport-bar .play-btn { width:38px; height:38px; font-size:16px; }
+.transport-bar .title-input { width:170px; min-width:100px; }
+.transport-bar .master-vol { min-width:0; }
+.transport-bar .master-vol input[type="range"] { width:130px; }
+.transport-bar button:not(.play-btn) { height:32px; min-width:32px; }
+.transport-bar .help-btn { font-size:14px; }
+.app-shell .app { padding-top:10px; }
+.app-shell .dock { top:100px; max-height:calc(100vh - 112px); }
+.topbar { top:88px; }
+.view-shortcuts { display:flex; align-items:center; gap:8px; padding:4px 0 10px; }
+.view-shortcuts button { height:32px; padding:5px 10px; }
+.view-shortcuts button[aria-pressed="true"] { background:rgba(242,178,99,.12); box-shadow:inset 0 -2px var(--accent); }
+.guide-menu-host { position:absolute; right:16px; top:36px; }
+.guide-menu-host .help-menu { max-height:calc(100vh - 100px); overflow:auto; }
+
+.workspace-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:8px; }
+.workspace-bar .view-shortcuts { padding:4px 0; flex:none; }
+.workspace-bar .autosave-strip { padding:0; }

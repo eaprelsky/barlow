@@ -127,7 +127,7 @@ export function Onboarding({
     }
     setMissing(false);
     const r = el.getBoundingClientRect();
-    const header = document.querySelector('.topbar');
+    const header = el.closest('.global-header') ? null : document.querySelector('.topbar');
     const top = Math.max(0, r.top, header && !header.contains(el) ? header.getBoundingClientRect().bottom : 0);
     const visible = {left: Math.max(0,r.left),top,width: Math.min(innerWidth,r.right)-Math.max(0,r.left),height: Math.min(innerHeight,r.bottom)-top};
     if(visible.width<=0 || visible.height<=0){setMissing(true);setHole(null);return;}
@@ -157,7 +157,7 @@ export function Onboarding({
       if(el && el!==revealed){
         revealed=el;
         el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
-        const header=document.querySelector('.topbar');
+        const header=el.closest('.global-header') ? null : document.querySelector('.topbar');
         if(header && !header.contains(el)){
           const top=header.getBoundingClientRect().bottom+12,r=el.getBoundingClientRect();
           if(r.top<top) window.scrollBy({top:r.top-top,behavior:'instant'});

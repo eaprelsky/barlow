@@ -1,3 +1,5 @@
+import { MainMenu } from './components/MainMenu';
+import { pickInstrumentFile } from './platform';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createHistory } from './history';
 import { EditGestureContext } from './components/editGesture';
@@ -275,7 +277,7 @@ export default function App() {
   useEffect(() => { publishPointHelp(pointHelp); }, [pointHelp]);
   const [trackQuery, setTrackQuery] = useState('');
   const [hideSceneMuted, setHideSceneMuted] = useState(false);
-  const [helpInvite, setHelpInvite] = useState(needsInvite);
+  const [, setHelpInvite] = useState(needsInvite);
   const obRef = useRef<GuideRun | null>(null);
   obRef.current = obRun;
 
@@ -347,8 +349,8 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showHelp]);
-  const [fileOpen, setFileOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [incomingInstrument,setIncomingInstrument] = useState<File|null>(null);
+  const instrumentFileRef=useRef<HTMLInputElement>(null);
   const [wavExport, setWavExport] = useState<{ patch: Patch; sceneId: string } | null>(null);
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [sampleJobs] = useState(() => new SampleJobs());
@@ -1474,30 +1476,37 @@ export default function App() {
 
   return (
     <EditGestureContext.Provider value={history}>
-    <div className="app-shell">
-      {showLib && (
-        <SoundBrowser
-          tracks={patch.tracks}
-          targetId={libTargetId}
-          onTarget={setLibTarget}
-          targetPresetName={libPresetName}
-          tab={libTab}
-          onTab={setLibTab}
-          onApply={applyPreset}
-          onAudition={auditionPreset}
-          onAssignSample={assignSample}
-          usedSampleIds={
-            new Set(patch.instruments.flatMap(sampleAssets).map((a) => a.sampleId))
-          }
-          onAddTrack={addTrack}
-          onClose={() => setShowLib(false)}
-        />
-      )}
-    <div className="app">
-      <div className="topbar">
-      <header>
-
-        <span className="logo">barlow</span>
+    <div className="global-header">
+      <MainMenu menus={[
+        {label:'Файл',help:'file-menu',anchor:'file-menu',items:[
+          {label:'Новый проект',help:'file-menu',action:clearAll},
+          {label:'Открыть проект…',help:'file-menu',action:()=>{if(isDesktop)void pickProjectFile().then(f=>{if(f)importFile(f);}).catch(e=>void alertDialog(errText(e),'импорт'));else fileRef.current?.click();}},
+          {label:'Сохранить проект…',help:'file-menu',action:()=>{void exportZip();}},
+          {label:'Открыть демо',help:'file-menu',action:resetPatch},
+          {label:'Импортировать инструмент…',help:'instrument-import',separator:true,action:()=>{void pickInstrumentFile(()=>instrumentFileRef.current?.click()).then(f=>{if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}).catch(e=>void alertDialog(errText(e),'импорт'));}},
+          {label:'Экспортировать WAV…',help:'file-menu',disabled:rendering,action:()=>setWavExport({patch,sceneId})},
+          {label:'Экспортировать патч JSON…',help:'file-menu',action:exportPatch},
+        ]},
+        {label:'Правка',help:'undo',items:[
+          {label:'Отменить',help:'undo',shortcut:'Ctrl+Z',disabled:historyState.past.length===0&&(!historyState.gesture||historyState.gesture.base===patch),action:undo},
+          {label:'Повторить',help:'redo',shortcut:'Ctrl+Shift+Z',disabled:historyState.future.length===0,action:redo},
+        ]},
+        {label:'Вид',help:'panel-switches',items:[
+          {label:'Библиотека инструментов',help:'library-btn',checked:showLib,action:()=>showLib?setShowLib(false):openLibraryAt(null)},
+          {label:'Микшер',help:'mixer-btn',checked:showMix,action:()=>setShowMix(v=>!v)},
+          {label:'Цепочка сцен',help:'chain-panel',checked:showChain,action:()=>setShowChain(v=>!v)},
+        ]},
+        {label:'Настройки',help:'ai-btn',anchor:'ai-btn',items:[
+          {label:'Исполнение и ИИ',help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
+        ]},
+        {label:'Справка',help:'help-guides',items:[
+          {label:'Найти в справке…',help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},
+          {label:'Пошаговые гиды…',help:'help-guides',action:()=>setShowHelpMenu(true)},
+          {label:'Объяснить элемент',help:'point-help',shortcut:'F1',action:()=>{setObRun(null);setPointHelp(v=>!v);}},
+          {label:'Горячие клавиши и словарь…',help:'help-guides',action:()=>setShowHelp(true)},
+        ]},
+      ]}/>
+      <header className="transport-bar">
         <button
           className={playing ? 'play-btn stop' : 'play-btn'}
           data-ob="play"
@@ -1530,64 +1539,7 @@ export default function App() {
           unit="%"
           onChange={(v) => setPatch((p) => ({ ...p, masterVolume: v / 100 }))}
         />
-        <SliderField
-          className="master-vol"
-          variant="label"
-          label="пан"
-          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
-          value={Math.round((patch.masterPan ?? 0.5) * 100)}
-          min={0} max={100} step={5}
-          display={panText(patch.masterPan ?? 0.5)}
-          onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
-        />
-        {/* Правый угол первой строки — настройки и справка; частые
-            действия уедут на вторую строку за переносом */}
         <span className="spacer" />
-        <button
-          className={showAi ? 'on hdr-icon' : 'hdr-icon'}
-          data-ob="ai-btn"
-          onClick={() => { setShowAi((v) => !v); if (showLib) setShowLib(false); }}
-          title="Настройки: исполнение, локальный агент и ИИ-генерация"
-          aria-label="настройки"
-        >
-          <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-            <path
-              d="M6.1 1.5h2.8l.35 1.9c.5.16.96.4 1.37.72l1.8-.7 1.4 2.42-1.44 1.28c.04.28.04.56 0 .84l1.44 1.28-1.4 2.42-1.8-.7c-.41.31-.87.55-1.37.72l-.35 1.9H6.1l-.35-1.9a4.9 4.9 0 0 1-1.37-.72l-1.8.7-1.4-2.42 1.44-1.28a4.5 4.5 0 0 1 0-.84L1.18 6.34l1.4-2.42 1.8.7c.41-.32.87-.56 1.37-.72l.35-1.9Z"
-              fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
-            />
-            <circle cx="7.5" cy="7.5" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
-          </svg>
-        </button>
-        {/* «?» — меню интерактивных гидов + шпаргалка. Пока гиды ни разу
-            не открывались — кнопка пульсирует, приглашая. */}
-        <span className="menu">
-          <button
-            className={(pointHelp ? 'on ' : '') + (helpInvite ? 'help-btn pulse' : 'help-btn')}
-            onClick={() => { setShowHelpMenu(false); setObRun(null); setPointHelp(v => !v); }}
-            aria-label="Что это?" aria-pressed={pointHelp} data-help="point-help" data-help-toggle
-            title="Что это? Выбрать элемент и узнать о нём (F1)"
-            data-ob="help"
-          >
-            ?
-          </button>
-          <button data-help="help-search" onClick={openHelpSearch} title="Поиск по справке (Ctrl+/)">найти в справке</button>
-          <button className="help-guides-btn" data-help="help-guides" onClick={() => setShowHelpMenu(v => !v)}>гиды</button>
-          {showHelpMenu && (
-            <HelpMenu
-              onClose={() => {
-                setShowHelpMenu(false);
-                setHelpInvite(needsInvite());
-              }}
-              onCheatSheet={() => setShowHelp(true)}
-              onPointHelp={() => setPointHelp((v) => !v)}
-              pointHelpOn={pointHelp}
-            />
-          )}
-        </span>
-        {/* Перенос строки: название пьесы и всё после него — вторым рядом.
-            Правый верхний угол остаётся за частыми действиями. */}
-        <span className="hdr-break" />
-        <div className="project-strip">
         <input
           className="title-input"
           data-ob="title"
@@ -1598,112 +1550,6 @@ export default function App() {
             setPatch((p) => ({ ...p, title: e.target.value.trim() ? e.target.value : undefined }))
           }
         />
-        <span
-          className="cycle-info"
-          title={`Длины циклов в шагах: ${patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}. Разные длины создают полиритмию.`}
-        >
-          циклы
-        </span>
-        <span className="spacer" />
-        <div className="project-actions">
-        <div className="panel-switches" role="group" aria-label="Панели" data-help="panel-switches">
-        <span className="panel-switches-label">панели</span>
-        <button
-          aria-pressed={showMix}
-          className={showMix ? 'on' : ''}
-          data-ob="mixer-btn"
-          onClick={() => setShowMix((v) => !v)}
-          title="Микшер-рэк: громкости дорожек и глобальные выключатели — не зависят от сцен и эскизов"
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-            {/* рэк: три вертикальных фейдера */}
-            <path d="M3 1.5v11M7 1.5v11M11 1.5v11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <rect x="1.6" y="4" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
-            <rect x="5.6" y="8" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
-            <rect x="9.6" y="3" width="2.8" height="2.2" rx="0.8" fill="currentColor" />
-          </svg>
-          микшер
-        </button>
-        <button
-          aria-pressed={showLib}
-          className={showLib ? 'on' : ''}
-          data-ob="library-btn"
-          onClick={() => {
-            if (showLib) setShowLib(false);
-            else openLibraryAt(null);
-          }}
-          title="Инструменты: пресеты тембров и сэмплы — дерево, поиск, прослушивание. Клик по пресету меняет тембр выбранной дорожки"
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-            {/* волна в рамке */}
-            <rect x="1.2" y="2.2" width="11.6" height="9.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M3 8.4c1-.2 1.4-3 2.2-3s.9 4 1.8 4 1.1-5 2-5 1 2.6 2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-          инструменты
-        </button>
-        </div>
-        <div className="menu">
-          <button
-            data-ob="file-menu"
-            aria-label="Файл"
-            aria-expanded={fileOpen}
-            className="file-menu-icon"
-            onClick={() => { setFileOpen((v) => !v); setExportOpen(false); }}
-            title="Файлы: новый, открыть, записать, экспорт"
-          >
-            <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
-              {/* лист с загнутым углом */}
-              <path d="M3 1.5h5.2L11.5 5v7.5H3z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-              <path d="M8 1.8V5.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-            </svg>
-          </button>
-          {fileOpen && (
-            <div className="menu-list">
-              <button
-                onClick={() => { clearAll(); setFileOpen(false); }}
-                title="Новый проект: пусто, одна сцена"
-              >
-                новый
-              </button>
-              <button
-                onClick={() => {
-                  setFileOpen(false);
-                  if (isDesktop)
-                    void pickProjectFile()
-                      .then((f) => { if (f) importFile(f); })
-                      .catch((e) => void alertDialog(`Открытие не удалось: ${errText(e)}`, 'импорт'));
-                  else fileRef.current?.click();
-                }}
-                title="Открыть zip-проект или json патча"
-              >
-                открыть…
-              </button>
-              <button onClick={() => { resetPatch(); setFileOpen(false); }} title="Открыть демо: дефолтный полиритм">
-                открыть демо
-              </button>
-              <button onClick={() => { setWavExport({ patch, sceneId }); setFileOpen(false); }} disabled={rendering} title="Выбрать длину и окончание WAV">
-                {rendering ? 'рендер…' : 'записать wav'}
-              </button>
-              <button
-                className="has-sub"
-                onClick={(e) => { e.stopPropagation(); setExportOpen((v) => !v); }}
-                title="Экспорт пьесы"
-              >
-                экспорт ▾
-              </button>
-              {exportOpen && (
-                <div className="menu-sub">
-                  <button onClick={() => { exportPatch(); setFileOpen(false); }} title="Только патч JSON, без сэмплов — лёгкий обмен">
-                    патч (json)
-                  </button>
-                  <button onClick={() => { void exportZip(); setFileOpen(false); }} title="Патч + все сэмплы одним zip — переезд на другую машину или в десктоп">
-                    проект (zip)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
         <button
           className="undo-btn"
           disabled={historyState.past.length === 0 && (!historyState.gesture || historyState.gesture.base === patch)}
@@ -1716,8 +1562,7 @@ export default function App() {
           data-help="redo" onClick={redo}
           title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
         >↷</button>
-        </div>
-        </div>
+        <button className={(pointHelp?'on ':'')+'help-btn'} data-ob="help" data-help="point-help" data-help-toggle aria-label="Что это?" aria-pressed={pointHelp} title="Объяснить элемент (F1)" onClick={()=>{setShowHelpMenu(false);setObRun(null);setPointHelp(v=>!v);}}>?</button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -1726,7 +1571,38 @@ export default function App() {
             e.target.value = '';
           }}
         />
+        <input ref={instrumentFileRef} type="file" hidden accept=".zip" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}}/>
       </header>
+      {showHelpMenu&&<div className="guide-menu-host"><HelpMenu onClose={()=>{setShowHelpMenu(false);setHelpInvite(needsInvite());}} onCheatSheet={()=>{setShowHelpMenu(false);setShowHelp(true);}} onPointHelp={()=>{setShowHelpMenu(false);setPointHelp(v=>!v);}} pointHelpOn={pointHelp}/></div>}
+    </div>
+    <div className="app-shell">
+      {showLib && (
+        <SoundBrowser
+          incomingFile={incomingInstrument}
+          onIncomingHandled={()=>setIncomingInstrument(null)}
+          tracks={patch.tracks}
+          targetId={libTargetId}
+          onTarget={setLibTarget}
+          targetPresetName={libPresetName}
+          tab={libTab}
+          onTab={setLibTab}
+          onApply={applyPreset}
+          onAudition={auditionPreset}
+          onAssignSample={assignSample}
+          usedSampleIds={
+            new Set(patch.instruments.flatMap(sampleAssets).map((a) => a.sampleId))
+          }
+          onAddTrack={addTrack}
+          onClose={() => setShowLib(false)}
+        />
+      )}
+    <div className="app">
+      <div className="topbar">
+      <div className="workspace-bar">
+      <div className="view-shortcuts" data-help="panel-switches">
+        <button data-ob="library-btn" aria-pressed={showLib} className={showLib?'on':''} onClick={()=>showLib?setShowLib(false):openLibraryAt(null)}>инструменты</button>
+        <button data-ob="mixer-btn" aria-pressed={showMix} className={showMix?'on':''} onClick={()=>setShowMix(v=>!v)}>микшер</button>
+      </div>
       <div className="autosave-strip">
         <span className={`autosave-status ${saveStatus.phase}`} role="status" title={saveStatus.message}>
           {saveStatus.phase === 'error' ? 'ошибка сохранения' : saveStatus.message}
@@ -1744,10 +1620,22 @@ export default function App() {
         }}>резервная копия</button>
       </div>
 
+      </div>
       {showMix && (
         <div className="mix-panel" data-ob="mix-panel">
           <div className="mix-rack">
             <div className="mix-block master" data-ob="mix-master">
+        <SliderField
+          className="master-vol"
+          variant="label"
+          label="пан"
+          title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
+          value={Math.round((patch.masterPan ?? 0.5) * 100)}
+          min={0} max={100} step={5}
+          display={panText(patch.masterPan ?? 0.5)}
+          onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
+        />
+
               <div className="mix-main">
                 <span className="mix-name">мастер</span>
                 <label className="mix-ctl" title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает. Играет, пока играет транспорт">

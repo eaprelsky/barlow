@@ -43,6 +43,7 @@
     "test:help-search": "node scripts/help-search-contract.mjs",
     "test:guide-placement": "node scripts/guide-placement-contract.mjs",
     "test:menu-audit": "node scripts/menu-audit-contract.mjs",
+    "test:main-menu": "node scripts/main-menu-contract.mjs",
     "test:chain-editor": "node scripts/chain-editor-contract.mjs",
     "test:portamento": "node scripts/portamento-contract.mjs",
     "test:slices": "node scripts/slices-contract.mjs",

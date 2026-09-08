@@ -1314,11 +1314,10 @@ export const TrackRow = memo(function TrackRow({
             </select></label>
             {track.chokeGroup && <label data-help="choke-priority">приоритет <NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
             {track.mono && (track.portamentoSec ?? 0) > 0 && <span>{inst.waveform === 'sample' && inst.sampleMode === 'scratch' ? 'Portamento не действует на скрэтч: высоту задаёт жест.' : 'Одиночные ноты скользят от предыдущей высоты, в том числе после паузы. Атака огибающей повторяется.'}</span>}
-            <span>В группе новая атака глушит прежние. Одновременно: больший приоритет, затем нижний трек.</span>
           </div>
           <div className="panel-row">
             <div className="sub-head">
-              <span className="sub-cap">комната — эффекты, одни для всех эскизов</span>
+              <span className="sub-cap" data-help="track-effects">эффекты дорожки</span>
               <button data-ob="fx-add" onClick={addEffect} disabled={effects.length >= 16} title="Добавить эффект в цепочку (до 16)">+ эффект</button>
               <span className="spacer" />
               <HelpHint guide="effects" step={1} scope={scope} label="Гид: эффекты и модуляции" />
