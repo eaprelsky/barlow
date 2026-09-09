@@ -1,3 +1,4 @@
+import { useTheme, setTheme } from './theme';
 import { SoundWorkshop } from './components/SoundWorkshop';
 import { LearningStudio } from './components/LearningStudio';
 import { Knob } from './components/Knob';
@@ -170,6 +171,7 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
+  const theme = useTheme();
   const presetRevision = usePresetRevision();
   const [showPacks,setShowPacks]=useState(false);
   const [showLearning,setShowLearning]=useState(false);
@@ -1509,6 +1511,7 @@ export default function App() {
         ]},
         {label:'Настройки',help:'ai-btn',anchor:'ai-btn',items:[
           {label:'Звук и подключения',help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
+          {label:'Светлая тема',help:'theme',checked:theme==='light',separator:true,action:()=>{try { setTheme(theme==='light'?'dark':'light'); } catch { void alertDialog('Не удалось сохранить тему оформления','настройки'); }}},
         ]},
         {label:'Справка',help:'help-guides',items:[
           {label:'Найти в справке…',help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},

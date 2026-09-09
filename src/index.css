@@ -10,8 +10,66 @@
   --cell-bg: #20242c;
   --cell-bg-tonic: #262c37;
   --step-on: #ffb454;
+  --muted: var(--text-dim);
+  --danger: #e05555;
+  --danger-bright: #ff7676;
+  --error: #ff9999;
+  --warning: #ffd166;
+  --canvas: #0e1319;
+  --body-glow: #131820;
+  --playhead: #fff;
+  --note-text: #000;
+  --selection: #9fd0ff;
+  --selection-bright: #eaf4ff;
+  --orange-rgb: 255, 180, 84;
+  --blue-rgb: 126, 200, 255;
+  --contrast-rgb: 255, 255, 255;
+  --shadow-rgb: 0, 0, 0;
+  --canvas-wave: #f2b263;
+  --canvas-dim: rgba(242, 178, 99, .22);
+  --canvas-selection: rgba(122, 190, 255, .14);
+  --canvas-edge: #7abeff;
+  --canvas-text: #8993a1;
+  --canvas-grid: rgba(255, 255, 255, .08);
   color-scheme: dark;
 }
+
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f1f3f5;
+  --panel: #ffffff;
+  --panel-2: #e9eef2;
+  --border: #bbc5cf;
+  --text: #263543;
+  --text-dim: #526273;
+  --accent: #925000;
+  --accent-2: #17629a;
+  --cell-bg: #d5dde5;
+  --cell-bg-tonic: #c4d1de;
+  --step-on: #a96300;
+  --note-text: #fff;
+  --danger: #ad3035;
+  --danger-bright: #942329;
+  --error: #ad3035;
+  --warning: #835300;
+  --canvas: #f7f9fb;
+  --body-glow: #e6edf3;
+  --playhead: #233e58;
+  --selection: #17629a;
+  --selection-bright: #073f6a;
+  --orange-rgb: 146, 80, 0;
+  --blue-rgb: 23, 98, 154;
+  --contrast-rgb: 35, 62, 88;
+  --shadow-rgb: 67, 80, 94;
+  --canvas-wave: #925000;
+  --canvas-dim: #a89c8c;
+  --canvas-selection: rgba(23, 98, 154, .14);
+  --canvas-edge: #17629a;
+  --canvas-text: #526273;
+  --canvas-grid: #c4d1de;
+}
+:root { background: var(--bg); }
 
 * {
   box-sizing: border-box;
@@ -22,7 +80,7 @@
 .native-dialog::backdrop { background: rgb(0 0 0 / 65%); }
 .native-dialog:not([open]) { display: none; }
 .autosave-status { font-size: 11px; color: var(--text-dim); }
-.autosave-status.error { color: #ff9999; }
+.autosave-status.error { color: var(--error); }
 .recovery-button { font-size: 11px; }
 .sb-apply { flex: 1; min-width: 0; border: 0; background: transparent; padding: 2px 0; text-align: left; display: flex; align-items: center; gap: 6px; }
 .autosave-strip { display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; padding-bottom: 10px; }
@@ -31,7 +89,7 @@
 .we-layers .knob-row { gap: 8px; }
 .we-layers .knob-value { font-size: 11px; }
 .cell:focus-visible { outline-offset: -2px; z-index: 4; }
-input[aria-invalid="true"] { border-color: #ff9999; }
+input[aria-invalid="true"] { border-color: var(--error); }
 
 body {
   min-width: 1024px;
@@ -39,7 +97,7 @@ body {
   font: 14px/1.45 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text);
   background:
-    radial-gradient(1200px 500px at 70% -10%, #131820 0%, transparent 60%),
+    radial-gradient(1200px 500px at 70% -10%, var(--body-glow) 0%, transparent 60%),
     var(--bg);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -98,8 +156,8 @@ button:disabled {
 }
 
 header > button.stop {
-  border-color: #e05555;
-  color: #e05555;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 label {
@@ -265,7 +323,7 @@ header .master-vol input[type='range'] {
 
 .chain-item.playing {
   border-color: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 180, 84, 0.25);
+  box-shadow: 0 0 10px rgba(var(--orange-rgb), 0.25);
 }
 
 .chain-item label {
@@ -299,7 +357,7 @@ header .master-vol input[type='range'] {
 .chip.on {
   border-color: var(--accent-2);
   color: var(--accent-2);
-  background: rgba(126, 200, 255, 0.08);
+  background: rgba(var(--blue-rgb), 0.08);
 }
 
 .chip.add {
@@ -312,8 +370,8 @@ header .master-vol input[type='range'] {
 }
 
 .chip.mute.on-m {
-  color: #e05555;
-  border-color: #e05555;
+  color: var(--danger);
+  border-color: var(--danger);
   background: rgba(224, 85, 85, 0.08);
 }
 
@@ -436,8 +494,8 @@ header .master-vol input[type='range'] {
 }
 
 .remove:hover {
-  border-color: #e05555;
-  color: #e05555;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* Иконочная кнопка в тулбарах: без текста, компактная */
@@ -514,7 +572,7 @@ header .master-vol input[type='range'] {
 .col-num.sel {
   color: var(--accent-2);
   border-color: var(--accent-2);
-  background: rgba(126, 200, 255, 0.08);
+  background: rgba(var(--blue-rgb), 0.08);
 }
 
 .roll-col {
@@ -563,7 +621,7 @@ header .master-vol input[type='range'] {
   min-width: 4px;
   border-radius: 4px;
   background: var(--step-on);
-  box-shadow: 0 0 10px rgba(255, 180, 84, 0.25);
+  box-shadow: 0 0 10px rgba(var(--orange-rgb), 0.25);
   z-index: 3;
   pointer-events: none;
 }
@@ -573,7 +631,7 @@ header .master-vol input[type='range'] {
 .note-bar.ret {
   box-shadow:
     inset 3px 0 0 rgba(62, 37, 8, 0.9),
-    0 0 10px rgba(255, 180, 84, 0.25);
+    0 0 10px rgba(var(--orange-rgb), 0.25);
 }
 
 /* Нота короче шага: подложка — «пустая часть» ноты, цвет как у пустой
@@ -609,17 +667,17 @@ header .master-vol input[type='range'] {
 }
 
 .cell:hover .note-grab {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(var(--contrast-rgb), 0.35);
 }
 
 .cell.ph {
-  border-color: rgba(255, 255, 255, 0.45);
+  border-color: rgba(var(--contrast-rgb), 0.45);
 }
 
 .cell.on.ph {
   box-shadow:
-    0 0 0 1px #fff,
-    0 0 12px rgba(255, 255, 255, 0.4);
+    0 0 0 1px var(--playhead),
+    0 0 12px rgba(var(--contrast-rgb), 0.4);
 }
 
 .pbar {
@@ -628,9 +686,9 @@ header .master-vol input[type='range'] {
   bottom: 1px;
   height: 3px;
   max-width: none;
-  background: #fff;
+  background: var(--playhead);
   border-radius: 2px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.55);
   z-index: 3;
   pointer-events: none;
 }
@@ -641,13 +699,13 @@ header .master-vol input[type='range'] {
   left: 4px;
   top: 50%;
   transform: translateY(-50%);
-  color: #000;
+  color: var(--note-text);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
   z-index: 3;
   pointer-events: none;
-  text-shadow: 0 0 2px rgba(255, 255, 255, 0.35);
+  text-shadow: 0 0 2px rgba(var(--contrast-rgb), 0.35);
 }
 
 /* Цифра правее, когда у ноты есть тёмная головка ретриггера */
@@ -829,7 +887,7 @@ footer {
   z-index: 20;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 14px rgba(var(--shadow-rgb), 0.35);
   padding-top: 4px;
 }
 
@@ -1035,12 +1093,12 @@ header button.on {
 }
 
 .play-btn:hover {
-  background: rgba(255, 180, 84, 0.08);
+  background: rgba(var(--orange-rgb), 0.08);
 }
 
 .play-btn.stop {
-  color: #e05555;
-  border-color: #e05555;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* Выпадающее меню */
@@ -1062,7 +1120,7 @@ header button.on {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.4);
 }
 
 .menu-list button {
@@ -1125,7 +1183,7 @@ header button.on {
 
 .env-graph {
   display: block;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(var(--shadow-rgb), 0.25);
   border: 1px solid var(--border);
   border-radius: 8px;
   /* драг не выделяет подписи синим */
@@ -1234,7 +1292,7 @@ header button.on {
 }
 
 .track-del:hover {
-  color: #e05555;
+  color: var(--danger);
   border: none;
 }
 
@@ -1334,9 +1392,9 @@ header button.on {
 .sketch-box {
   margin: -2px 0 12px;
   padding: 8px 12px 6px;
-  background: rgba(126, 200, 255, 0.03);
+  background: rgba(var(--blue-rgb), 0.03);
   border: 1px solid var(--border);
-  border-left: 2px solid rgba(126, 200, 255, 0.5);
+  border-left: 2px solid rgba(var(--blue-rgb), 0.5);
   border-radius: 10px;
 }
 
@@ -1372,7 +1430,7 @@ header button.on {
   font-size: 11px;
   color: var(--accent-2);
   padding: 2px 8px;
-  border: 1px solid rgba(126, 200, 255, 0.35);
+  border: 1px solid rgba(var(--blue-rgb), 0.35);
   border-radius: 6px;
   white-space: nowrap;
   cursor: help;
@@ -1404,7 +1462,7 @@ header button.on {
 
 .mode-seg button.on {
   color: var(--accent);
-  background: rgba(255, 168, 60, 0.08);
+  background: rgba(var(--orange-rgb), 0.08);
 }
 
 /* Чип инструмента в шапке трека: имя тембра всегда на виду — и в свёрнутой
@@ -1528,8 +1586,8 @@ input.narrow {
 }
 
 .ms.on-s {
-  color: #ffd166;
-  border-color: #ffd166;
+  color: var(--warning);
+  border-color: var(--warning);
   background: rgba(255, 209, 102, 0.08);
 }
 
@@ -1556,7 +1614,7 @@ input.narrow {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 50px rgba(var(--shadow-rgb), 0.5);
 }
 
 .modal h3 {
@@ -1583,13 +1641,13 @@ input.narrow {
 }
 
 button.danger {
-  border-color: #e05555;
-  color: #e05555;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 button.danger:hover {
-  border-color: #ff7676;
-  color: #ff7676;
+  border-color: var(--danger-bright);
+  color: var(--danger-bright);
 }
 
 .picker-list {
@@ -1633,8 +1691,8 @@ button.danger:hover {
 }
 
 .chip.del:hover {
-  color: #e05555;
-  border-color: #e05555;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* Соло-кнопка вровень с названием трека: голова трека тянет детей по высоте
@@ -1757,7 +1815,7 @@ button.danger:hover {
 .mix-block .mix-power:hover {
   border-color: var(--accent-2);
   color: var(--accent-2);
-  background: rgba(126, 200, 255, 0.08);
+  background: rgba(var(--blue-rgb), 0.08);
 }
 
 /* Тумбометры живого уровня дорожки */
@@ -1765,7 +1823,7 @@ button.danger:hover {
   position: relative;
   overflow: hidden;
   border-radius: 2px;
-  background: rgba(126, 200, 255, 0.08);
+  background: rgba(var(--blue-rgb), 0.08);
 }
 
 .level-bar .level-fill {
@@ -1828,9 +1886,9 @@ button.danger:hover {
   align-items: center;
   gap: 12px;
   padding: 18px 14px;
-  border: 1px dashed rgba(242, 178, 99, 0.35);
+  border: 1px dashed rgba(var(--orange-rgb), 0.35);
   border-radius: 6px;
-  background: rgba(242, 178, 99, 0.04);
+  background: rgba(var(--orange-rgb), 0.04);
 }
 
 .sketch-muted .skm-m {
@@ -1864,31 +1922,31 @@ button.danger:hover {
 /* Рамка выделения полностью прозрачна: ноты под ней не затемняются,
    контур — только перекраска рамки клеток */
 .cell.boxsel {
-  border-color: rgba(159, 208, 255, 0.55);
+  border-color: rgba(var(--blue-rgb), 0.55);
 }
 
 .cell.on.boxsel {
-  border-color: rgba(159, 208, 255, 0.75);
+  border-color: rgba(var(--blue-rgb), 0.75);
 }
 
 .cell.ghost {
-  box-shadow: inset 0 0 0 2px rgba(255, 180, 84, 0.85);
+  box-shadow: inset 0 0 0 2px rgba(var(--orange-rgb), 0.85);
 }
 
 /* Контрастное выделение нот: яркая рамка, нота на полной яркости */
 .cell.sel {
-  border-color: #9fd0ff;
+  border-color: var(--selection);
   box-shadow:
-    inset 0 0 0 2px #9fd0ff,
-    0 0 8px rgba(126, 200, 255, 0.45);
-  background: rgba(126, 200, 255, 0.15);
+    inset 0 0 0 2px var(--selection),
+    0 0 8px rgba(var(--blue-rgb), 0.45);
+  background: rgba(var(--blue-rgb), 0.15);
 }
 
 .cell.on.sel {
-  border-color: #eaf4ff;
+  border-color: var(--selection-bright);
   box-shadow:
-    inset 0 0 0 2px #eaf4ff,
-    0 0 10px rgba(126, 200, 255, 0.6);
+    inset 0 0 0 2px var(--selection-bright),
+    0 0 10px rgba(var(--blue-rgb), 0.6);
 }
 
 /* Длины циклов в шапке */
@@ -2128,8 +2186,8 @@ button.danger:hover {
 }
 
 .inst-del:hover {
-  color: #ff7676;
-  border-color: #e05555;
+  color: var(--danger-bright);
+  border-color: var(--danger);
 }
 
 .inst-name {
@@ -2373,7 +2431,7 @@ button.danger:hover {
 }
 
 .sw.on {
-  background: rgba(126, 200, 255, 0.15);
+  background: rgba(var(--blue-rgb), 0.15);
   border-color: var(--accent-2);
 }
 
@@ -2571,12 +2629,12 @@ button.danger:hover {
   padding: 8px 10px;
   border-left: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--contrast-rgb), 0.02);
 }
 
 /* Строка-модулятор: не слагаемое, а настройка чужой частоты — подсветка */
 .partial-row.mod-row {
-  background: rgba(242, 178, 99, 0.06);
+  background: rgba(var(--orange-rgb), 0.06);
   border-radius: 4px;
   padding: 1px 2px;
 }
@@ -2627,7 +2685,7 @@ button.danger:hover {
 }
 
 .wave-canvas {
-  background: #0e1319;
+  background: var(--canvas);
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: crosshair;
@@ -2697,7 +2755,7 @@ button.danger:hover {
 }
 
 .scratch-bar.recording .scratch-track {
-  border-color: #e05555;
+  border-color: var(--danger);
   box-shadow: inset 0 0 0 1px rgba(224, 85, 85, 0.6);
 }
 
@@ -2719,7 +2777,7 @@ button.danger:hover {
   margin: -4px 0 0 -4px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(255, 180, 84, 0.5);
+  box-shadow: 0 0 6px rgba(var(--orange-rgb), 0.5);
   pointer-events: auto;
 }
 
@@ -2760,8 +2818,8 @@ button.danger:hover {
 }
 
 .scratch-actions button.on {
-  border-color: #e05555;
-  color: #e05555;
+  border-color: var(--danger);
+  color: var(--danger);
   background: rgba(224, 85, 85, 0.1);
 }
 
@@ -2843,16 +2901,16 @@ button.danger:hover {
   font-weight: 700;
   border-radius: 50%;
   color: var(--accent-2);
-  background: rgba(126, 200, 255, 0.07);
-  border: 1px solid rgba(126, 200, 255, 0.45);
-  box-shadow: 0 0 7px rgba(126, 200, 255, 0.25);
+  background: rgba(var(--blue-rgb), 0.07);
+  border: 1px solid rgba(var(--blue-rgb), 0.45);
+  box-shadow: 0 0 7px rgba(var(--blue-rgb), 0.25);
   flex: 0 0 auto;
 }
 
 .ob-hint:hover {
-  color: #fff;
+  color: var(--playhead);
   border-color: var(--accent-2);
-  box-shadow: 0 0 12px rgba(126, 200, 255, 0.55);
+  box-shadow: 0 0 12px rgba(var(--blue-rgb), 0.55);
 }
 
 /* Оверлей гида сам ничего не перехватывает (pointer-events: none):
@@ -2871,17 +2929,17 @@ button.danger:hover {
   box-shadow:
     0 0 0 9999px rgba(4, 6, 9, 0.62),
     0 0 0 2px var(--accent),
-    0 0 22px rgba(255, 180, 84, 0.35);
+    0 0 22px rgba(var(--orange-rgb), 0.35);
   pointer-events: none;
 }
 
 /* Шаг-действие: цель зовёт «жми меня» */
 @keyframes ob-wait {
   0%, 100% {
-    box-shadow: 0 0 0 9999px rgba(4, 6, 9, 0.62), 0 0 0 2px var(--accent), 0 0 22px rgba(255, 180, 84, 0.35);
+    box-shadow: 0 0 0 9999px rgba(4, 6, 9, 0.62), 0 0 0 2px var(--accent), 0 0 22px rgba(var(--orange-rgb), 0.35);
   }
   50% {
-    box-shadow: 0 0 0 9999px rgba(4, 6, 9, 0.62), 0 0 0 4px var(--accent), 0 0 34px rgba(255, 180, 84, 0.6);
+    box-shadow: 0 0 0 9999px rgba(4, 6, 9, 0.62), 0 0 0 4px var(--accent), 0 0 34px rgba(var(--orange-rgb), 0.6);
   }
 }
 
@@ -2896,7 +2954,7 @@ button.danger:hover {
   border: 1px solid var(--accent);
   border-radius: 10px;
   padding: 10px 12px 12px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 14px 44px rgba(var(--shadow-rgb), 0.55);
   transition: left 0.18s ease, top 0.18s ease;
   pointer-events: auto;
 }
@@ -3062,8 +3120,8 @@ button.danger:hover {
 
 /* Приглашение: гиды ещё ни разу не открывались */
 @keyframes ob-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(126, 200, 255, 0.55); }
-  50% { box-shadow: 0 0 0 8px rgba(126, 200, 255, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--blue-rgb), 0.55); }
+  50% { box-shadow: 0 0 0 8px rgba(var(--blue-rgb), 0); }
 }
 
 .help-btn.pulse {
@@ -3151,7 +3209,7 @@ button.danger:hover {
 
 .env-handle {
   fill: var(--accent);
-  stroke: rgba(0, 0, 0, 0.4);
+  stroke: rgba(var(--shadow-rgb), 0.4);
   stroke-width: 1;
 }
 
@@ -3273,7 +3331,7 @@ input[type="number"]:not(:focus):not(:disabled):active {
 
 /* Границы куска сэмпла на мини-карте скрэтч-пэда */
 .scratch-map .region-dim {
-  fill: rgba(0, 0, 0, 0.55);
+  fill: rgba(var(--shadow-rgb), 0.55);
 }
 
 .scratch-map .region-line {
@@ -3379,7 +3437,7 @@ svg.knob {
 .wave-pick button.on {
   color: var(--accent);
   border-color: var(--accent);
-  background: rgba(255, 168, 60, 0.08);
+  background: rgba(var(--orange-rgb), 0.08);
 }
 
 /* Режим «что это?»: подсветка-рамка, бейдж режима, карточка (ob-card) */
@@ -3396,7 +3454,7 @@ svg.knob {
   border: 1.5px dashed var(--accent-2);
   border-radius: 6px;
   pointer-events: none;
-  box-shadow: 0 0 12px rgba(126, 200, 255, 0.25);
+  box-shadow: 0 0 12px rgba(var(--blue-rgb), 0.25);
 }
 
 .ph-badge {
@@ -3422,7 +3480,7 @@ svg.knob {
 svg.auto-lane {
   display: block;
   flex: none;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(var(--shadow-rgb), 0.25);
   border: 1px solid var(--border);
   border-radius: 8px;
   touch-action: none;
@@ -3439,7 +3497,7 @@ svg.auto-lane {
 
 /* Рампы входа/выхода сцены на дорожке громкости */
 .auto-lane .lane-fade {
-  fill: rgba(126, 200, 255, 0.10);
+  fill: rgba(var(--blue-rgb), 0.10);
 }
 
 .auto-lane .lane-fade-edge {
@@ -3450,7 +3508,7 @@ svg.auto-lane {
 
 .auto-lane .lane-fade-handle {
   fill: var(--accent-2);
-  stroke: rgba(0, 0, 0, 0.4);
+  stroke: rgba(var(--shadow-rgb), 0.4);
   cursor: ew-resize;
 }
 
@@ -3493,7 +3551,7 @@ svg.auto-lane {
 
 .auto-box .seg button.on {
   color: var(--accent);
-  background: rgba(255, 168, 60, 0.08);
+  background: rgba(var(--orange-rgb), 0.08);
 }
 
 /* «+ трек» — кнопка строго над списком дорожек: нажал — новый трек
@@ -3505,15 +3563,15 @@ svg.auto-lane {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(255, 168, 60, 0.09);
-  border: 1px solid rgba(255, 180, 84, 0.55);
+  background: rgba(var(--orange-rgb), 0.09);
+  border: 1px solid rgba(var(--orange-rgb), 0.55);
   border-radius: 8px;
 }
 
 .add-track:hover {
   color: var(--accent);
   border-color: var(--accent);
-  background: rgba(255, 168, 60, 0.18);
+  background: rgba(var(--orange-rgb), 0.18);
 }
 
 /* Шапка плашки эскиза: чипы выбора эскиза и настройка эскиза в одном
@@ -3576,7 +3634,7 @@ svg.auto-lane {
 .sample-zones fieldset select { min-width: 160px; max-width: 320px; }
 .sample-zones .inline { gap: 14px; flex-wrap: wrap; }
 .audio-status { font-size: 11px; color: var(--muted); max-width: 260px; }
-.audio-status [role="status"] { color: #eeb467; }
+.audio-status [role="status"] { color: var(--warning); }
 .bridge-settings { padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; }
 .bridge-settings summary { cursor: pointer; }
 .bridge-settings form { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
@@ -3593,14 +3651,14 @@ svg.auto-lane {
 .auto-lane:focus-visible, .auto-lane .env-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .wav-export { width: min(620px, calc(100vw - 40px)); }
 .wav-export > p, .wav-export fieldset p { line-height: 1.6; color: var(--muted, #9ca8b6); }
-.wav-export fieldset { margin: 20px 0; padding: 16px; border: 1px solid #35404b; border-radius: 8px; }
+.wav-export fieldset { margin: 20px 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
 .wav-export fieldset label { display: flex; align-items: center; gap: 8px; }
 .wav-export fieldset p { margin: 8px 0 18px 24px; }
 .wav-export input[type="number"] { width: 90px; margin-left: 10px; }
-.wav-export input[type="radio"] { width: auto; flex: none; margin: 0; accent-color: #ffb14e; }
+.wav-export input[type="radio"] { width: auto; flex: none; margin: 0; accent-color: var(--accent); }
 .wav-export .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.wav-export .primary:not(:disabled) { border-color: #b78132; color: #ffb14e; }
-.wav-export .error { color: #ffad88; }
+.wav-export .primary:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.wav-export .error { color: var(--error); }
 .sb-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 8px 0; font-size: 11px; }
 .sb-filters label { display: flex; align-items: center; gap: 6px; }
 .sb-filters select { max-width: 190px; }
@@ -3737,7 +3795,7 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .help-search-path { color:var(--text-dim); }
 .help-search-actions { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 .help-search-actions select { width:180px; max-width:100%; }
-.help-arrival { position:fixed; bottom:16px; right:18px; width:min(540px,calc(100vw - 48px)); z-index:80; display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:var(--panel); font-size:12px; line-height:1.5; box-shadow:0 4px 20px #0008; }
+.help-arrival { position:fixed; bottom:16px; right:18px; width:min(540px,calc(100vw - 48px)); z-index:80; display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:var(--panel); font-size:12px; line-height:1.5; box-shadow:0 4px 20px rgba(var(--shadow-rgb), .3); }
 .help-arrival span { flex:1; }
 .help-found-target { outline:2px solid var(--accent); outline-offset:5px; border-radius:3px; }
 .sb-head .sb-transfer { padding:0; gap:4px; }
@@ -3753,7 +3811,7 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .main-menu button { height:32px; padding:5px 10px; font-size:13px; line-height:20px; }
 .main-menu [role="menubar"] > div > button { border-color:transparent; background:transparent; }
 .main-menu button[aria-expanded="true"] { background:var(--panel-2); color:var(--accent); }
-.main-menu [role="menu"] { position:absolute; left:0; top:34px; min-width:290px; padding:6px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; box-shadow:0 8px 24px #0009; }
+.main-menu [role="menu"] { position:absolute; left:0; top:34px; min-width:290px; padding:6px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; box-shadow:0 8px 24px rgba(var(--shadow-rgb), .35); }
 .main-menu [role="menu"] button { display:flex; align-items:center; width:100%; height:34px; gap:8px; text-align:left; border:0; }
 .main-menu .menu-check { width:14px; flex:none; color:var(--accent); }
 .main-menu .menu-shortcut { margin-left:auto; font-size:11px; color:var(--text-dim); }
@@ -3770,7 +3828,7 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .topbar { top:88px; }
 .view-shortcuts { display:flex; align-items:center; gap:8px; padding:4px 0 10px; }
 .view-shortcuts button { height:32px; padding:5px 10px; }
-.view-shortcuts button[aria-pressed="true"] { background:rgba(242,178,99,.12); box-shadow:inset 0 -2px var(--accent); }
+.view-shortcuts button[aria-pressed="true"] { background:rgba(var(--orange-rgb),.12); box-shadow:inset 0 -2px var(--accent); }
 .guide-menu-host { position:absolute; right:16px; top:36px; }
 .guide-menu-host .help-menu { max-height:calc(100vh - 100px); overflow:auto; }
 
@@ -3865,3 +3923,9 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .sb-item-actions { display:flex; flex-direction:column; align-items:center; gap:4px; }
 .dock .sb-rename { display:flex; align-items:center; justify-content:center; width:20px; min-height:22px; padding:0; border-color:transparent; background:transparent; color:var(--text-dim); }
 .dock .sb-rename:hover { color:var(--accent); border-color:var(--border); }
+
+:root[data-theme="light"] .topbar { box-shadow:0 3px 10px rgb(67 80 94 / 12%); }
+:root[data-theme="light"] :is(.modal, .ob-card, .main-menu [role="menu"]) { box-shadow:0 8px 28px rgb(67 80 94 / 18%); }
+:root[data-theme="light"] :is(.cell.on, .note-bar) { box-shadow:none; }
+:root[data-theme="light"] .note-bar.ret { box-shadow:inset 3px 0 0 #563500; }
+:root[data-theme="light"] .cell.on.ph { box-shadow:0 0 0 2px var(--playhead); }

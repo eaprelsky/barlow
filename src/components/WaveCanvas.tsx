@@ -1,3 +1,4 @@
+import { THEME_EVENT } from '../theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Канвас волны для редактора: пики min/max по колонкам с зумом колесом
@@ -23,13 +24,6 @@ interface Props {
   onDraw?: (xNorm: number, y: number) => void;
   height?: number;
 }
-
-const COL_BG = '#0e1319';
-const COL_WAVE = '#f2b263';
-const COL_DIM = 'rgba(242, 178, 99, 0.22)';
-const COL_SEL = 'rgba(122, 190, 255, 0.14)';
-const COL_SEL_EDGE = '#7abeff';
-const COL_TEXT = 'rgba(255, 255, 255, 0.35)';
 
 export function WaveCanvas({
   data,
@@ -69,6 +63,10 @@ export function WaveCanvas({
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const palette = getComputedStyle(canvas);
+    const color = (name: string) => palette.getPropertyValue(name).trim();
+    const COL_BG=color('--canvas'), COL_WAVE=color('--canvas-wave'), COL_DIM=color('--canvas-dim');
+    const COL_SEL=color('--canvas-selection'), COL_SEL_EDGE=color('--canvas-edge'), COL_TEXT=color('--canvas-text');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = COL_BG;
     ctx.fillRect(0, 0, w, h);
@@ -158,7 +156,7 @@ export function WaveCanvas({
     }
 
     // Линия центра.
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = color('--canvas-grid');
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, mid);
@@ -201,7 +199,10 @@ export function WaveCanvas({
   useEffect(() => {
     const onResize = () => draw();
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener(THEME_EVENT, onResize);
+    const observer = new ResizeObserver(onResize);
+    if (wrapRef.current) observer.observe(wrapRef.current);
+    return () => { window.removeEventListener('resize', onResize); window.removeEventListener(THEME_EVENT, onResize); observer.disconnect(); };
   }, [draw]);
 
   // Зум колесом — нативный слушатель (React onWheel пассивный,

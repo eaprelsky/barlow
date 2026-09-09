@@ -20,6 +20,7 @@
     "test:instrument-file": "node scripts/instrument-file-contract.mjs",
     "test:navigation": "node scripts/navigation-contract.mjs",
     "test:curation": "node scripts/curation-contract.mjs",
+    "test:theme": "node scripts/theme-contract.mjs",
     "test:library-edit": "node scripts/library-edit-contract.mjs",
     "test:transitions-bank": "node scripts/transitions-bank-contract.mjs",
     "test:bank": "node scripts/bank-contract.mjs",
