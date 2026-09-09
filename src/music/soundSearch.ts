@@ -1,5 +1,6 @@
 import type { InstrumentPreset } from './instrumentPresets';
 export const SOUND_PACKS = [
+  { id:'transitions-01',name:'Райзеры и обратные райзеры',description:'12 переходов: шум, свист, металл, реактор, космос и PWM' },
   { id: 'character-01', name: 'Тяжесть и космос', description: '15 тембров: нейрофанк, дабстеп, перегруженные струны, космос и ударные' },
   { id: 'core-v39', name: 'Основы', description: 'Исходная палитра и два сэмплерных шаблона' },
   { id: 'idm-02', name: 'IDM 02', description: '60 тембров wavetable, VA, ring, wavefold и comb' },
@@ -45,6 +46,7 @@ export function saveSoundFavorites(ids: Set<string>): void {
 
 /** Musical collections are independent of historical release packs and may overlap. */
 export const SOUND_COLLECTIONS = [
+  {id:'transitions',name:'Райзеры и обратные райзеры',description:'Нарастания перед кульминацией и нисходящие переходы после неё'},
   {id:'rhythm',name:'Ритм и ударные',description:'Бочки, снейры, хэты и мелодическая перкуссия'},
   {id:'bass',name:'Бас и грув',description:'Саб, упругие басы и движущиеся басовые линии'},
   {id:'melody',name:'Мелодии и аккорды',description:'Клавишные, лиды и щипковые тембры'},
@@ -59,6 +61,7 @@ export function presetInCollection(p: InstrumentPreset, id: string): boolean {
   if(id==='user') return p.category==='мои';
   if(p.category==='мои') return false;
   switch(id){
+    case 'transitions': return p.packId==='transitions-01';
     case 'rhythm': return p.category==='перкуссия';
     case 'bass': return p.category==='бас';
     case 'melody': return ['клавишные','тоны и лиды'].includes(p.category);
