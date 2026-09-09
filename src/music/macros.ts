@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { PARAMETERS, normalizeParameter, type ParameterId } from '../parameters';
 export type InstrumentParameterId = Extract<ParameterId, `instrument.${string}`>;
 export interface SoundMacro {
@@ -39,7 +40,7 @@ export function resolveMacros<T extends { macros?: SoundMacro[] }>(source: T): T
   return result;
 }
 export const DEFAULT_MACROS: SoundMacro[] = [
-  { id: 'brightness', name: 'яркость', value: 0.5, bindings: [{ target: 'instrument.filterFreq', depth: 2 }] },
-  { id: 'length', name: 'длина', value: 0.5, bindings: [{ target: 'instrument.decay', depth: 0.6 }] },
-  { id: 'space', name: 'ширина', value: 0.5, bindings: [{ target: 'instrument.unisonSpread', depth: 0.5 }, { target: 'instrument.unisonDetune', depth: 12 }] },
+  { id: 'brightness', get name() { return msg("macros.brightness"); }, value: 0.5, bindings: [{ target: 'instrument.filterFreq', depth: 2 }] },
+  { id: 'length', get name() { return msg("macros.length"); }, value: 0.5, bindings: [{ target: 'instrument.decay', depth: 0.6 }] },
+  { id: 'space', get name() { return msg("macros.width"); }, value: 0.5, bindings: [{ target: 'instrument.unisonSpread', depth: 0.5 }, { target: 'instrument.unisonDetune', depth: 12 }] },
 ];

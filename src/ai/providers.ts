@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // ИИ-генерация и морфинг сэмплов. Архитектура провайдер-агностик:
 // интерфейс один, реализации добавляются. Ключи живут в localStorage —
 // barlow локальный личный инструмент; для публикации ключи должны уйти
@@ -46,16 +47,16 @@ async function netFetch(url: string, init: RequestInit): Promise<Response> {
     if (init.signal?.aborted || error instanceof DOMException && ['AbortError','TimeoutError'].includes(error.name)) throw error;
     const host = new URL(url).host;
     throw new Error(
-      `нет соединения с ${host} — сеть, прокси или гео-блок (ElevenLabs недоступен в этом регионе). ` +
-        'Смени провайдера в настройках ИИ (шестерёнка в шапке)',
+      msg("providers.couldNotConnectToCheckTheNetwork", {p0: host}) +
+        msg("providers.chooseAnotherServiceInSettingsAudioAnd"),
     );
   }
 }
 
 const elevenlabs: SampleProvider = {
   id: 'elevenlabs',
-  title: 'ElevenLabs (звуковые эффекты)',
-  keyHint: 'Взять: elevenlabs.io → Profile → API Keys',
+  get title() { return msg("providers.elevenlabsSoundEffects"); },
+  get keyHint() { return msg("providers.getAKeyElevenlabsIoProfileAPI"); },
   supportsTransform: false,
   async generate({ apiKey, prompt, seconds, signal }) {
     const res = await netFetch('https://api.elevenlabs.io/v1/sound-generation', {
@@ -111,10 +112,10 @@ export async function falRun(
   }
   const queued = (await sub.json()) as { status_url?: string; response_url?: string; cancel_url?: string };
   if (!queued.status_url || !queued.response_url) {
-    throw new Error('fal.ai: очередь не вернула адреса результата');
+    throw new Error(msg("providers.falAiTheQueueReturnedNoResult"));
   }
   for (const url of [queued.status_url, queued.response_url, ...(queued.cancel_url ? [queued.cancel_url] : [])]) {
-    if (new URL(url).origin !== 'https://queue.fal.run') throw new Error('fal.ai: неожиданный адрес очереди');
+    if (new URL(url).origin !== 'https://queue.fal.run') throw new Error(msg("providers.falAiUnexpectedQueueAddress"));
   }
   const cancelRemote = () => { if (queued.cancel_url && new URL(queued.cancel_url).origin === 'https://queue.fal.run') void fetch(queued.cancel_url,{method:'PUT',headers:auth,signal:AbortSignal.timeout(5000)}).catch(()=>{}); };
   signal.addEventListener('abort',cancelRemote,{once:true});
@@ -122,7 +123,7 @@ export async function falRun(
   const deadline = Date.now() + timeoutMs;
   try {
   for (let i = 0; ; i++) {
-    if (Date.now() > deadline) throw new Error('fal.ai: не дождались результата (таймаут)');
+    if (Date.now() > deadline) throw new Error(msg("providers.falAiTimedOutWaitingForThe"));
     await abortableDelay(i === 0 ? 400 : 800, signal);
     let j: { status?: string } | null = null;
     try {
@@ -134,11 +135,11 @@ export async function falRun(
     }
     if (j?.status === 'COMPLETED') {
       const res = await netFetch(queued.response_url, { headers: auth, signal });
-      if (!res.ok) throw new Error(`fal.ai ${res.status}: результат не отдаётся`);
+      if (!res.ok) throw new Error(msg("providers.falAiCouldNotRetrieveTheResult", {p0: res.status}));
       return (await res.json()) as Record<string, unknown>;
     }
     if (j?.status === 'FAILED' || j?.status === 'ERROR') {
-      throw new Error('fal.ai: модель не справилась с запросом');
+      throw new Error(msg("providers.falAiTheModelCouldNotComplete"));
     }
   }
   } finally { signal.removeEventListener('abort',cancelRemote); }
@@ -149,7 +150,7 @@ export function toDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(String(fr.result));
-    fr.onerror = () => reject(new Error('не удалось прочитать сэмпл для отправки'));
+    fr.onerror = () => reject(new Error(msg("providers.couldNotReadTheSampleForUpload")));
     fr.readAsDataURL(blob);
   });
 }
@@ -157,16 +158,16 @@ export function toDataUri(blob: Blob): Promise<string> {
 /** Достать аудио из ответа fal и скачать блобом. */
 async function falAudioOf(out: Record<string, unknown>, signal?: AbortSignal): Promise<Blob> {
   const url = (out.audio as { url?: string } | undefined)?.url;
-  if (!url) throw new Error('fal.ai: в ответе нет аудио');
+  if (!url) throw new Error(msg("providers.falAiNoAudioInTheResponse"));
   const res = await netFetch(url, { signal });
-  if (!res.ok) throw new Error(`fal.ai ${res.status}: аудио не скачивается`);
+  if (!res.ok) throw new Error(msg("providers.falAiCouldNotDownloadTheAudio", {p0: res.status}));
   return res.blob();
 }
 
 const fal: SampleProvider = {
   id: 'fal',
-  title: 'fal.ai (генерация и морфинг)',
-  keyHint: 'Взять: fal.ai → Keys. Формат «id:secret» целиком',
+  get title() { return msg("providers.falAiGenerationAndTransformation"); },
+  get keyHint() { return msg("providers.getAKeyFalAiKeysUse"); },
   supportsTransform: true,
   async generate({ apiKey, prompt, seconds, signal }) {
     const out = await falRun(apiKey, FAL_T2S, {

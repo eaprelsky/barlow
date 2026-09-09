@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // Заготовки волны (v39): единственный источник таблиц строк-операторов
 // для трёх потребителей — миграции патчей (types.ts: прежние модели
 // пересобираются в строки), библиотеки пресетов и выпадашки «заготовка»
@@ -41,18 +42,18 @@ export type RecipeId =
   | 'vocal';
 
 export const RECIPE_LABELS: Record<RecipeId, string> = {
-  sine: 'синус',
-  saw: 'пила',
-  square: 'прямоугольник',
-  triangle: 'треугольник',
-  noise: 'шум',
-  additive: 'гармоники',
-  organ: 'орган',
-  bell: 'колокол',
-  string: 'струна',
+  get sine() { return msg("waveRecipes.sine"); },
+  get saw() { return msg("waveRecipes.sawtooth"); },
+  get square() { return msg("waveRecipes.square"); },
+  get triangle() { return msg("waveRecipes.triangle"); },
+  get noise() { return msg("waveRecipes.noise"); },
+  get additive() { return msg("waveRecipes.harmonics"); },
+  get organ() { return msg("waveRecipes.organ"); },
+  get bell() { return msg("waveRecipes.bell"); },
+  get string() { return msg("waveRecipes.string"); },
   fm: 'FM',
-  supersaw: 'супер-пила',
-  vocal: 'вокал',
+  get supersaw() { return msg("waveRecipes.supersaw"); },
+  get vocal() { return msg("waveRecipes.vocal"); },
 };
 
 const r4 = (v: number) => +v.toFixed(4);

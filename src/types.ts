@@ -1,3 +1,4 @@
+import { t as msg } from './i18n/runtime.ts';
 import { normalizeEqBands, type EqBand } from './music/equalizer';
 import { validWavetable, validVA, type Wavetable, type VirtualAnalog } from './music/wavetable';
 // Модель патча. Патч = сериализуемые данные (JSON), с которыми работают
@@ -26,8 +27,8 @@ import { normalizeSampleSlices, type SampleSlice } from './music/sampleSlices';
 export type Waveform = 'wave' | 'sample';
 
 export const WAVEFORM_LABELS: Record<Waveform, string> = {
-  wave: 'своя волна',
-  sample: 'сэмпл',
+  get wave() { return msg("types.customWaveform"); },
+  get sample() { return msg("types.sample"); },
 };
 
 /** Как сэмплер играет буфер: напрямую, облаком гранул или скрэтчем. */
@@ -37,13 +38,13 @@ export type SampleMode = 'plain' | 'grain' | 'scratch';
 export type ArpMode = 'up' | 'down' | 'updown' | 'downup' | 'order' | 'chord' | 'random';
 
 export const ARP_MODE_LABELS: Record<ArpMode, string> = {
-  up: 'вверх',
-  down: 'вниз',
-  updown: 'вверх-вниз',
-  downup: 'вниз-вверх',
-  order: 'как сыграно',
-  chord: 'аккорд',
-  random: 'случайно',
+  get up() { return msg("types.up"); },
+  get down() { return msg("types.down"); },
+  get updown() { return msg("types.upDown"); },
+  get downup() { return msg("types.downUp"); },
+  get order() { return msg("types.asPlayed"); },
+  get chord() { return msg("types.chord"); },
+  get random() { return msg("types.random"); },
 };
 
 export interface Arp {
@@ -98,11 +99,11 @@ export interface WaveDef {
 }
 
 export const PARTIAL_TYPE_LABELS: Record<PartialType, string> = {
-  sine: 'синус',
-  saw: 'пила',
-  square: 'прямоугольник',
-  triangle: 'треугольник',
-  noise: 'шум',
+  get sine() { return msg("types.sine"); },
+  get saw() { return msg("types.sawtooth"); },
+  get square() { return msg("types.square"); },
+  get triangle() { return msg("types.triangle"); },
+  get noise() { return msg("types.noise"); },
 };
 
 export function canRouteWave(partials: WavePartial[], from: number, to: number): boolean {
@@ -266,12 +267,12 @@ export type ModTarget =
   | 'fxFeedback';
 
 export const MOD_TARGET_LABELS: Record<ModTarget, string> = {
-  pan: 'панорама',
-  volume: 'громкость',
-  filterFreq: 'фильтр',
-  fxMix: 'глубина эффекта',
-  fxTime: 'время эха',
-  fxFeedback: 'повторы эха',
+  get pan() { return msg("types.pan"); },
+  get volume() { return msg("types.volume"); },
+  get filterFreq() { return msg("types.filter"); },
+  get fxMix() { return msg("types.effectMix"); },
+  get fxTime() { return msg("types.delayTime"); },
+  get fxFeedback() { return msg("types.delayFeedback"); },
 };
 
 /** Вставной эффект трека (после фильтра, до панорамы). */
@@ -284,12 +285,12 @@ export type Effect = { id?: string } & (
   | { type: 'eq'; bands: EqBand[]; mix: number; bypass?: boolean });
 
 export const EFFECT_LABELS: Record<Effect['type'], string> = {
-  delay: 'задержка (эхо)',
-  reverb: 'реверб (пространство)',
-  dist: 'перегруз',
-  chorus: 'хорус',
-  lofi: 'ло-фай (ступеньки)',
-  eq: 'эквалайзер',
+  get delay() { return msg("types.delay"); },
+  get reverb() { return msg("types.reverb"); },
+  get dist() { return msg("types.distortion"); },
+  get chorus() { return msg("types.chorus"); },
+  get lofi() { return msg("types.bitcrusher"); },
+  get eq() { return msg("types.equalizer"); },
 };
 
 /** Источник модуляции: LFO с формой / ступени S&H / плавный перлин-шум.
@@ -389,12 +390,12 @@ export type AutoTarget =
   | 'fxFeedback';
 
 export const AUTO_TARGET_LABELS: Record<AutoTarget, string> = {
-  volume: 'громкость',
-  filterFreq: 'фильтр',
-  pan: 'панорама',
-  fxMix: 'микс эффекта',
-  fxTime: 'время эха',
-  fxFeedback: 'повторы эха',
+  get volume() { return msg("types.volume"); },
+  get filterFreq() { return msg("types.filter"); },
+  get pan() { return msg("types.pan"); },
+  get fxMix() { return msg("types.effectMix"); },
+  get fxTime() { return msg("types.delayTime"); },
+  get fxFeedback() { return msg("types.delayFeedback"); },
 };
 
 /** Точка кривой: t — доля цикла эскиза (0..1), v — нормированное 0..1. */

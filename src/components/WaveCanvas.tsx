@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 import { THEME_EVENT } from '../theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -36,6 +37,7 @@ export function WaveCanvas({
   onDraw,
   height = 220,
 }: Props) {
+  const locale = useLocale();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // Вид: доли 0..1 показанной длины (data × cycles).
@@ -188,9 +190,9 @@ export function WaveCanvas({
     for (let t = first; t < spanSec * view[1]; t += step) {
       const x = ((t / spanSec - view[0]) / (view[1] - view[0])) * w;
       ctx.fillRect(x, 0, 1, 4);
-      ctx.fillText(t >= 10 ? `${Math.round(t)}с` : t.toFixed(t % 1 ? 2 : 0) + 'с', x + 3, 11);
+      ctx.fillText(t >= 10 ? msg("waveCanvas.s", {p0: Math.round(t)}) : t.toFixed(t % 1 ? 2 : 0) + msg("waveCanvas.s1"), x + 3, 11);
     }
-  }, [data, sampleRate, cycles, view, sel, region, height]);
+  }, [data, sampleRate, cycles, view, sel, region, height, locale]);
 
   useEffect(() => {
     draw();
@@ -296,29 +298,29 @@ export function WaveCanvas({
     if (!data) return '';
     const span = (view[1] - view[0]) * (data.length * cycles);
     return span > sampleRate * 3
-      ? `${(span / sampleRate).toFixed(1)} с`
+      ? msg("waveCanvas.s2", {p0: (span / sampleRate).toFixed(1)})
       : span > sampleRate / 100
-        ? `${Math.round(span)} фр`
-        : `${span.toFixed(1)} фр`;
-  }, [view, data, cycles, sampleRate]);
+        ? msg("waveCanvas.samples", {p0: Math.round(span)})
+        : msg("waveCanvas.samples", {p0: span.toFixed(1)});
+  }, [view, data, cycles, sampleRate, locale]);
 
   return (
     <div className="wave-canvas-wrap" data-help="wave-gesture">
       <div className="wc-toolbar" data-help="wave-view">
-        {toolBtn('−', 'Отдалить', () => zoomBy(1.6))}
-        {toolBtn('+', 'Приблизить', () => zoomBy(1 / 1.6))}
-        {toolBtn('⟶', 'Прокрутить вправо', () =>
+        {toolBtn('−', msg("waveCanvas.zoomOut"), () => zoomBy(1.6))}
+        {toolBtn('+', msg("waveCanvas.zoomIn"), () => zoomBy(1 / 1.6))}
+        {toolBtn('⟶', msg("waveCanvas.scrollRight"), () =>
           setView(([a, b]) => {
             const d = (b - a) * 0.3;
             return [Math.min(1 - (b - a), a + d), Math.min(1, b + d)] as [number, number];
           }))}
-        {toolBtn('⟵', 'Прокрутить влево', () =>
+        {toolBtn('⟵', msg("waveCanvas.scrollLeft"), () =>
           setView(([a, b]) => {
             const d = (b - a) * 0.3;
             return [Math.max(0, a - d), Math.max(b - a, b - d)] as [number, number];
           }))}
-        {sel !== null && sel !== undefined && toolBtn('⤢ к выделению', 'Показать только выделение', zoomToSel)}
-        {toolBtn('весь', 'Показать всё', () => setView([0, 1]))}
+        {sel !== null && sel !== undefined && toolBtn(msg("waveCanvas.selection"), msg("waveCanvas.zoomToSelection"), zoomToSel)}
+        {toolBtn(msg("waveCanvas.all"), msg("waveCanvas.showAll"), () => setView([0, 1]))}
         <span className="wc-zoom">{zoomLabel}</span>
 
       </div>

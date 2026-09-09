@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Instrument } from '../types';
 import { voiceSnapshot } from '../music/layers';
@@ -9,6 +10,7 @@ import { InstrumentEditor, type InstrumentEditorProps, type InstEditorTab } from
 /** UI selection is not part of Patch. Every edit targets a stable layer ID;
  * async sample work reads the latest instrument instead of a stale snapshot. */
 export function InstrumentWorkspace(props: InstrumentEditorProps) {
+  useLocale();
   const [selected, select] = useState('');
   const [tab, setTab] = useState<InstEditorTab>('snd');
   const [picker, showPicker] = useState(false);
@@ -48,7 +50,7 @@ export function InstrumentWorkspace(props: InstrumentEditorProps) {
       if (mounted.current && request === sampleRequest.current && current.inst.id === owner && sound
         && sound.sampleId === original?.sampleId && sound.waveform === original?.waveform
         && JSON.stringify(sound.wave) === JSON.stringify(original?.wave)) pick(meta);
-    } catch { if (mounted.current) void alertDialog('Не удалось сохранить сэмпл в хранилище', 'сэмпл слоя'); }
+    } catch { if (mounted.current) void alertDialog(msg("instrumentWorkspace.couldNotSaveTheSampleToStorage"), msg("instrumentWorkspace.layerSample")); }
   };
   const sampleId = layer?.sound.sampleId;
   const { getPCM } = props;

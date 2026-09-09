@@ -1,11 +1,12 @@
+import { t as msg } from '../i18n/runtime.ts';
 import type { InstrumentPreset } from './instrumentPresets';
 export const SOUND_PACKS = [
-  { id:'transitions-01',name:'Райзеры и обратные райзеры',description:'12 переходов: шум, свист, металл, реактор, космос и PWM' },
-  { id: 'character-01', name: 'Тяжесть и космос', description: '15 тембров: нейрофанк, дабстеп, перегруженные струны, космос и ударные' },
-  { id: 'core-v39', name: 'Основы', description: 'Исходная палитра и два сэмплерных шаблона' },
-  { id: 'idm-02', name: 'IDM 02', description: '60 тембров wavetable, VA, ring, wavefold и comb' },
-  { id: 'idm-01', name: 'IDM 01', description: '68 синтетических рецептов для электронной музыки' },
-  { id: 'user', name: 'Мои инструменты', description: 'Сохранённые тобой тембры' },
+  { id:'transitions-01',get name() { return msg("soundSearch.risersAndDownlifters"); },get description() { return msg("soundSearch.12TransitionsNoiseWhistlesMetalReactorSpace"); } },
+  { id: 'character-01', get name() { return msg("soundSearch.heavyAndCosmic"); }, get description() { return msg("soundSearch.15SoundsNeurofunkDubstepDistortedStringsSpace"); } },
+  { id: 'core-v39', get name() { return msg("soundSearch.foundations"); }, get description() { return msg("soundSearch.theOriginalPaletteAndTwoSamplerTemplates"); } },
+  { id: 'idm-02', name: 'IDM 02', get description() { return msg("soundSearch.60WavetableVARingModulationWavefoldingAnd"); } },
+  { id: 'idm-01', name: 'IDM 01', get description() { return msg("soundSearch.68SynthesisRecipesForElectronicMusic"); } },
+  { id: 'user', get name() { return msg("soundSearch.myInstruments"); }, get description() { return msg("soundSearch.yourSavedSounds"); } },
 ];
 export const presetPackOf = (p: InstrumentPreset): string => p.packId ?? (p.id?.startsWith('idm-01-') ? 'idm-01' : p.category === 'мои' ? 'user' : 'core-v39');
 export const soundSearchText = (s: string) => s.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е');
@@ -27,7 +28,7 @@ export function soundMatches(text: string, query: string): boolean {
 }
 export function presetMatches(p: InstrumentPreset, query: string): boolean {
   const pack = SOUND_PACKS.find(pack => pack.id === presetPackOf(p));
-  return soundMatches([p.name, p.category, p.hint ?? '', p.packName ?? '', p.packDescription ?? '', ...(p.tags ?? []), pack?.name ?? '', ...SOUND_COLLECTIONS.filter(c=>presetInCollection(p,c.id)).map(c=>c.name), p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
+  return soundMatches([p.name, p.category, p.hint ?? '', p.packName ?? '', p.packDescription ?? '', ...(p.tags ?? []), ...(p.searchTerms ?? []), pack?.name ?? '', ...SOUND_COLLECTIONS.filter(c=>presetInCollection(p,c.id)).map(c=>c.name), p.track.waveform === 'sample' ? 'sample сэмпл' : 'synthesis синтез'].join(' '), query);
 }
 export const presetFavoriteId = (p: InstrumentPreset) => `preset:${p.id ?? p.name}`;
 export const sampleFavoriteId = (id: string) => `sample:${id}`;
@@ -35,26 +36,26 @@ export const FAVORITES_KEY = 'barlow.sound-favorites.v1';
 export const FAVORITES_EVENT = 'barlow:sound-favorites';
 export function loadSoundFavorites(): Set<string> {
   const value: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]');
-  if (!Array.isArray(value) || value.length > 2000 || value.some(id => typeof id !== 'string' || id.length > 512)) throw new Error('Не удалось прочитать избранное. Проверь доступ к локальному хранилищу.');
+  if (!Array.isArray(value) || value.length > 2000 || value.some(id => typeof id !== 'string' || id.length > 512)) throw new Error(msg("soundSearch.couldNotReadFavoritesCheckAccessTo"));
   return new Set(value);
 }
 export function saveSoundFavorites(ids: Set<string>): void {
-  if (ids.size > 2000) throw new Error('В избранном уже 2000 звуков. Убери часть отметок перед добавлением новых.');
+  if (ids.size > 2000) throw new Error(msg("soundSearch.favoritesAlreadyContains2000SoundsRemoveSome"));
   localStorage.setItem(FAVORITES_KEY, JSON.stringify([...ids]));
   window.dispatchEvent(new Event(FAVORITES_EVENT));
 }
 
 /** Musical collections are independent of historical release packs and may overlap. */
 export const SOUND_COLLECTIONS = [
-  {id:'transitions',name:'Райзеры и обратные райзеры',description:'Нарастания перед кульминацией и нисходящие переходы после неё'},
-  {id:'rhythm',name:'Ритм и ударные',description:'Бочки, снейры, хэты и мелодическая перкуссия'},
-  {id:'bass',name:'Бас и грув',description:'Саб, упругие басы и движущиеся басовые линии'},
-  {id:'melody',name:'Мелодии и аккорды',description:'Клавишные, лиды и щипковые тембры'},
-  {id:'space',name:'Атмосферы и космос',description:'Фоны, дроны и пространственные звуковые эффекты'},
-  {id:'heavy',name:'Жёсткая электроника',description:'Нейрофанк, дабстеп и перегруженные струны'},
-  {id:'basics',name:'Основы синтеза',description:'Простые исходные формы для своего звукового дизайна'},
-  {id:'samplers',name:'Сэмплеры',description:'Шаблоны для твоих записей'},
-  {id:'user',name:'Мои инструменты',description:'Сохранённые и импортированные тобой тембры'},
+  {id:'transitions',get name() { return msg("soundSearch.risersAndDownlifters"); },get description() { return msg("soundSearch.buildUpsBeforeTheClimaxAndFalling"); }},
+  {id:'rhythm',get name() { return msg("soundSearch.rhythmAndDrums"); },get description() { return msg("soundSearch.kicksSnaresHiHatsAndPitchedPercussion"); }},
+  {id:'bass',get name() { return msg("soundSearch.bassAndGroove"); },get description() { return msg("soundSearch.subBassPunchyBassesAndMovingBass"); }},
+  {id:'melody',get name() { return msg("soundSearch.melodiesAndChords"); },get description() { return msg("soundSearch.keysLeadsAndPluckedSounds"); }},
+  {id:'space',get name() { return msg("soundSearch.atmospheresAndSpace"); },get description() { return msg("soundSearch.padsDronesAndSpaciousSoundEffects"); }},
+  {id:'heavy',get name() { return msg("soundSearch.heavyElectronics"); },get description() { return msg("soundSearch.neurofunkDubstepAndDistortedStrings"); }},
+  {id:'basics',get name() { return msg("soundSearch.synthesisBasics"); },get description() { return msg("soundSearch.simpleStartingWaveformsForSoundDesign"); }},
+  {id:'samplers',get name() { return msg("soundSearch.samplers"); },get description() { return msg("soundSearch.templatesForYourRecordings"); }},
+  {id:'user',get name() { return msg("soundSearch.myInstruments"); },get description() { return msg("soundSearch.yourSavedAndImportedSounds"); }},
 ];
 export function presetInCollection(p: InstrumentPreset, id: string): boolean {
   if(id.startsWith('pack:')) return p.packId===id.slice(5);

@@ -1,6 +1,8 @@
 // Пресеты инструментов для добавления трека: готовые параметры,
 // пользователю остаётся накидать ноты в нотном стане.
 
+import { t as msg } from '../i18n/runtime.ts';
+import { localizeFactoryPreset } from './presetPresentation';
 import type { Instrument, Track } from '../types';
 import { INSTRUMENT_FIELDS } from '../types';
 import { recipeForLegacy } from './waveRecipes';
@@ -13,6 +15,8 @@ const SOUND_FIELDS = INSTRUMENT_FIELDS.filter((f): f is Exclude<typeof f, 'fmRat
   !['fmRatio', 'fmIndex', 'voiceMorph', 'ksLife'].includes(f));
 
 export interface InstrumentPreset {
+  /** Display-only bilingual search aliases; never part of the sound snapshot. */
+  searchTerms?: string[];
   id?: string;
   tags?: string[];
   packId?: string;
@@ -64,13 +68,13 @@ export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): s
     const preset: Partial<Track & Instrument> = p.track;
     if (MATCH_FIELDS.every((f) => f === 'portamentoSec'
       ? sameValue(preset[f] ?? 0, track[f] ?? 0)
-      : preset[f] === undefined || (f === 'effects'
-      ? JSON.stringify(preset[f], (key, value) => key === 'id' ? undefined : value) === JSON.stringify(track[f], (key, value) => key === 'id' ? undefined : value)
+      : preset[f] === undefined || (f === 'effects' || f === 'macros'
+      ? JSON.stringify(preset[f], (key, value) => f === 'effects' && key === 'id' || f === 'macros' && key === 'name' ? undefined : value) === JSON.stringify(track[f], (key, value) => f === 'effects' && key === 'id' || f === 'macros' && key === 'name' ? undefined : value)
       : sameValue(preset[f], track[f])))) {
       return p.name;
     }
   }
-  return 'своя настройка';
+  return msg('preset.custom');
 }
 
 // Пресеты писались и под прежние модели (v38-): ниже — сырой список,
@@ -922,26 +926,35 @@ export function appendUserPack(presets: InstrumentPreset[], packName: string, pa
 export const PRESET_NAMES_KEY = 'barlow.instrument-names.v1';
 function factoryNames(): Record<string, string> {
   const raw = JSON.parse(localStorage.getItem(PRESET_NAMES_KEY) ?? '{}');
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Не удалось прочитать названия инструментов');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(msg('preset.namesUnreadable'));
   return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string,string] => typeof entry[1] === 'string' && !!entry[1].trim()));
 }
 export function loadFactoryPresets(): InstrumentPreset[] {
   let names: Record<string,string>;
-  try { names = factoryNames(); } catch { return INSTRUMENT_PRESETS; }
-  return INSTRUMENT_PRESETS.map(p => p.id && names[p.id] ? {...p,name:names[p.id],tags:[...(p.tags??[]),p.name]} : p);
+  try { names = factoryNames(); } catch { names = {}; }
+  return INSTRUMENT_PRESETS.map(localizeFactoryPreset).map(p => p.id && names[p.id] ? {...p,name:names[p.id]} : p);
+}
+export function hasFactoryNameOverride(id: string): boolean {
+  try { return Object.hasOwn(factoryNames(), id); } catch { return false; }
+}
+export function resetFactoryName(id: string): void {
+  if (!INSTRUMENT_PRESETS.some(p => p.id === id)) return;
+  const names = factoryNames(); delete names[id];
+  localStorage.setItem(PRESET_NAMES_KEY, JSON.stringify(names));
+  window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }
 export function renamePreset(id: string, value: string): void {
   const name = value.trim();
-  if (!name || name.length > 160) throw new Error('Название должно содержать от 1 до 160 символов');
+  if (!name || name.length > 160) throw new Error(msg('preset.nameLength'));
   const users = loadUserPresets(), factory = INSTRUMENT_PRESETS.find(p => p.id === id);
   if ([...users,...loadFactoryPresets()].some(p => p.id !== id && p.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
-    throw new Error('Инструмент с таким названием уже есть');
+    throw new Error(msg('preset.nameExists'));
   if (factory) {
     const names = factoryNames();
-    if (name === factory.name) delete names[id]; else names[id] = name;
+    if (name === localizeFactoryPreset(factory).name) delete names[id]; else names[id] = name;
     localStorage.setItem(PRESET_NAMES_KEY, JSON.stringify(names));
   } else {
-    if (!users.some(p => p.id === id)) throw new Error('Инструмент больше не существует');
+    if (!users.some(p => p.id === id)) throw new Error(msg('preset.missing'));
     localStorage.setItem(USER_KEY, JSON.stringify(users.map(p => p.id === id ? {...p,name} : p)));
   }
   window.dispatchEvent(new Event(USER_PRESETS_EVENT));

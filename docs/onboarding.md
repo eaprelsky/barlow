@@ -1,5 +1,10 @@
 # Онбординг (`src/onboarding/`)
 
+Языки RU/EN: заголовки, инструкции, пути и учебные задания разрешаются
+на текущем языке. ID гидов и DOM-якоря постоянны. Геометрия всех 20 гидов
+и 108 шагов проверяется также с `BARLOW_TEST_LOCALE=en` в
+`scripts/guide-placement-contract.mjs`. Подробности — [localization.md](localization.md).
+
 Тема оформления и контраст справки — [theme.md](theme.md).
 
 Учебная студия v58 — отдельная область в меню «Справка»; [learning-studio.md](learning-studio.md).

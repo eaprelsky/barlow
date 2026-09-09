@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Тулбар нотного стана: строй (шкала + тоника), время партии (длина ноты,
 // фаза) и генерация (заполнение осей, мутация с уровнем, очистка).
 // Автоматизация партии (кривые и модуляции) живёт отдельной панелью под
@@ -43,6 +44,7 @@ export function RollTools({
   onMutate,
   onPatternCommand,
 }: Props) {
+  useLocale();
   const [pulses, setPulses] = useState(3);
   const [showFill, setShowFill] = useState(false);
   const [showScales, setShowScales] = useState(false);
@@ -53,7 +55,7 @@ export function RollTools({
 
   return (
     <div className="roll-tools" data-ob="roll-tools">
-      <HelpHint guide="roll" scope={`[data-track-id="${track.id}"]`} label="Гид: нотный стан" />
+      <HelpHint guide="roll" scope={`[data-track-id="${track.id}"]`} label={msg("rollTools.tourNoteGrid")} />
       {/* Строй целиком — здесь: интервалы (шкала, выпадашкой с поиском)
           и якорь (тоника). Панель «трек» остаётся комнатой микса. */}
       <span className="rt-scale-wrap">
@@ -61,20 +63,19 @@ export function RollTools({
           className="rt-scale"
           title={
             track.waveform === 'sample'
-              ? 'Шкала = набор скоростей воспроизведения сэмпла (питч). Октавы добавляются кнопками у стана'
-              : 'Набор высот нотного стана: мировые строи (гамелан, 22 шрути, макам), чистый строй, N-ET и свои дроби. Октавы — кнопками у стана'
+              ? msg("rollTools.theScaleSetsSamplePlaybackRatesAnd")
+              : msg("rollTools.pitchesForTheNoteGridWorldTunings")
           }
         >
-          шкала
-          <button
+          {msg("rollTools.scale")}<button
             className="scale-btn"
             data-ob="scale-btn"
-            title="Выбрать шкалу: поиск по названию, пресеты мировых строёв, N равных ступеней, своя дробями"
+            title={msg("rollTools.chooseAScaleSearchByNameWorld")}
             onClick={() => setShowScales((v) => !v)}
           >
             {presetName(track.scale)}
           </button>
-          <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label="Гид: шкалы и строи" />
+          <HelpHint guide="scales" scope={`[data-track-id="${track.id}"]`} label={msg("rollTools.tourScalesAndTuning")} />
         </label>
         {showScales && (
           <ScalePicker
@@ -87,15 +88,14 @@ export function RollTools({
       <label
         className="rt-freq"
         data-ob="roll-tonic"
-        title="Несущая строя — базовая частота, от которой шкала отсчитывает высоты. Бас — 30–90 Гц, обычные ноты — 100–500, верхушки — выше"
+        title={msg("rollTools.rootFrequencyForThePitchScaleBass")}
       >
-        тоника
-        <NumField help="track.freq"
+        {msg("rollTools.root")}<NumField help="track.freq"
           narrow w={64} wheel
           value={track.freq} min={20} max={9000} step={0.1}
           onChange={(freq) => onTrack({ freq })}
         />
-        <span className="rt-label">Гц</span>
+        <span className="rt-label">{msg("rollTools.hz")}</span>
       </label>
       <span className="rt-sep" />
       {/* Длина ноты по умолчанию — ровно над станом: какой длины бары
@@ -104,32 +104,30 @@ export function RollTools({
         className="rt-note"
         title={
           noteSteps > 0
-            ? 'Длина ноты в шагах — сетка рисовалки и звучания: меняешь темп, тягучесть остаётся той же. 0.9 — стаккато-щель, 1 — встык, 2–4 — подтяжки поверх соседних. Shift — доли шага'
-            : '«авто» — длина ноты по огибающей инструмента (атака + спад). Задай число шагов — и длина привяжется к сетке: при смене темпа тягучесть не поедет'
+            ? msg("rollTools.defaultNoteLengthInStepsLinkedTo")
+            : msg("rollTools.autoUsesTheInstrumentEnvelopeSDuration")
         }
       >
-        нота
-        <NumField
+        {msg("rollTools.note")}<NumField
           narrow w={56} wheel
           value={noteSteps} min={0} max={16} step={1}
           onChange={onNoteSteps}
         />
-        <span className="rt-label">{noteSteps > 0 ? 'шагов' : 'авто'}</span>
+        <span className="rt-label">{noteSteps > 0 ? msg("rollTools.steps") : msg("rollTools.auto")}</span>
       </label>
       {/* Фаза — время партии: где цикл стартует. Как и «нота» — трековая
           ручка в шагах, но про смещение рисунка, а не длину ноты. */}
       <label
         className="rt-phase"
         data-ob="roll-phase"
-        title="Сдвиг цикла в шагах: тот же рисунок, но стартует на N шагов позже"
+        title={msg("rollTools.cycleOffsetInStepsTheSamePattern")}
       >
-        фаза
-        <NumField help="track.phase"
+        {msg("rollTools.phase")}<NumField help="track.phase"
           narrow w={56} wheel
           value={track.phase} min={-64} max={64} step={1}
           onChange={(phase) => onTrack({ phase: Math.round(phase) })}
         />
-        <span className="rt-label">шагов</span>
+        <span className="rt-label">{msg("rollTools.steps")}</span>
       </label>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по
@@ -137,53 +135,47 @@ export function RollTools({
       <button
         className={showFill ? 'on' : ''}
         data-ob="fill-btn"
-        title="Заполнение стана: время и тон по кнопкам, мутация с уровнем, очистка"
+        title={msg("rollTools.fillTheNoteGridChangeRhythmOr")}
         onClick={() => setShowFill((v) => !v)}
       >
-        заполнить
-      </button>
+        {msg("rollTools.fill")}</button>
       {showFill && (
         <span className="fill-tools" data-ob="fill-tools">
-          <span className="rt-label" title="Сколько нот раскидает заполнение по времени">
-            нот
-          </span>
+          <span className="rt-label" title={msg("rollTools.howManyNotesToDistributeAcrossThe")}>
+            {msg("rollTools.notes")}</span>
           <NumField
             narrow
             value={pulses} min={0} max={pattern.length}
             onChange={(n) => setPulses(Math.round(n))}
           />
           <span className="fill-axis">
-            <span className="rt-label" title="Клик сразу применяет ось времени">время</span>
+            <span className="rt-label" title={msg("rollTools.clickToApplyARhythmPattern")}>{msg("rollTools.rhythm")}</span>
             <button
               data-ob="fill-even"
-              title="Евклидово раскладывание N нот: максимально равномерно, 3 по 8 — тресильо"
+              title={msg("rollTools.distributeNNotesAsEvenlyAsPossible")}
               onClick={() => onFillAxis(track.id, 'time', 'even', pulses)}
             >
-              равномерно
-            </button>
+              {msg("rollTools.even")}</button>
             <button
-              title="N нот по случайным шагам цикла — то же количество, без равномерности"
+              title={msg("rollTools.placeNNotesOnRandomStepsKeeping")}
               onClick={() => onFillAxis(track.id, 'time', 'random', pulses)}
             >
-              случайно
-            </button>
+              {msg("rollTools.random")}</button>
           </span>
           <span className="fill-axis">
-            <span className="rt-label" title="Клик сразу применяет ось тона к текущим нотам">тон</span>
+            <span className="rt-label" title={msg("rollTools.clickToChangeThePitchesOfExisting")}>{msg("rollTools.pitch")}</span>
             <button
-              title="Ровная лестница по строкам шкалы: слева направо, от низа к верху"
+              title={msg("rollTools.ascendingStepsThroughTheScaleFromLeft")}
               onClick={() => onFillAxis(track.id, 'height', 'ladder', pulses)}
             >
-              лестница
-            </button>
+              {msg("rollTools.ascending")}</button>
             <button
-              title="Случайные строки шкалы: ритм, громкости и длины не трогаются"
+              title={msg("rollTools.randomScalePitchesRhythmVelocitiesAndNote")}
               onClick={() => onFillAxis(track.id, 'height', 'random', pulses)}
             >
-              случайно
-            </button>
+              {msg("rollTools.random")}</button>
             <button
-              title="Все ноты на одну высоту ×1 (тоника шкалы) — сплошная полоска, как у баса или бочки"
+              title={msg("rollTools.putAllNotesAt1TheRoot")}
               onClick={() => onFillAxis(track.id, 'height', 'one', pulses)}
             >
               ×1
@@ -191,8 +183,8 @@ export function RollTools({
           </span>
           <span className="rt-sep" />
           <span className="fill-axis">
-            <span className="rt-label" title="Что мутирует: щепотка случайных правок по включённым осям">мутировать</span>
-            <span className="rt-sw" title="Мутация времени: вкл/выкл нот, вероятность, громкость">
+            <span className="rt-label" title={msg("rollTools.chooseWhichDimensionsReceiveRandomEdits")}>{msg("rollTools.mutate")}</span>
+            <span className="rt-sw" title={msg("rollTools.rhythmMutationNoteOnOffProbabilityAnd")}>
               <button
                 className={'sw' + (mutTime ? ' on' : '')}
                 role="switch"
@@ -201,9 +193,9 @@ export function RollTools({
               >
                 <span className="sw-knob" />
               </button>
-              <span className="rt-label">время</span>
+              <span className="rt-label">{msg("rollTools.rhythm")}</span>
             </span>
-            <span className="rt-sw" title="Мутация тона: высота отдельной ноты">
+            <span className="rt-sw" title={msg("rollTools.pitchMutationChangesIndividualNotePitches")}>
               <button
                 className={'sw' + (mutPitch ? ' on' : '')}
                 role="switch"
@@ -212,9 +204,9 @@ export function RollTools({
               >
                 <span className="sw-knob" />
               </button>
-              <span className="rt-label">тон</span>
+              <span className="rt-label">{msg("rollTools.pitch")}</span>
             </span>
-            <span className="rt-label" title="Сколько случайных правок за один клик — уровень мутации">правок</span>
+            <span className="rt-label" title={msg("rollTools.numberOfRandomEditsPerClick")}>{msg("rollTools.edits")}</span>
             <NumField
               narrow
               value={mutEdits} min={1} max={32}
@@ -223,28 +215,26 @@ export function RollTools({
             <button
               disabled={!mutTime && !mutPitch}
               data-ob="fill-mutate"
-              title="Случайные правки по включённым осям: слушай — мутируй — оставляй или снова мутируй"
+              title={msg("rollTools.applyRandomEditsToTheSelectedDimensions")}
               onClick={() => onMutate(track.id, { time: mutTime, pitch: mutPitch }, mutEdits)}
             >
-              мутировать
-            </button>
+              {msg("rollTools.mutate")}</button>
           </span>
           <span className="rt-sep" />
           <button
             data-ob="fill-clear"
-            title="Очистить стан этого эскиза: убрать все ноты (undo вернёт)"
+            title={msg("rollTools.removeAllNotesFromThisClipUndo")}
             onClick={() =>
               onPatternCommand(track.id, pattern.id, {
                 steps: pattern.steps.map((s) => ({ ...s, notes: [] })),
               })
             }
           >
-            очистить
-          </button>
+            {msg("rollTools.clear")}</button>
           <HelpHint
             guide="generators"
             scope={`[data-track-id="${track.id}"]`}
-            label="Гид: заполнить и мутировать"
+            label={msg("rollTools.tourFillAndMutate")}
           />
         </span>
       )}

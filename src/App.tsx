@@ -1,3 +1,4 @@
+import { t as msg, useLocale, setLocale } from './i18n';
 import { useTheme, setTheme } from './theme';
 import { SoundWorkshop } from './components/SoundWorkshop';
 import { LearningStudio } from './components/LearningStudio';
@@ -85,7 +86,7 @@ const panText = (pan: number) =>
     ? `L${Math.round((0.5 - pan) * 200)}`
     : pan > 0.51
       ? `R${Math.round((pan - 0.5) * 200)}`
-      : 'центр';
+      : msg("app.center");
 
 interface AiSettings {
   providerId: string;
@@ -157,7 +158,7 @@ const fallbackInst = (t: Track): Instrument => ({
 });
 
 /** Стандартный западный строй нового трека: 12 равных полутонов. */
-const CHROMATIC = SCALE_PRESETS.find((p) => p.name === '12 равных полутонов')?.ratios ?? [1];
+const CHROMATIC = SCALE_PRESETS.find((p) => p.sourceName === '12 равных полутонов')?.ratios ?? [1];
 
 // Имя нового эскиза: первая свободная буква дорожки (B, C, …).
 // Штрихи форков («A′») не занимают букву — базовое имя считается «A».
@@ -171,6 +172,7 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
+  const locale = useLocale();
   const theme = useTheme();
   const presetRevision = usePresetRevision();
   const [showPacks,setShowPacks]=useState(false);
@@ -389,7 +391,7 @@ export default function App() {
     engineRef.current = new AudioEngine();
     // Тихие падения превью («▶ нота», жесты) — причина «не слышно» без
     // объяснений; движок докладывает их сюда сообщением.
-    engineRef.current.warnSink = (m) => void alertDialog(m, 'звук');
+    engineRef.current.warnSink = (m) => void alertDialog(m, msg("app.audio"));
   }
   const engine: AudioBackend = engineRef.current;
   const getSamplePCM = useCallback(
@@ -452,8 +454,8 @@ export default function App() {
       : null;
 
   const navigateHelp = (entry:HelpEntry,trackId:string):string|undefined => {
-    if(document.querySelector('[data-help-navigation-blocked="true"]')) return 'Сначала примени или отбрось черновик волны либо заверши запись/загрузку. Поиск сохраняет твою работу.';
-    if(document.querySelectorAll('dialog[open]').length>1) return 'Сначала закрой исходное диалоговое окно, затем повтори переход из поиска.';
+    if(document.querySelector('[data-help-navigation-blocked="true"]')) return msg("app.applyOrDiscardTheWaveformDraftOr");
+    if(document.querySelectorAll('dialog[open]').length>1) return msg("app.closeTheOriginalDialogThenTryOpening");
     const loc=entry.location;if(!loc)return;
     setShowHelpSearch(false);setPointHelp(false);setObRun(null);setHelpArrival('');
     setTrackQuery('');setHideSceneMuted(false);
@@ -578,7 +580,7 @@ export default function App() {
       if (request !== playRequest.current || history.snapshot().present !== snapshot || liveRef.current.sceneId !== sid) return;
       engine.play(snapshot, sid); setPlaying(true);
     }).catch(error => {
-      if (request === playRequest.current) void alertDialog(errText(error), 'не удалось начать воспроизведение');
+      if (request === playRequest.current) void alertDialog(errText(error), msg("app.couldNotStartPlayback"));
     }).finally(() => {
       if (request === playRequest.current) { pendingPlay.current = false; setPreparingPlay(false); }
     });
@@ -644,7 +646,7 @@ export default function App() {
   // setPatch/setPatchStep — undo-история общая с ручными правками.
   const bridgeRef = useRef<ReturnType<typeof createBridge> | null>(null);
   const [bridgeSession, setBridgeSession] = useState<BridgeSession | null>(loadBridgeSession);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ phase: 'off', message: 'Локальный агент отключён.' });
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ phase: 'off', message: msg("app.localAgentIsDisabled") });
   const liveRef = useRef({ patch, sceneId, playing });
   liveRef.current = { patch, sceneId, playing };
 
@@ -661,7 +663,7 @@ export default function App() {
         bpm: engine.currentBpm || liveRef.current.patch.bpm,
       }),
       onSetPatch(raw) {
-        if (!isPatch(raw)) throw new Error('JSON не похож на патч barlow');
+        if (!isPatch(raw)) throw new Error(msg("app.thisJSONIsNotABarlowProject"));
         const norm = normalizePatch(raw);
         setPatchStep(norm);
         setSceneId(norm.scenes[0].id);
@@ -671,7 +673,7 @@ export default function App() {
         // в ack моста, а не в рендер React (апдейтер setPatch выполняется
         // позже и уронил бы всё дерево).
         const candidate = setByPointer(history.snapshot().present, pointer, value);
-        if (!isPatch(candidate)) throw new Error('Изменение нарушает структуру или ссылки проекта');
+        if (!isPatch(candidate)) throw new Error(msg("app.theChangeWouldBreakTheProjectStructure"));
         setPatchStep(normalizePatch(candidate));
       },
       onTransport(cmd) {
@@ -682,16 +684,16 @@ export default function App() {
           stopTransport();
         } else if (cmd.action === 'scene' && cmd.sceneId) {
           if (!live.patch.scenes.some((s) => s.id === cmd.sceneId)) {
-            throw new Error(`сцены «${cmd.sceneId}» нет в патче`);
+            throw new Error(msg("app.sceneIsNotInTheProject", {p0: cmd.sceneId}));
           }
           if (engine.playing) engine.setScene(cmd.sceneId);
           setSceneId(cmd.sceneId);
         } else if (cmd.action === 'bpm' && Number.isFinite(cmd.value)) {
-          if (typeof cmd.value !== 'number') throw new Error('Неверный темп');
+          if (typeof cmd.value !== 'number') throw new Error(msg("app.invalidTempo"));
           const v = Math.max(30, Math.min(300, Math.round(cmd.value)));
           if (engine.playing) engine.setBpm(v);
           setPatch((p) => ({ ...p, bpm: v }));
-        } else throw new Error('Неизвестная команда транспорта или неверный параметр');
+        } else throw new Error(msg("app.unknownTransportCommandOrInvalidParameter"));
       },
     }, bridgeSession);
     bridgeRef.current = bridge;
@@ -727,7 +729,7 @@ export default function App() {
       const from = p.scenes.find((s) => s.id === sceneId) ?? p.scenes[0];
       const scene = {
         id: freshId,
-        name: `сцена ${Math.max(0, ...p.scenes.map(s => Number(/^сцена\s+(\d+)$/i.exec(s.name.trim())?.[1] ?? 0))) + 1}`,
+        name: msg("app.scene", {p0: Math.max(0, ...p.scenes.map(s => Number(/^(?:сцена|scene)\s+(\d+)$/i.exec(s.name.trim())?.[1] ?? 0))) + 1}),
         // Снимок ансамбля: какие эскизы играют. Мьют и соло — живые
         // состояния прослушивания СЦЕНЫ, в новую не переносятся: новая
         // сцена начинается со звуком (v38).
@@ -878,7 +880,7 @@ export default function App() {
       engine.stop();
       setPlaying(false);
     }
-    const scene = { id: uid('s'), name: 'сцена 1', slots: {} as Record<string, SceneSlot> };
+    const scene = { id: uid('s'), name: msg("app.scene1"), slots: {} as Record<string, SceneSlot> };
     setPatchStep((p) => ({ ...p, tracks: [], scenes: [scene], chain: [{ sceneId: scene.id, bars: 8 }] }));
     setSceneId(scene.id);
   }, [engine]);
@@ -964,8 +966,8 @@ export default function App() {
     // Вопрос до setPatch: подтверждение внутри updater'а вызывалось дважды
     // (StrictMode прогоняет апдейтеры по два раза в dev).
     void confirmDialog({
-      title: `удалить трек «${victim.name}»?`,
-      okLabel: 'удалить',
+      title: msg("app.deleteTrack", {p0: victim.name}),
+      okLabel: msg("app.delete"),
       danger: true,
     }).then((ok) => {
       if (!ok) return;
@@ -1007,7 +1009,7 @@ export default function App() {
         p.tracks.find((t) => t.id === lastScaleRef.current) ?? p.tracks[0];
       const { track, instrument } = makeTrackWithInstrument({
         id,
-        name: uniqueName('трек', p.tracks.map((t) => t.name)),
+        name: uniqueName(msg("app.newTrackName"), p.tracks.map((t) => t.name)),
         scale: prev ? [...prev.scale] : CHROMATIC,
         freq: prev?.freq,
         scaleOctUp: prev?.scaleOctUp,
@@ -1294,8 +1296,8 @@ export default function App() {
   /** One application job for both providers and both entry points. */
   const runSampleJob = useCallback(async (trackId: string, prompt: string, seconds: number, strength?: number) => {
     const provider = PROVIDERS.find(p => p.id === ai.providerId) ?? PROVIDERS[0];
-    if (!ai.keys[provider.id]) { void alertDialog('Сначала укажи API-ключ в настройках', 'ИИ'); return; }
-    if (strength !== undefined && !provider.transform) { void alertDialog('Провайдер не поддерживает преобразование записи', 'ИИ'); return; }
+    if (!ai.keys[provider.id]) { void alertDialog(msg("app.enterYourAPIKeyInSettingsFirst"), msg("app.ai")); return; }
+    if (strength !== undefined && !provider.transform) { void alertDialog(msg("app.thisProviderDoesNotSupportAudioTo"), msg("app.ai")); return; }
     if (!prompt.trim() || !Number.isFinite(seconds) || seconds <= 0) return;
     const before = history.snapshot().present;
     const target = before.tracks.find(t => t.id === trackId);
@@ -1309,7 +1311,7 @@ export default function App() {
       let result: Blob;
       if (strength !== undefined) {
         const audio = baseline.sampleId ? await getSampleBlob(baseline.sampleId) : null;
-        if (!audio) throw new Error('В основном слоте нет записи для преобразования');
+        if (!audio) throw new Error(msg("app.theMainSampleSlotHasNoAudio"));
         job.signal.throwIfAborted();
         result = await provider.transform!({ ...params, audio, strength, duration: seconds });
       } else result = await provider.generate({ ...params, seconds });
@@ -1319,9 +1321,9 @@ export default function App() {
       const latest = history.snapshot().present;
       const currentTrack = latest.tracks.find(t => t.id === trackId);
       const approved = currentTrack && latest.instruments.find(i => i.id === currentTrack.instrumentId);
-      if (!approved) { void alertDialog(`«${meta.name}» сохранён в библиотеке. Исходная дорожка удалена.`, 'ИИ'); return; }
+      if (!approved) { void alertDialog(msg("app.wasSavedToTheLibraryTheOriginal", {p0: meta.name}), msg("app.ai")); return; }
       if (approved !== baseline) {
-        const replace = await confirmDialog({ title: 'инструмент изменился', text: `«${meta.name}» уже в библиотеке. Применить результат к текущему инструменту дорожки «${currentTrack.name}»?`, okLabel: 'применить', cancelLabel: 'оставить в библиотеке' });
+        const replace = await confirmDialog({ title: msg("app.instrumentChanged"), text: msg("app.isAlreadyInTheLibraryApplyIt", {p0: meta.name, p1: currentTrack.name}), okLabel: msg("app.apply"), cancelLabel: msg("app.keepInLibrary") });
         if (!replace || !sampleJobs.current(trackId, job)) return;
       }
       setPatchStep(p => {
@@ -1335,7 +1337,7 @@ export default function App() {
           instruments: shared ? [...p.instruments, instrument] : p.instruments.map(i => i.id === id ? instrument : i) };
       });
     } catch (error) {
-      if (!job.signal.aborted) void alertDialog(`Задание не выполнено: ${errText(error)}`, 'ИИ');
+      if (!job.signal.aborted) void alertDialog(msg("app.taskFailed", {p0: errText(error)}), msg("app.ai"));
     } finally {
       if (sampleJobs.finish(trackId, job)) setGenBusy(b => ({ ...b, [trackId]: false }));
     }
@@ -1353,11 +1355,11 @@ export default function App() {
         const blob = await engine.renderScratchWav(t);
         // Имя — ровно из поля у кнопки (пустое — база «<трек> скрэтч»):
         // файл называется так, как видно в интерфейсе, без сюрпризов.
-        const final = (name ?? '').trim() || `${t.name} скрэтч`;
+        const final = (name ?? '').trim() || msg("app.scratch", {p0: t.name});
         await putSample(blob, final);
         // Успех — молча: галочку рисует сам редактор (scratchSavedTick).
       } catch (e) {
-        void alertDialog(`Не удалось сохранить скрэтч: ${errText(e)}`, 'скрэтч в сэмпл');
+        void alertDialog(msg("app.couldNotSaveTheScratchPerformance", {p0: errText(e)}), msg("app.scratchToSample"));
       }
     },
     [patch.tracks, engine],
@@ -1395,7 +1397,7 @@ export default function App() {
     void saveBlob(
       new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' }),
       `${exportStem(patch)}-patch.json`,
-    ).catch((e) => void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт'));
+    ).catch((e) => void alertDialog(msg("app.exportFailed", {p0: errText(e)}), msg("app.export")));
   };
 
   // Импорт: zip-проект (сэмплы укладываются в библиотеку, хеши совпадают
@@ -1406,7 +1408,7 @@ export default function App() {
         if (await looksLikeZip(file)) {
           const imported = await importProject(file);
           if (!imported) {
-            void alertDialog('В архиве нет патча barlow', 'импорт проекта');
+            void alertDialog(msg("app.theArchiveContainsNoBarlowProject"), msg("app.importProject"));
             return;
           }
           const norm = normalizePatch(imported);
@@ -1414,15 +1416,15 @@ export default function App() {
           setSceneId(norm.scenes[0].id);
           return;
         }
-        if (file.size > 8 * 1024 * 1024) throw new Error('JSON патча больше 8 МиБ');
+        if (file.size > 8 * 1024 * 1024) throw new Error(msg("app.projectJSONExceeds8MiB"));
         const parsed: unknown = JSON.parse(await file.text());
         if (isPatch(parsed)) {
           const norm = normalizePatch(parsed);
           setPatchStep(norm);
           setSceneId(norm.scenes[0].id);
-        } else void alertDialog('Файл не похож на патч barlow', 'импорт');
+        } else void alertDialog(msg("app.thisFileIsNotABarlowProject"), msg("app.import"));
       } catch (e) {
-        void alertDialog(`Не удалось импортировать: ${errText(e)}`, 'импорт');
+        void alertDialog(msg("app.couldNotImport", {p0: errText(e)}), msg("app.import"));
       }
     })();
   };
@@ -1432,7 +1434,7 @@ export default function App() {
       const blob = await exportProject(patch);
       await saveBlob(blob, `${exportStem(patch)}-${new Date().toISOString().slice(0, 10)}.zip`);
     } catch (e) {
-      void alertDialog(`Экспорт не удался: ${errText(e)}`, 'экспорт');
+      void alertDialog(msg("app.exportFailed", {p0: errText(e)}), msg("app.export"));
     }
   };
 
@@ -1447,12 +1449,12 @@ export default function App() {
   };
 
   const renderWav = async (snapshot: Patch, bars: number, options: WavRenderOptions) => {
-    if (rendering) throw new Error('Экспорт уже выполняется.');
+    if (rendering) throw new Error(msg("app.anExportIsAlreadyRunning"));
     setRendering(true);
     try {
       const blob = await engine.renderToWav(snapshot, wavExport?.sceneId ?? sceneId, bars, options);
       const saved = await saveBlob(blob, `${exportStem(snapshot)}.wav`);
-      if (isDesktop && saved === null) throw new Error('Сохранение отменено; файл не записан.');
+      if (isDesktop && saved === null) throw new Error(msg("app.saveCanceledNoFileWasWritten"));
       return (blob.size - 44) / (44100 * 4);
     } finally {
       setRendering(false);
@@ -1489,36 +1491,38 @@ export default function App() {
     <EditGestureContext.Provider value={history}>
     <div className="global-header">
       <MainMenu menus={[
-        {label:'Файл',help:'file-menu',anchor:'file-menu',items:[
-          {label:'Новый проект',help:'file-menu',action:clearAll},
-          {label:'Открыть проект…',help:'file-menu',action:()=>{if(isDesktop)void pickProjectFile().then(f=>{if(f)importFile(f);}).catch(e=>void alertDialog(errText(e),'импорт'));else fileRef.current?.click();}},
-          {label:'Сохранить проект…',help:'file-menu',action:()=>{void exportZip();}},
-          {label:'Открыть демо',help:'file-menu',action:resetPatch},
-          {label:'Импортировать инструмент…',help:'instrument-import',separator:true,action:()=>{void pickInstrumentFile(()=>instrumentFileRef.current?.click()).then(f=>{if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}).catch(e=>void alertDialog(errText(e),'импорт'));}},
-          {label:'Мастерская звука…',help:'sound-workshop',action:()=>{stopTransport();setShowWorkshop(true);}},
-          {label:'Паки инструментов…',help:'portable-packs',action:()=>setShowPacks(true)},
-          {label:'Экспортировать WAV…',help:'file-menu',disabled:rendering,action:()=>setWavExport({patch,sceneId})},
-          {label:'Экспортировать патч JSON…',help:'file-menu',action:exportPatch},
+        {label:msg("app.file"),help:'file-menu',anchor:'file-menu',items:[
+          {label:msg("app.newProject"),help:'file-menu',action:clearAll},
+          {label:msg("app.openProject"),help:'file-menu',action:()=>{if(isDesktop)void pickProjectFile().then(f=>{if(f)importFile(f);}).catch(e=>void alertDialog(errText(e),msg("app.import")));else fileRef.current?.click();}},
+          {label:msg("app.saveProject"),help:'file-menu',action:()=>{void exportZip();}},
+          {label:msg("app.openDemo"),help:'file-menu',action:resetPatch},
+          {label:msg("app.importInstrument"),help:'instrument-import',separator:true,action:()=>{void pickInstrumentFile(()=>instrumentFileRef.current?.click()).then(f=>{if(f){setIncomingInstrument(f);setLibTab('inst');setShowLib(true);}}).catch(e=>void alertDialog(errText(e),msg("app.import")));}},
+          {label:msg("app.soundWorkshop"),help:'sound-workshop',action:()=>{stopTransport();setShowWorkshop(true);}},
+          {label:msg("app.instrumentPacks"),help:'portable-packs',action:()=>setShowPacks(true)},
+          {label:msg("app.exportWAV"),help:'file-menu',disabled:rendering,action:()=>setWavExport({patch,sceneId})},
+          {label:msg("app.exportPatchJSON"),help:'file-menu',action:exportPatch},
         ]},
-        {label:'Правка',help:'undo',items:[
-          {label:'Отменить',help:'undo',shortcut:'Ctrl+Z',disabled:historyState.past.length===0&&(!historyState.gesture||historyState.gesture.base===patch),action:undo},
-          {label:'Повторить',help:'redo',shortcut:'Ctrl+Shift+Z',disabled:historyState.future.length===0,action:redo},
+        {label:msg("app.edit"),help:'undo',items:[
+          {label:msg("app.undo"),help:'undo',shortcut:'Ctrl+Z',disabled:historyState.past.length===0&&(!historyState.gesture||historyState.gesture.base===patch),action:undo},
+          {label:msg("app.redo"),help:'redo',shortcut:'Ctrl+Shift+Z',disabled:historyState.future.length===0,action:redo},
         ]},
-        {label:'Вид',help:'panel-switches',items:[
-          {label:'Библиотека инструментов',help:'library-btn',checked:showLib,action:()=>showLib?setShowLib(false):openLibraryAt(null)},
-          {label:'Микшер',help:'mixer-btn',checked:showMix,action:()=>setShowMix(v=>!v)},
-          {label:'Цепочка сцен',help:'chain-panel',checked:showChain,action:()=>setShowChain(v=>!v)},
+        {label:msg("app.view"),help:'panel-switches',items:[
+          {label:msg("app.instrumentLibrary"),help:'library-btn',checked:showLib,action:()=>showLib?setShowLib(false):openLibraryAt(null)},
+          {label:msg("app.mixer"),help:'mixer-btn',checked:showMix,action:()=>setShowMix(v=>!v)},
+          {label:msg("app.sceneSequence"),help:'chain-panel',checked:showChain,action:()=>setShowChain(v=>!v)},
         ]},
-        {label:'Настройки',help:'ai-btn',anchor:'ai-btn',items:[
-          {label:'Звук и подключения',help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
-          {label:'Светлая тема',help:'theme',checked:theme==='light',separator:true,action:()=>{try { setTheme(theme==='light'?'dark':'light'); } catch { void alertDialog('Не удалось сохранить тему оформления','настройки'); }}},
+        {label:msg("app.settings"),help:'ai-btn',anchor:'ai-btn',items:[
+          {label:msg("app.audioAndConnections"),help:'ai-btn',checked:showAi,action:()=>setShowAi(v=>!v)},
+          {label:'Русский',help:'language',checked:locale==='ru',separator:true,action:()=>{try{setLocale('ru');}catch{void alertDialog(msg('language.saveError'));}}},
+          {label:'English',help:'language',checked:locale==='en',action:()=>{try{setLocale('en');}catch{void alertDialog(msg('language.saveError'));}}},
+          {label:msg("app.lightTheme"),help:'theme',checked:theme==='light',separator:true,action:()=>{try { setTheme(theme==='light'?'dark':'light'); } catch { void alertDialog(msg("app.couldNotSaveTheThemePreference"),msg("app.settings73")); }}},
         ]},
-        {label:'Справка',help:'help-guides',items:[
-          {label:'Найти в справке…',help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},
-          {label:'Учебная студия…',help:'learning-studio',action:()=>setShowLearning(true)},
-          {label:'Пошаговые гиды…',help:'help-guides',action:()=>setShowHelpMenu(true)},
-          {label:'Объяснить элемент',help:'point-help',shortcut:'F1',action:()=>{setObRun(null);setPointHelp(v=>!v);}},
-          {label:'Горячие клавиши и словарь…',help:'help-guides',action:()=>setShowHelp(true)},
+        {label:msg("app.help"),help:'help-guides',items:[
+          {label:msg("app.searchHelp"),help:'help-search',shortcut:'Ctrl+/',action:openHelpSearch},
+          {label:msg("app.learningStudio"),help:'learning-studio',action:()=>setShowLearning(true)},
+          {label:msg("app.guidedTours"),help:'help-guides',action:()=>setShowHelpMenu(true)},
+          {label:msg("app.explainAControl"),help:'point-help',shortcut:'F1',action:()=>{setObRun(null);setPointHelp(v=>!v);}},
+          {label:msg("app.shortcutsAndGlossary"),help:'help-guides',action:()=>setShowHelp(true)},
         ]},
       ]}/>
       <header className="transport-bar">
@@ -1526,15 +1530,14 @@ export default function App() {
           className={playing ? 'play-btn stop' : 'play-btn'}
           data-ob="play"
           onClick={togglePlay}
-          title={preparingPlay ? 'Отменить подготовку — пробел' : playing ? 'Стоп — пробел' : 'Играть — пробел'}
-          aria-label={preparingPlay ? 'Отменить подготовку' : playing ? 'Стоп' : 'Играть'}
+          title={preparingPlay ? msg("app.cancelPreparationSpace") : playing ? msg("app.stopSpace") : msg("app.playSpace")}
+          aria-label={preparingPlay ? msg("app.cancelPreparation") : playing ? msg("app.stop") : msg("app.play")}
         >
           {preparingPlay ? '…' : playing ? '■' : '▶'}
         </button>
         <AudioStatus engine={engine} playing={playing} />
-        <label data-ob="bpm" title="Темп, ударах в минуту. Меняется и на ходу: часы пере-якорятся, позиция не сбивается">
-          темп
-          <NumField help="patch.bpm"
+        <label data-ob="bpm" title={msg("app.tempoInBeatsPerMinuteYouCan")}>
+          {msg("app.tempo")}<NumField help="patch.bpm"
             value={patch.bpm} min={30} max={300}
             onChange={(bpm) => {
               const v = Math.round(bpm);
@@ -1546,8 +1549,8 @@ export default function App() {
         <SliderField
           className="master-vol"
           variant="label"
-          label="общая громкость"
-          title="Общая громкость. Выше 100% — лимитер мягко пережимает пики: звук плотнее и жирнее, без треска. Двойной клик по подписи — точное число"
+          label={msg("app.masterVolume")}
+          title={msg("app.masterVolumeAbove100TheLimiterGently")}
           value={Math.round(patch.masterVolume * 100)}
           min={0} max={200} step={5}
           display={`${Math.round(patch.masterVolume * 100)}%`}
@@ -1559,8 +1562,8 @@ export default function App() {
           className="title-input"
           data-ob="title"
           value={patch.title ?? ''}
-          placeholder="название пьесы"
-          title="Название пьесы: попадает в имена файлов экспорта (транслитом)"
+          placeholder={msg("app.projectName")}
+          title={msg("app.projectNameIsUsedInExportedFilenames")}
           onChange={(e) =>
             setPatch((p) => ({ ...p, title: e.target.value.trim() ? e.target.value : undefined }))
           }
@@ -1569,15 +1572,15 @@ export default function App() {
           className="undo-btn"
           disabled={historyState.past.length === 0 && (!historyState.gesture || historyState.gesture.base === patch)}
           data-help="undo" onClick={undo}
-          title="Отменить (Ctrl+Z)"
+          title={msg("app.undoCtrlZ")}
         >↶</button>
         <button
           className="undo-btn"
           disabled={historyState.future.length === 0}
           data-help="redo" onClick={redo}
-          title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)"
+          title={msg("app.redoCtrlShiftZCtrlY")}
         >↷</button>
-        <button className={(pointHelp?'on ':'')+'help-btn'} data-ob="help" data-help="point-help" data-help-toggle aria-label="Что это?" aria-pressed={pointHelp} title="Объяснить элемент (F1)" onClick={()=>{setShowHelpMenu(false);setObRun(null);setPointHelp(v=>!v);}}>?</button>
+        <button className={(pointHelp?'on ':'')+'help-btn'} data-ob="help" data-help="point-help" data-help-toggle aria-label={msg("app.whatIsThis")} aria-pressed={pointHelp} title={msg("app.explainAControlF1")} onClick={()=>{setShowHelpMenu(false);setObRun(null);setPointHelp(v=>!v);}}>?</button>
         <input
           ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden
           onChange={(e) => {
@@ -1615,48 +1618,48 @@ export default function App() {
       <div className="topbar">
       <div className="workspace-bar">
       <div className="view-shortcuts" data-help="panel-switches">
-        <button data-ob="library-btn" aria-pressed={showLib} className={showLib?'on':''} onClick={()=>showLib?setShowLib(false):openLibraryAt(null)}>инструменты</button>
-        <button data-ob="mixer-btn" aria-pressed={showMix} className={showMix?'on':''} onClick={()=>setShowMix(v=>!v)}>микшер</button>
+        <button data-ob="library-btn" aria-pressed={showLib} className={showLib?'on':''} onClick={()=>showLib?setShowLib(false):openLibraryAt(null)}>{msg("app.instruments")}</button>
+        <button data-ob="mixer-btn" aria-pressed={showMix} className={showMix?'on':''} onClick={()=>setShowMix(v=>!v)}>{msg("app.mixer97")}</button>
       </div>
       <div className="autosave-strip">
         <span className={`autosave-status ${saveStatus.phase}`} role="status" title={saveStatus.message}>
-          {saveStatus.phase === 'error' ? 'ошибка сохранения' : saveStatus.message}
+          {saveStatus.phase === 'error' ? msg("app.saveError") : saveStatus.message}
         </span>
-        {saveStatus.phase === 'error' && <button onClick={() => { flushAutosave(); void alertDialog(autosaveStatus().message, 'автосохранение'); }}>подробнее / повторить</button>}
-        <button className="recovery-button" title="Восстановить предыдущую успешно сохранённую версию; текущую можно вернуть через undo" onClick={async () => {
+        {saveStatus.phase === 'error' && <button onClick={() => { flushAutosave(); void alertDialog(autosaveStatus().message, msg("app.autosave")); }}>{msg("app.detailsRetry")}</button>}
+        <button className="recovery-button" title={msg("app.restoreTheLastSuccessfulBackupUndoCan")} onClick={async () => {
           const recovered = loadRecovery();
-          if (!recovered) { void alertDialog('Резервной копии пока нет', 'восстановление'); return; }
-          if (await confirmDialog({ title: 'Восстановить резервную копию?', text: 'Текущий проект останется в истории undo.', okLabel: 'восстановить' })) {
+          if (!recovered) { void alertDialog(msg("app.noBackupIsAvailableYet"), msg("app.recovery")); return; }
+          if (await confirmDialog({ title: msg("app.restoreTheBackup"), text: msg("app.theCurrentProjectWillRemainInUndo"), okLabel: msg("app.restore") })) {
             const normalized = normalizePatch(recovered);
             resumeAutosave();
             setPatchStep(normalized);
             setSceneId(normalized.scenes[0].id);
           }
-        }}>резервная копия</button>
+        }}>{msg("app.backup")}</button>
       </div>
 
       </div>
       {showMix && (
         <div className="mix-panel" data-ob="mix-panel">
-          <div className="section-heading" data-help="mix-master"><strong>микшер</strong><span className="spacer" /><HelpHint guide="mix" label="Гид: свести микс" /><button data-help="panel-close" aria-label="Скрыть микшер" title="Скрыть микшер" onClick={()=>setShowMix(false)}>×</button></div>
+          <div className="section-heading" data-help="mix-master"><strong>{msg("app.mixer108")}</strong><span className="spacer" /><HelpHint guide="mix" label={msg("app.tourBalanceAMix")} /><button data-help="panel-close" aria-label={msg("app.hideMixer")} title={msg("app.hideMixer")} onClick={()=>setShowMix(false)}>×</button></div>
           <div className="mix-rack">
             <div className="mix-block master" data-ob="mix-master">
               <div className="mix-main">
-                <span className="mix-name">мастер</span>
-                <label className="mix-ctl" data-help="scene-space"><span>пространство</span><input type="checkbox" aria-label="Общее пространство" checked={!!patch.sceneSpace} onChange={e=>setPatchStep(p=>({...p,sceneSpace:e.target.checked?{sizeSec:2,level:.3}:undefined}))}/></label>
-                {patch.sceneSpace&&<div className="eq-knobs" data-help="scene-space"><Knob label="размер, с" value={patch.sceneSpace.sizeSec} min={.2} max={8} step={.1} onChange={sizeSec=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,sizeSec}}))}/><Knob label="возврат, %" value={patch.sceneSpace.level*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,level:v/100}}))}/></div>}
+                <span className="mix-name">{msg("app.master")}</span>
+                <label className="mix-ctl" data-help="scene-space"><span>{msg("app.sharedReverb")}</span><input type="checkbox" aria-label={msg("app.sharedReverb114")} checked={!!patch.sceneSpace} onChange={e=>setPatchStep(p=>({...p,sceneSpace:e.target.checked?{sizeSec:2,level:.3}:undefined}))}/></label>
+                {patch.sceneSpace&&<div className="eq-knobs" data-help="scene-space"><Knob label={msg("app.tailS")} value={patch.sceneSpace.sizeSec} min={.2} max={8} step={.1} onChange={sizeSec=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,sizeSec}}))}/><Knob label={msg("app.return")} value={patch.sceneSpace.level*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,sceneSpace:{...p.sceneSpace!,level:v/100}}))}/></div>}
 
                 <SliderField
                   variant="mix"
-                  label="пан"
-                  title="Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число"
+                  label={msg("app.pan")}
+                  title={msg("app.panTheEntireStereoMixTrackPanning")}
                   value={Math.round((patch.masterPan ?? 0.5) * 100)}
                   min={0} max={100} step={5}
                   display={panText(patch.masterPan ?? 0.5)}
                   onChange={(v) => setPatch((p) => ({ ...p, masterPan: v / 100 }))}
                 />
-                <label className="mix-ctl" title="Фоновый шум: лента и воздух поверх всего. Розовый — мягче, белый — свежее шипение. После лимитера — компрессия его не качает. Играет, пока играет транспорт">
-                  <span className="mc-cap">шум</span>
+                <label className="mix-ctl" title={msg("app.backgroundNoiseAddsTapeHissOrAir")}>
+                  <span className="mc-cap">{msg("app.noise")}</span>
                   <select
                     value={patch.masterNoise ?? 'off'}
                     onChange={(e) =>
@@ -1664,15 +1667,15 @@ export default function App() {
                     }
                   >
                     <option value="off">—</option>
-                    <option value="white">белый</option>
-                    <option value="pink">розовый</option>
+                    <option value="white">{msg("app.white")}</option>
+                    <option value="pink">{msg("app.pink")}</option>
                   </select>
                 </label>
                 {(patch.masterNoise ?? 'off') !== 'off' && (
                   <SliderField
                     variant="mix"
-                    label="уровень"
-                    title="Уровень шума, %: 0.2–0.5 — дышащий воздух, 1–3 — лёгкая лента, дальше — винил и плёнка. Двойной клик по подписи — точное число"
+                    label={msg("app.level")}
+                    title={msg("app.noiseLevel0205Adds")}
                     value={Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10}
                     min={0} max={15} step={0.1}
                     display={`${(Math.round((patch.masterNoiseLevel ?? 0.01) * 1000) / 10).toFixed(1)}%`}
@@ -1682,8 +1685,8 @@ export default function App() {
                 )}
                 <SliderField
                   variant="mix"
-                  label="компрессия"
-                  title="Мастер-компрессия: 0 — выключена; выше — плотнее и сочнее (порог ниже, ratio выше, громкость компенсируется). Двойной клик по подписи — точное число"
+                  label={msg("app.compression")}
+                  title={msg("app.masterCompression0IsOffHigherSettings")}
                   value={Math.round((patch.masterComp ?? 0) * 100)}
                   min={0} max={100} step={5}
                   display={`${Math.round((patch.masterComp ?? 0) * 100)}%`}
@@ -1696,12 +1699,12 @@ export default function App() {
               <div key={t.id} className={'mix-block' + (t.enabled === false ? ' off' : '')} data-ob={ti === 0 ? 'mix-track' : undefined}>
                 <div className="mix-main">
                   <span className="mix-name" title={t.name}>{t.name}</span>
-                  {patch.sceneSpace&&<div data-help="scene-space"><SliderField variant="mix" label="в пространство" title="Посыл в общее пространство — хвост продолжается при смене сцены" display={`${Math.round((t.spaceSend??0)*100)}%`} value={(t.spaceSend??0)*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,tracks:p.tracks.map(x=>x.id===t.id?{...x,spaceSend:v/100}:x)}))}/></div>}
+                  {patch.sceneSpace&&<div data-help="scene-space"><SliderField variant="mix" label={msg("app.reverbSend")} title={msg("app.reverbSendHint")} display={`${Math.round((t.spaceSend??0)*100)}%`} value={(t.spaceSend??0)*100} min={0} max={100} step={1} onChange={v=>setPatch(p=>({...p,tracks:p.tracks.map(x=>x.id===t.id?{...x,spaceSend:v/100}:x)}))}/></div>}
 
                   <SliderField
                     variant="mix"
-                    label="громкость"
-                    title="Громкость дорожки — та же ручка, что в карточке трека. Двойной клик по подписи — точное число"
+                    label={msg("app.trackVolume")}
+                    title={msg("app.trackVolumeHint")}
                     value={Math.round(t.volume * 100)}
                     min={0} max={100} step={5}
                     display={`${Math.round(t.volume * 100)}%`}
@@ -1715,8 +1718,8 @@ export default function App() {
                   />
                   <SliderField
                     variant="mix"
-                    label="пан"
-                    title={`Панорама дорожки — ${panText(t.pan)}. Двойной клик — точное число (0 — лево, 50 — центр, 100 — право)`}
+                    label={msg("app.pan")}
+                    title={msg("app.panDoubleClickForNumericEntry0", {p0: panText(t.pan)})}
                     value={Math.round(t.pan * 100)}
                     min={0} max={100} step={5}
                     display={panText(t.pan)}
@@ -1729,7 +1732,7 @@ export default function App() {
                   />
                   <button
                     className={'mix-power ' + (t.enabled === false ? '' : 'on')}
-                    title="Глобальный выключатель дорожки: молчит во всех сценах, с любым эскизом. Не путать с мьютом партии"
+                    title={msg("app.disableThisTrackInEverySceneRegardless")}
                     onClick={() =>
                       setPatch((p) => ({
                         ...p,
@@ -1739,47 +1742,44 @@ export default function App() {
                       }))
                     }
                   >
-                    {t.enabled === false ? 'вкл' : 'выкл'}
+                    {t.enabled === false ? msg("app.enable") : msg("app.disable")}
                   </button>
                 </div>
                 <LevelBar vertical read={() => getTrackLevel(t.id)} />
               </div>
             ))}
-            {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
+            {patch.tracks.length === 0 && <p className="empty">{msg("app.noTracksYetAddOne")}</p>}
           </div>
         </div>
       )}
 
       {showAi && (
         <div className="ai-panel" data-ob="ai-panel">
-          <div className="section-heading" data-help="ai-btn"><strong>звук и подключения</strong><span className="spacer" /><HelpHint guide="ai" /><button data-help="panel-close" aria-label="Скрыть настройки" title="Скрыть настройки" onClick={()=>setShowAi(false)}>×</button></div>
-          <div className="inline seed-controls" data-help="playback-settings"><span className="settings-group-label">воспроизведение</span>
-            <label title="Фиксировать случайный выбор нот, арпеджио и шумов при повторном старте и WAV-экспорте">
+          <div className="section-heading" data-help="ai-btn"><strong>{msg("app.audioAndConnections137")}</strong><span className="spacer" /><HelpHint guide="ai" /><button data-help="panel-close" aria-label={msg("app.hideSettings")} title={msg("app.hideSettings")} onClick={()=>setShowAi(false)}>×</button></div>
+          <div className="inline seed-controls" data-help="playback-settings"><span className="settings-group-label">{msg("app.playback")}</span>
+            <label title={msg("app.repeatTheSameRandomNoteChoicesArpeggios")}>
               <input type="checkbox" checked={patch.performanceSeed !== undefined}
-                onChange={e => setPatchStep(p=>({...p,performanceSeed:e.target.checked ? 1 : undefined}))} />повторяемый звук
-            </label>
+                onChange={e => setPatchStep(p=>({...p,performanceSeed:e.target.checked ? 1 : undefined}))} />{msg("app.repeatablePlayback")}</label>
             {patch.performanceSeed !== undefined && <>
-              <label>вариант <NumField value={patch.performanceSeed} min={0} max={4294967295} step={1}
+              <label>{msg("app.seed")}<NumField value={patch.performanceSeed} min={0} max={4294967295} step={1}
                 onChange={performanceSeed=>setPatch(p=>({...p,performanceSeed:performanceSeed>>>0}))} /></label>
-              <button onClick={()=>setPatchStep(p=>({...p,performanceSeed:crypto.getRandomValues(new Uint32Array(1))[0]}))}>новое исполнение</button>
+              <button onClick={()=>setPatchStep(p=>({...p,performanceSeed:crypto.getRandomValues(new Uint32Array(1))[0]}))}>{msg("app.newVariation")}</button>
             </>}
           </div>
           {(() => {
             const provider = PROVIDERS.find((p) => p.id === ai.providerId) ?? PROVIDERS[0];
             return (
               <>
-                <span className="settings-group-label" data-help="ai-provider">генерация звука</span>
-                <label data-ob="ai-provider" title="Сервис ИИ. ElevenLabs — генерация звуков по описанию; fal.ai — тоже генерация плюс морфинг: преобразование сэмпла в слоте по описанию (audio-to-audio)">
-                  сервис
-                  <select value={ai.providerId} onChange={(e) => saveAi({ providerId: e.target.value })}>
+                <span className="settings-group-label" data-help="ai-provider">{msg("app.soundGeneration")}</span>
+                <label data-ob="ai-provider" title={msg("app.aiProviderElevenLabsGeneratesSoundsFromDescriptions")}>
+                  {msg("app.provider")}<select value={ai.providerId} onChange={(e) => saveAi({ providerId: e.target.value })}>
                     {PROVIDERS.map((p) => (
                       <option key={p.id} value={p.id}>{p.title}</option>
                     ))}
                   </select>
                 </label>
-                <label data-ob="ai-key" title={`Ключ хранится только в этом браузере (localStorage). ${provider.keyHint ?? ''}. Ключи других сервисов не теряются при переключении`}>
-                  ключ API
-                  <span className="ai-key-wrap">
+                <label data-ob="ai-key" title={msg("app.thisKeyIsStoredOnlyInThis", {p0: provider.keyHint ?? ''})}>
+                  {msg("app.apiKey")}<span className="ai-key-wrap">
                     <input
                       type={showAiKey ? 'text' : 'password'} className="ai-key-input"
                       placeholder={provider.id === 'fal' ? 'id:secret' : 'sk_…'}
@@ -1788,8 +1788,8 @@ export default function App() {
                     />
                     <button
                       className="ai-key-eye"
-                      aria-label={showAiKey ? 'скрыть ключ' : 'показать ключ'}
-                      title={showAiKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      aria-label={showAiKey ? msg("app.hideKey") : msg("app.showKey")}
+                      title={showAiKey ? msg("app.hideKey152") : msg("app.showKey153")}
                       onClick={() => setShowAiKey((v) => !v)}
                     >
                       {/* глаз: контур со зрачком; перечёркнут — скрыт */}
@@ -1811,9 +1811,9 @@ export default function App() {
         </div>
       )}
       <div className="scenes" data-ob="scenes">
-        <span className="scenes-label">сцены</span>
+        <span className="scenes-label">{msg("app.scenes")}</span>
         {patch.scenes.map((s) => sceneRename?.id === s.id ? (
-          <input key={s.id} className="scene-name-input scene-chip-input" data-help="scene-name" aria-label="Название сцены"
+          <input key={s.id} className="scene-name-input scene-chip-input" data-help="scene-name" aria-label={msg("app.sceneName")}
             autoFocus value={sceneRename.name} onFocus={e => e.currentTarget.select()}
             onChange={e => setSceneRename({id:s.id,name:e.target.value})}
             onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
@@ -1827,8 +1827,8 @@ export default function App() {
               sceneDrop?.id === s.id ? ` drop-${sceneDrop.side}` : ''
             }`}
             title={
-              (playing && engine.currentSceneId === s.id ? 'звучит сейчас · ' : '') +
-              'Клик — играть эту сцену (квант к такту). Двойной клик или F2 — переименовать. Правый клик — удалить. Перетащи — поменять порядок'
+              (playing && engine.currentSceneId === s.id ? msg("app.playingNow") : '') +
+              msg("app.clickToLaunchThisSceneAtThe")
             }
             data-ob="scene-edit" data-help="scene-chip"
             onDoubleClick={() => { cancelSceneRename.current=false; setSceneRename({id:s.id,name:s.name}); }}
@@ -1870,26 +1870,24 @@ export default function App() {
             {playing && engine.currentSceneId === s.id ? ' ●' : ''}
           </button>
         ))}
-        <button className="scene-btn add" data-ob="scene-add" title="Новая сцена — снимок ансамбля с независимыми копиями эскизов (старые сцены не изменятся). Сразу станет активной" onClick={addScene}>+</button>
-        <button className="scene-btn remove" data-help="scene-delete" aria-label="Удалить текущую сцену"
-          disabled={patch.scenes.length<=1} title={patch.scenes.length<=1?'Единственную сцену удалить нельзя':'Удалить текущую сцену'}
+        <button className="scene-btn add" data-ob="scene-add" title={msg("app.newSceneSnapshotOfTheEnsembleWith")} onClick={addScene}>+</button>
+        <button className="scene-btn remove" data-help="scene-delete" aria-label={msg("app.deleteCurrentScene")}
+          disabled={patch.scenes.length<=1} title={patch.scenes.length<=1?msg("app.theOnlySceneCannotBeDeleted"):msg("app.deleteCurrentScene")}
           onClick={() => currentScene && removeScene(currentScene.id)}>×</button>
         <button className={showChain?'on':''} data-ob="chain-btn" data-help="scene-chain" aria-pressed={showChain}
-          onClick={() => setShowChain(v=>!v)}>цепочка {showChain?'▴':'▾'}</button>
+          onClick={() => setShowChain(v=>!v)}>{msg("app.sequence")}{showChain?'▴':'▾'}</button>
         <span className="spacer" />
         <span
           className="seg"
           data-ob="follow-chain"
-          title="Режим игры: «сцена» — текущая держится, пока не выберешь другую; «цепочка» — сцены идут по порядку из панели «цепочка»"
+          title={msg("app.playbackModeSceneKeepsTheCurrentScene")}
         >
           <button className={!patch.followChain ? 'on' : ''} onClick={() => setFollowChain(false)}>
-            сцена
-          </button>
+            {msg("app.sceneLabel")}</button>
           <button className={patch.followChain ? 'on' : ''} onClick={() => setFollowChain(true)}>
-            цепочка
-          </button>
+            {msg("app.sequence")}</button>
         </span>
-        <HelpHint guide="arrangement" label="Гид: собрать пьесу из сцен" />
+        <HelpHint guide="arrangement" label={msg("app.tourArrangeScenes")} />
       </div>
       </div>
 
@@ -1927,9 +1925,9 @@ export default function App() {
               >
                 <span
                   className="chain-grip" data-help="chain-order" role="button" tabIndex={0}
-                  aria-label={`Позиция ${i + 1}: переместить в цепочке`}
+                  aria-label={msg("app.positionMoveInSequence", {p0: i + 1})}
                   onKeyDown={e => { if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); chainReorder(i, i - 1, 'before'); } if (e.key === 'ArrowRight' && i < patch.chain.length - 1) { e.preventDefault(); chainReorder(i, i + 1, 'after'); } }}
-                  title="Перетащи или используй стрелки влево/вправо"
+                  title={msg("app.dragOrUseTheLeftRightArrow")}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = 'move';
@@ -1939,7 +1937,7 @@ export default function App() {
                   <span className="drag-dots" aria-hidden="true">⠿</span>
                 </span>
                 <span className="chain-number" data-help="chain-order">{i + 1}</span>
-                <select className="chain-scene" data-help="chain-scene" aria-label={`Сцена в позиции ${i + 1}`}
+                <select className="chain-scene" data-help="chain-scene" aria-label={msg("app.sceneAtPosition", {p0: i + 1})}
                   title={patch.scenes.find(s => s.id === it.sceneId)?.name}
                   value={it.sceneId}
                   onChange={(e) => chainSetItem(i, { sceneId: e.target.value }, true)}
@@ -1948,20 +1946,19 @@ export default function App() {
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
-                <button className="remove" data-help="chain-remove" aria-label={`Убрать позицию ${i + 1}`} disabled={patch.chain.length <= 1} title="Убрать из цепочки" onClick={() => chainRemove(i)}>×</button>
+                <button className="remove" data-help="chain-remove" aria-label={msg("app.removePosition", {p0: i + 1})} disabled={patch.chain.length <= 1} title={msg("app.removeFromSequence")} onClick={() => chainRemove(i)}>×</button>
                 <div className="chain-parameters">
-                  <label data-help="chain-bars">тактов
-                    <NumField ariaLabel={`Такты позиции ${i + 1}`} value={it.bars} min={1} max={256} w={48}
+                  <label data-help="chain-bars">{msg("app.bars")}<NumField ariaLabel={msg("app.barsAtPosition", {p0: i + 1})} value={it.bars} min={1} max={256} w={48}
                       onChange={bars => chainSetItem(i, { bars: Math.round(bars) })} />
                   </label>
                   <div className="chain-tempo" data-help="scene-tempo">
                     <span>BPM</span>
                     <div>
-                      <select aria-label={`Режим темпа позиции ${i + 1}`} value={it.bpm === undefined ? 'global' : 'custom'}
+                      <select aria-label={msg("app.tempoModeAtPosition", {p0: i + 1})} value={it.bpm === undefined ? 'global' : 'custom'}
                         onChange={e => chainSetItem(i, { bpm: e.target.value === 'custom' ? Math.round(patch.bpm) : undefined }, true)}>
-                        <option value="global">общий</option><option value="custom">свой</option>
+                        <option value="global">{msg("app.global")}</option><option value="custom">{msg("app.custom")}</option>
                       </select>
-                      <NumField help="scene-tempo" ariaLabel={`BPM позиции ${i + 1}`} value={it.bpm ?? patch.bpm} min={30} max={300} w={50} disabled={it.bpm === undefined}
+                      <NumField help="scene-tempo" ariaLabel={msg("app.bpmAtPosition", {p0: i + 1})} value={it.bpm ?? patch.bpm} min={30} max={300} w={50} disabled={it.bpm === undefined}
                         onChange={bpm => chainSetItem(i, { bpm: Math.round(bpm) })} />
                     </div>
                   </div>
@@ -1969,8 +1966,8 @@ export default function App() {
               </div>
             );
           })}
-          <button data-help="chain-add" aria-label="Добавить позицию в цепочку" onClick={chainAdd}>+</button>
-          <HelpHint guide="arrangement" step={5} label="Гид: цепочка сцен" />
+          <button data-help="chain-add" aria-label={msg("app.addAPositionToTheSequence")} onClick={chainAdd}>+</button>
+          <HelpHint guide="arrangement" step={5} label={msg("app.tourSceneSequence")} />
         </div>
       )}
 
@@ -1986,25 +1983,23 @@ export default function App() {
           className="add-track"
           data-ob="add-track"
           onClick={addTrack}
-          title="Новый трек: синус; лад и тоника — как у верхнего трека (если треков ещё нет — 12 равных полутонов). Панель инструментов сразу предложит тембр на слух"
+          title={msg("app.newTrackSineWaveUsingThePrevious")}
         >
-          + трек
-        </button>
-        <div className="track-filters" data-help="track-filters" role="group" aria-label="Фильтры дорожек">
+          {msg("app.track")}</button>
+        <div className="track-filters" data-help="track-filters" role="group" aria-label={msg("app.trackFilters")}>
           <label className="track-name-filter" data-help="track-filter-name">
-            <span>Найти трек</span>
-            <input type="search" aria-label="Фильтр по названию трека" placeholder="Название…"
+            <span>{msg("app.findTrack")}</span>
+            <input type="search" aria-label={msg("app.filterByTrackName")} placeholder={msg("app.name")}
               value={trackQuery} onChange={e => setTrackQuery(e.target.value)} />
           </label>
           <label className="track-mute-filter" data-help="track-filter-muted">
             <input type="checkbox" checked={hideSceneMuted} onChange={e => setHideSceneMuted(e.target.checked)} />
-            Скрыть мьют в этой сцене
-          </label>
-          <span className="track-filter-count" aria-live="polite">{visibleTracks.length} из {patch.tracks.length}</span>
-          {(trackQuery || hideSceneMuted) && <button data-help="track-filter-reset" onClick={() => { setTrackQuery(''); setHideSceneMuted(false); }}>Сбросить</button>}
+            {msg("app.hideMutedInThisScene")}</label>
+          <span className="track-filter-count" aria-live="polite">{visibleTracks.length} {msg("app.of")}{patch.tracks.length}</span>
+          {(trackQuery || hideSceneMuted) && <button data-help="track-filter-reset" onClick={() => { setTrackQuery(''); setHideSceneMuted(false); }}>{msg("app.reset")}</button>}
         </div>
         </div>
-        {patch.tracks.length > 0 && visibleTracks.length === 0 && <div className="track-filter-empty" data-help="track-filters">Нет треков по этим фильтрам. Измени название или сбрось фильтры.</div>}
+        {patch.tracks.length > 0 && visibleTracks.length === 0 && <div className="track-filter-empty" data-help="track-filters">{msg("app.noTracksMatchTheseFiltersChangeThe")}</div>}
         {visibleTracks.map((t) => (
           <TrackRow
             key={t.id}
@@ -2042,7 +2037,7 @@ export default function App() {
               // Молчаливые отказы превратили «не слышно» в загадку: теперь
               // движок возвращает причину тишины — показываем её.
               void engine.previewScratch(t).then((why) => {
-                if (why) void alertDialog(`Скрэтч не звучит: ${why}`, 'скрэтч');
+                if (why) void alertDialog(msg("app.scratchPlaybackUnavailable", {p0: why}), msg("app.scratchLabel"));
               });
             }}
             onScratchSave={saveScratchSample}
@@ -2065,52 +2060,52 @@ export default function App() {
             onOpenBrowser={openLibraryAt}
           />
         ))}
-        {patch.tracks.length === 0 && <p className="empty">Треков нет — добавь первый.</p>}
+        {patch.tracks.length === 0 && <p className="empty">{msg("app.noTracksYetAddOne")}</p>}
       </main>
 
       {showHelp && (
-        <Modal label="шпаргалка" className="help-modal" onClose={() => setShowHelp(false)}>
-            <h3>шпаргалка</h3>
+        <Modal label={msg("app.quickReference")} className="help-modal" onClose={() => setShowHelp(false)}>
+            <h3>{msg("app.quickReference")}</h3>
             <div className="help-cols">
               <div className="help-col">
-                <h4>ноты и стан</h4>
+                <h4>{msg("app.notesAndGrid")}</h4>
                 <ul>
-                  <li>клик по клетке — нота · столбик — аккорд · правый клик — убрать</li>
-                  <li>рамка с пустой клетки — выделение · Shift-клик — добавить к выделению</li>
-                  <li>тянуть выделенное — перенос · колесо над нотой — громкость (Shift — вероятность, Alt — длина)</li>
-                  <li>тянуть правый край ноты — длительность · клик по номеру шага — панель шага</li>
-                  <li>автоматизация — кнопка под станом: дорожка кривой по шагам цикла (клик — точка на границе шага, правый клик — убрать; рампы по краям — вход/выход сцены) и модуляции — LFO и шумы; их ход виден штрихом, «→ в кривую» запекает точками</li>
+                  <li>{msg("app.clickACellToAddANote")}</li>
+                  <li>{msg("app.dragFromAnEmptyCellToSelect")}</li>
+                  <li>{msg("app.dragSelectedNotesToMoveThemWheel")}</li>
+                  <li>{msg("app.dragANoteSRightEdgeTo")}</li>
+                  <li>{msg("app.automationOpensBelowTheNoteGridClick")}</li>
                 </ul>
               </div>
               <div className="help-col">
-                <h4>структура и правки</h4>
+                <h4>{msg("app.structureAndEditing")}</h4>
                 <ul>
-                  <li>правый клик по эскизу — форк: независимая копия</li>
-                  <li>Ctrl+C / V — копипаст нот (и между треками) · Ctrl+D — дубль выделения</li>
-                  <li>Delete — стереть выделенное · Esc — снять выделение</li>
-                  <li>Ctrl+Z / Ctrl+Shift+Z — отменить / вернуть</li>
-                  <li>F1 — режим «что это?»: тыкни в контрол — карточка расскажет</li>
+                  <li>{msg("app.rightClickAClipToMakeAn")}</li>
+                  <li>{msg("app.ctrlCVCopiesAndPastesNotes")}</li>
+                  <li>{msg("app.deleteRemovesSelectedNotesEscClearsThe")}</li>
+                  <li>{msg("app.ctrlZCtrlShiftZUndoRedo")}</li>
+                  <li>{msg("app.f1EnablesWhatIsThisClickA")}</li>
                 </ul>
               </div>
             </div>
-            <h3>словарь</h3>
+            <h3>{msg("app.glossary")}</h3>
             <ul className="help-dict">
-              <li><span className="help-term">партия</span> — какой эскиз трека играет в этой сцене</li>
-              <li><span className="help-term">эскиз</span> — вариация партии: свой рисунок нот, один на все сцены, где играет</li>
-              <li><span className="help-term">сцена</span> — снимок ансамбля: по партии на каждый трек</li>
-              <li><span className="help-term">цепочка</span> — порядок сцен и их длины: арранжмент от начала до конца</li>
-              <li><span className="help-term">стан</span> — нотная сетка: колонки-шаги × строки-высоты</li>
-              <li><span className="help-term">шкала</span> — набор высот стана: мировые строи, N-ET, свои дроби</li>
-              <li><span className="help-term">автоматизация</span> — ход параметра (громкость, фильтр, пан) по циклу партии: кривой точками или модуляцией; «→ в кривую» запекает модуляцию точками</li>
-              <li><span className="help-term">кривая партии</span> — ход громкости/фильтра/пана по циклу, рисуется точками на дорожке под станом</li>
-              <li><span className="help-term">модуляция</span> — авторучка: источник качает параметр (пан, громкость, фильтр, эффект)</li>
-              <li><span className="help-term">LFO</span> — низкочастотный осциллятор: медленная волна (синус, пила, квадрат, треугольник), которая качает параметр вместо того, чтобы звучать</li>
-              <li><span className="help-term">ступени S&amp;H</span> — sample &amp; hold: случайное значение держится несколько мгновений и прыгает скачком — «лестница» из случайных ступенек</li>
-              <li><span className="help-term">перлин</span> — плавно блуждающий шум: случайные значения, соединённые мягкими переходами, — параметр ходит холмами без скачков</li>
+              <li><span className="help-term">{msg("app.part")}</span> {msg("app.theClipAssignedToATrackIn")}</li>
+              <li><span className="help-term">{msg("app.clip")}</span> {msg("app.aReusableNotePatternChangesAffectEvery")}</li>
+              <li><span className="help-term">{msg("app.sceneLabel")}</span> {msg("app.anEnsembleSnapshotWithOneClipAssignment")}</li>
+              <li><span className="help-term">{msg("app.sequence")}</span> {msg("app.scenesInPlaybackOrderWithTheirLengths")}</li>
+              <li><span className="help-term">{msg("app.noteGrid")}</span> {msg("app.stepsInColumnsAndPitchesInRows")}</li>
+              <li><span className="help-term">{msg("app.pitchScale")}</span> {msg("app.theGridSPitchesWorldTuningsN")}</li>
+              <li><span className="help-term">{msg("app.automation")}</span> {msg("app.aParameterSSavedMovementOverTime")}</li>
+              <li><span className="help-term">{msg("app.clipCurve")}</span> {msg("app.volumeFilterOrPanOverTheClip")}</li>
+              <li><span className="help-term">{msg("app.modulation")}</span> {msg("app.aSourceThatMovesAParameterSuch")}</li>
+              <li><span className="help-term">LFO</span> {msg("app.aLowFrequencyOscillatorASlowWaveform")}</li>
+              <li><span className="help-term">{msg("app.sHSteps")}</span> {msg("app.sampleHoldARandomValueIsHeld")}</li>
+              <li><span className="help-term">{msg("app.perlinNoise")}</span> {msg("app.smoothlyVaryingNoiseRandomValuesConnectedBy")}</li>
             </ul>
             <div className="modal-btns">
               <span className="spacer" />
-              <button onClick={() => setShowHelp(false)}>закрыть</button>
+              <button onClick={() => setShowHelp(false)}>{msg("app.close")}</button>
             </div>
         </Modal>
       )}
@@ -2122,7 +2117,7 @@ export default function App() {
       {showPacks && <PackManager onClose={()=>setShowPacks(false)} />}
       <DialogHost />
       {showHelpSearch && <HelpSearch onClose={()=>setShowHelpSearch(false)} onNavigate={navigateHelp} tracks={patch.tracks.map(t=>({id:t.id,name:t.name}))} initialTrack={editorActive??patch.tracks[0]?.id??''} />}
-      {helpArrival&&<aside className="help-arrival" data-help="help-search-arrival" role="status"><span>{helpArrival}</span><button aria-label="Закрыть подсказку перехода" onClick={()=>{setHelpArrival('');setHelpDestination(null);}}>×</button></aside>}
+      {helpArrival&&<aside className="help-arrival" data-help="help-search-arrival" role="status"><span>{helpArrival}</span><button aria-label={msg("app.closeNavigationHint")} onClick={()=>{setHelpArrival('');setHelpDestination(null);}}>×</button></aside>}
       {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}
       {obRun && (
         <Onboarding run={obRun} onDone={stopGuide} onStep={stepGuide} onOpenPanel={openGuidePanel} />

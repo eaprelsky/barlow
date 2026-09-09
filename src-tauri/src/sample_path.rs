@@ -11,16 +11,16 @@ pub fn valid_name(name: &str) -> bool {
 }
 
 pub fn checked_path(dir: &Path, name: &str) -> Result<PathBuf, String> {
-    if !valid_name(name) { return Err("Недопустимое имя файла сэмпла".into()); }
+    if !valid_name(name) { return Err("BARLOW_SAMPLE_PATH".into()); }
     let root = dir.canonicalize().map_err(|e| e.to_string())?;
     let target = root.join(name);
     match std::fs::symlink_metadata(&target) {
         Ok(meta) => {
             if meta.file_type().is_symlink() || !meta.is_file() {
-                return Err("Сэмпл должен быть обычным файлом".into());
+                return Err("BARLOW_SAMPLE_REGULAR".into());
             }
             if !target.canonicalize().map_err(|e| e.to_string())?.starts_with(&root) {
-                return Err("Файл находится вне библиотеки сэмплов".into());
+                return Err("BARLOW_SAMPLE_OUTSIDE".into());
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

@@ -204,7 +204,7 @@ fn samples_dir_path(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command(async)]
 fn sample_write(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Ожидается бинарный пакет сэмпла".into()); };
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("BARLOW_RAW_SAMPLE_REQUIRED".into()); };
     let (name, data) = native_binary::unpack(bytes, native_binary::SAMPLE_LIMIT)?;
     native_binary::write_atomic(&sample_path::checked_path(&samples_dir(&app)?, name)?, data).map_err(|e| e.to_string())
 }
@@ -239,12 +239,12 @@ fn sample_index_read(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command(async)]
 fn sample_index_write(app: AppHandle, json: String) -> Result<(), String> {
-    if json.len() > 4 * 1024 * 1024 { return Err("Индекс библиотеки больше 4 МиБ".into()); }
+    if json.len() > 4 * 1024 * 1024 { return Err("BARLOW_INDEX_TOO_LARGE".into()); }
     let parsed: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    let rows = parsed.as_array().ok_or("Индекс должен быть массивом")?;
+    let rows = parsed.as_array().ok_or("BARLOW_INDEX_ARRAY_REQUIRED")?;
     for row in rows {
         if !row.get("file").and_then(|f| f.as_str()).map(sample_path::valid_name).unwrap_or(false) {
-            return Err("Недопустимый путь в индексе сэмплов".into());
+            return Err("BARLOW_INDEX_PATH_INVALID".into());
         }
     }
     let dir = samples_dir(&app)?;
@@ -268,7 +268,7 @@ fn reveal_samples_dir(app: AppHandle) -> Result<(), String> {
 /// Нативный «сохранить как»: диалог + запись файла. None — пользователь отменил.
 #[tauri::command(async)]
 fn save_project(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>, String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Ожидается бинарный пакет файла".into()); };
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("BARLOW_RAW_FILE_REQUIRED".into()); };
     let (name, data) = native_binary::unpack(bytes, native_binary::SAVE_LIMIT)?;
     let Some(file) = app.dialog().file().set_file_name(name).blocking_save_file() else { return Ok(None); };
     let path = file.into_path().map_err(|e| e.to_string())?;
@@ -278,9 +278,9 @@ fn save_project(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Opti
 
 /// Empty binary response means cancellation; a selected empty file has a frame.
 #[tauri::command(async)]
-fn open_project(app: AppHandle, audio: Option<bool>) -> Result<tauri::ipc::Response, String> {
+fn open_project(app: AppHandle, audio: Option<bool>, locale: Option<String>) -> Result<tauri::ipc::Response, String> {
     let dialog = app.dialog().file();
-    let dialog = if audio.unwrap_or(false) { dialog.add_filter("Аудио", &["wav", "mp3", "ogg", "flac", "m4a", "webm"]) } else { dialog.add_filter("barlow: проект и патч", &["zip", "json"]) };
+    let dialog = if audio.unwrap_or(false) { dialog.add_filter(if locale.as_deref() == Some("en") { "Audio" } else { "Аудио" }, &["wav", "mp3", "ogg", "flac", "m4a", "webm"]) } else { dialog.add_filter(if locale.as_deref() == Some("en") { "barlow: project and patch" } else { "barlow: проект и патч" }, &["zip", "json"]) };
     let Some(file) = dialog.blocking_pick_file() else {
         return Ok(tauri::ipc::Response::new(Vec::<u8>::new()));
     };

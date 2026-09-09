@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // Библиотека сэмплов: патч хранит только SHA-256-ссылки (см. docs/DESIGN.md,
 // «Сэмплы и бинарный контент»). Хеш даёт дедупликацию и переиспользование.
 // Веб: контент в IndexedDB. Десктоп (Tauri): файлы <sha256>.<ext> в папке
@@ -53,7 +54,7 @@ function openDb(): Promise<IDBDatabase> {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB недоступна'));
+    req.onerror = () => reject(req.error ?? new Error(msg("library.indexeddbIsUnavailable")));
   });
 }
 
@@ -76,7 +77,7 @@ async function desktopIndex(): Promise<SampleMeta[]> {
   const json = await nativeSamples!.readIndex();
   if (!json) return [];
   let arr: unknown;
-  const corrupt = () => new Error('Индекс библиотеки повреждён. Исходный индекс сохранён; исправь его или выбери другую папку.');
+  const corrupt = () => new Error(msg("library.theLibraryIndexIsDamagedTheOriginal"));
   try { arr = JSON.parse(json); } catch { throw corrupt(); }
   if (!Array.isArray(arr) || arr.some(m => !m || typeof m !== 'object'
     || typeof m.id !== 'string' || !/^[a-f0-9]{64}$/.test(m.id)
@@ -125,7 +126,7 @@ function serialize<T>(action: () => Promise<T>): Promise<T> {
 export function putSamples(items: { blob: Blob; name: string }[]): Promise<SampleMeta[]> {
   return serialize(async () => {
   const prepared = await Promise.all(items.map(async ({ blob, name }) => {
-    if (blob.size > 64 * 1024 * 1024) throw new Error('Сэмпл больше 64 МиБ');
+    if (blob.size > 64 * 1024 * 1024) throw new Error(msg("library.theSampleExceeds64MiB"));
     const buf = await blob.arrayBuffer();
     const id = await sha256Hex(buf);
     const meta: SampleMeta = { id, name, size: blob.size, createdAt: Date.now(), file: `${slugify(name)}-${id}.${extOf(blob)}` };

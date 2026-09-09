@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 /** Bounded strong references, with leases for a patch/render/preview. Browser
  * decoder temporaries and already playing source nodes are outside this cache. */
 export const DECODED_LIMITS = { bytes: 256 * 1024 * 1024, assetBytes: 64 * 1024 * 1024, entries: 1024, pending: 64 };
@@ -38,12 +39,12 @@ export class DecodedAssets<V> {
     if (cached !== undefined) return Promise.resolve(cached);
     const pending = this.inflight.get(id);
     if (pending) return pending;
-    if (this.pending >= this.limits.pending) return Promise.reject(new Error('Очередь загрузки сэмплов заполнена. Дождись завершения текущей загрузки.'));
+    if (this.pending >= this.limits.pending) return Promise.reject(new Error(msg("decodedAssets.theSampleLoadingQueueIsFullWait")));
     // Decode at most one asset at a time, even with concurrent UI/transport calls.
     const task = this.queue.then(async () => {
       const entry = await decode();
       if (!Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > this.limits.assetBytes || entry.bytes > this.limits.bytes)
-        throw new Error(`Декодированный сэмпл больше ${Math.floor(this.limits.assetBytes / 1048576)} МиБ или содержит некорректные данные. Сократи запись перед импортом.`);
+        throw new Error(msg("decodedAssets.theDecodedSampleExceedsMiBOrContains", {p0: Math.floor(this.limits.assetBytes / 1048576)}));
       // Plan eviction first: a failed admission must not discard useful entries.
       let bytes = this.used, count = this.size;
       const evict: string[] = [];
@@ -53,7 +54,7 @@ export class DecodedAssets<V> {
         evict.push(key); bytes -= old.bytes; count--;
       }
       if (bytes + entry.bytes > this.limits.bytes || count >= this.limits.entries)
-        throw new Error(`Сэмплы текущего проекта/экспорта превышают бюджет ${Math.floor(this.limits.bytes / 1048576)} МиБ PCM. Сократи записи или убери неиспользуемые сэмпловые инструменты.`);
+        throw new Error(msg("decodedAssets.samplesInThisProjectOrExportExceed", {p0: Math.floor(this.limits.bytes / 1048576)}));
       for (const key of evict) this.entries.delete(key);
       this.entries.set(id, entry); this.used = bytes + entry.bytes;
       return entry.value;

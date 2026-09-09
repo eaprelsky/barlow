@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { CARDS, type HelpCard } from './cards';
 import { EXPLANATIONS } from './explanations';
 import { isParameterId } from '../parameters';
@@ -15,9 +16,9 @@ const regions: [string, string][] = [
 const normalized = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 // Wording aliases only resolve shared concepts. Explicit data-help wins.
 const concepts: [RegExp, string][] = [
-  [/^громкость/, 'track.volume'], [/^панорама дорожки/, 'track.pan'], [/^Шаг \d/i, 'roll'], [/^гид$/, 'help-guides'],
-  [/^атака/, 'attack'], [/^плато/, 'sustain'], [/^спад/, 'decay'], [/portamento|портаменто|скольжение/, 'portamento'],
-  [/формант/, 'formant-group'], [/группа глушения|группа прерывания/, 'choke-group'], [/приоритет/, 'choke-priority'],
+  [/^(громкость|volume)/, 'track.volume'], [/^(панорама дорожки|track pan)/, 'track.pan'], [/^(шаг|step) \d/i, 'roll'], [/^(гид|guide)$/, 'help-guides'],
+  [/^(атака|attack)/, 'attack'], [/^(плато|удержание пика|hold)/, 'sustain'], [/^(спад|decay)/, 'decay'], [/portamento|портаменто|скольжение/, 'portamento'],
+  [/формант|formant/, 'formant-group'], [/группа глушения|группа прерывания|choke group/, 'choke-group'], [/приоритет|priority/, 'choke-priority'],
   [/новая нота (глушит|прерывает)/, 'mono'],
 ];
 export interface HelpMatch { element: Element; card: HelpCard; source: 'explicit' | 'description' | 'group'; key: string }
@@ -26,11 +27,11 @@ function nameOf(el: Element): string {
   return el.getAttribute('aria-label') || labelled || (el.matches('input,select,textarea') ? el.closest('label')?.textContent?.trim() : el.textContent?.trim()) || '';
 }
 function instruction(el: Element): string | undefined {
-  if (el.matches('[role="slider"]') || el.closest('.knob-wrap')) return 'Потяни ручку вверх или вниз; Shift — медленнее. Двойной щелчок или Enter — точный ввод. Стрелки меняют значение с клавиатуры.';
-  if (el.matches('summary')) return 'Нажми заголовок, чтобы раскрыть или свернуть группу настроек.';
-  if (el.matches('select')) return 'Открой список и выбери вариант. С клавиатуры используй стрелки и Enter.';
-  if (el.matches('input[type="checkbox"], [role="checkbox"]')) return 'Нажми, чтобы включить или выключить; с клавиатуры — пробел.';
-  if (el.matches('input,textarea')) return 'Нажми поле и введи значение. Для числового поля Enter завершает ввод, Escape отменяет текущую правку.';
+  if (el.matches('[role="slider"]') || el.closest('.knob-wrap')) return msg("helpResolver.dragTheKnobUpOrDownHold");
+  if (el.matches('summary')) return msg("helpResolver.clickTheHeadingToExpandOrCollapse");
+  if (el.matches('select')) return msg("helpResolver.openTheListAndChooseAnOption");
+  if (el.matches('input[type="checkbox"], [role="checkbox"]')) return msg("helpResolver.clickToSwitchOnOrOffPress");
+  if (el.matches('input,textarea')) return msg("helpResolver.clickAndTypeAValueInNumeric");
   return undefined;
 }
 /** A semantic leaf owns its explanation; decoration inherits the closest group.

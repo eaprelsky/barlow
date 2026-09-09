@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 import { VoiceProcessing } from './VoiceProcessing';
 import { saveBlob as saveInstrumentBlob } from '../platform';
 import { exportInstrument } from '../audio/instrumentFile';
@@ -55,10 +56,10 @@ import { tickDuration } from '../audio/timing';
 
 export type InstEditorTab = 'snd' | 'env' | 'timbre';
 
-const TABS: [InstEditorTab, string][] = [
-  ['snd', 'источник'],
-  ['env', 'огибающая'],
-  ['timbre', 'тембр'],
+const tabs = (): [InstEditorTab, string][] => [
+  ['snd', msg("instrumentEditor.source")],
+  ['env', msg("instrumentEditor.envelope")],
+  ['timbre', msg("instrumentEditor.timbre")],
 ];
 
 /** Последняя волна (таблица строк) инструмента: возврат с сэмпла на
@@ -147,6 +148,7 @@ export function InstrumentEditor({
   onScratchSave,
   onScratchPeaks,
 }: InstrumentEditorProps) {
+  useLocale();
   // Слитый вид: дорожка + инструмент — для чтения звука и превью.
   const [envelopeTarget, setEnvelopeTarget] = useState<'amp' | 'pitch' | 'filter'>('amp');
   const [fileBusy, setFileBusy] = useState(false);
@@ -173,7 +175,7 @@ export function InstrumentEditor({
     }
     let alive = true;
     void getPCM(inst.sampleId).then((b) => {
-      if (alive) { setBuffer(b); if (!b) setSampleError('Запись отсутствует в библиотеке.'); }
+      if (alive) { setBuffer(b); if (!b) setSampleError(msg("instrumentEditor.theRecordingIsMissingFromTheLibrary")); }
     }).catch(e => { if (alive) setSampleError(String(e)); });
     return () => {
       alive = false;
@@ -285,12 +287,12 @@ export function InstrumentEditor({
     });
     if (partials.length === 0) {
       void confirmDialog({
-        title: 'разложение в гармоники',
+        title: msg("instrumentEditor.harmonicAnalysis"),
         text:
-          'Не нашла основную частоту' +
-          (f0Manual > 20 ? '' : ' — задай «f0, Гц» вручную') +
-          '. Нетональный материал лучше играет гранулярным режимом сэмпла',
-        okLabel: 'ок',
+          msg("instrumentEditor.couldNotDetectTheFundamentalFrequency") +
+          (f0Manual > 20 ? '' : msg("instrumentEditor.setF0HzManually")) +
+          msg("instrumentEditor.forUnpitchedMaterialTryGranularSamplePlayback"),
+        okLabel: msg("instrumentEditor.ok"),
         onlyOk: true,
       });
       return;
@@ -304,20 +306,20 @@ export function InstrumentEditor({
   const [, bumpInstruments] = useState(0);
   const saveInstrumentAs = async () => {
     const current = instrumentNameOf(st);
-    const suggested = current === 'своя настройка' ? track.name : current;
+    const suggested = current === msg('preset.custom') ? track.name : current;
     const name = await promptDialog({
-      title: 'сохранить инструмент',
-      text: dirty && !isSample ? 'Сохраним прослушанный черновик в «мои». Чтобы он зазвучал в партии, нажми «применить» в редакторе волны.' : 'Пресет появится в панели инструментов, категория «мои»',
-      okLabel: 'сохранить',
+      title: msg("instrumentEditor.saveInstrument"),
+      text: dirty && !isSample ? msg("instrumentEditor.saveTheAuditionedDraftToMyInstruments") : msg("instrumentEditor.thePresetWillAppearUnderMyInstruments"),
+      okLabel: msg("instrumentEditor.save"),
       input: { value: suggested },
     });
     if (!name || !name.trim()) return;
     const n = name.trim();
     if (loadUserPresets().some((p) => p.name === n)) {
       const ok = await confirmDialog({
-        title: 'заменить пресет?',
-        text: `«${n}» уже есть среди твоих — перезаписать его звуком этой дорожки?`,
-        okLabel: 'заменить',
+        title: msg("instrumentEditor.replacePreset"),
+        text: msg("instrumentEditor.alreadyExistsInYourInstrumentsReplaceIt", {p0: n}),
+        okLabel: msg("instrumentEditor.replace"),
         danger: true,
       });
       if (!ok) return;
@@ -326,7 +328,7 @@ export function InstrumentEditor({
       saveUserPreset(n, dirty && !isSample ? { ...st, waveform: 'wave', wave: normalizeWave(wave) } : st);
       bumpInstruments((v) => v + 1);
     } catch (error) {
-      await confirmDialog({ title: 'не удалось сохранить инструмент', text: String(error), okLabel: 'понятно', onlyOk: true });
+      await confirmDialog({ title: msg("instrumentEditor.couldNotSaveInstrument"), text: String(error), okLabel: msg("instrumentEditor.ok18"), onlyOk: true });
     }
   };
 
@@ -389,10 +391,10 @@ export function InstrumentEditor({
   const settleDraft = async () => {
     if (dirty) {
       const ok = await confirmDialog({
-        title: 'волна не применена',
-        text: 'Черновик отличается от звучащей волны. Применить его перед закрытием?',
-        okLabel: 'применить',
-        cancelLabel: 'отбросить',
+        title: msg("instrumentEditor.waveformNotApplied"),
+        text: msg("instrumentEditor.theDraftDiffersFromTheCurrentWaveform"),
+        okLabel: msg("instrumentEditor.apply"),
+        cancelLabel: msg("instrumentEditor.discard"),
       });
       if (ok) applyDraft();
     }
@@ -402,10 +404,10 @@ export function InstrumentEditor({
 
   return (
     <div className="wave-editor inst-editor" data-ob="inst-panel" data-help-navigation-blocked={dirty || scratchArmed || scratchLive || fileBusy ? "true" : undefined}>
-      {layerSource && <div className="layer-source-heading" data-help="layer-source-editor"><strong>Слой: {inst.name}</strong><span>источник голоса</span></div>}
+      {layerSource && <div className="layer-source-heading" data-help="layer-source-editor"><strong>{msg("instrumentEditor.layer")}{inst.name}</strong><span>{msg("instrumentEditor.voiceSource")}</span></div>}
       <div className="we-head">
         <span className="tabs we-tabs" data-ob="we-tabs">
-          {TABS.map(([id, title]) => (
+          {tabs().map(([id, title]) => (
             <button
               key={id}
               className={tab === id ? 'tab on' : 'tab'}
@@ -419,39 +421,38 @@ export function InstrumentEditor({
         {/* Имя инструмента не дублируем: оно уже в чипе заголовка трека.
             Осталась только пометка неприменённого черновика волны. */}
         {dirty && tab === 'snd' && !isSample && (
-          <span className="we-title" title="Черновик волны отличается от звучащей — «применить» перенесёт его в инструмент">
-            черновик волны не применён
-          </span>
+          <span className="we-title" title={msg("instrumentEditor.theDraftDiffersFromTheCurrentWaveform25")}>
+            {msg("instrumentEditor.waveformDraftNotApplied")}</span>
         )}
         <span className="spacer" />
-        <HelpHint guide="sound" scope={scope} label="Гид: настроить звук дорожки" />
+        <HelpHint guide="sound" scope={scope} label={msg("instrumentEditor.guideShapeATrackSSound")} />
         <button
           className="we-close"
-          title={layerSource ? "Вернуться к составу инструмента" : "Закрыть редактор инструмента"}
-          aria-label={layerSource ? "Вернуться к инструменту" : "закрыть редактор инструмента"}
+          title={layerSource ? msg("instrumentEditor.backToInstrumentLayers") : msg("instrumentEditor.closeInstrumentEditor")}
+          aria-label={layerSource ? msg("instrumentEditor.backToInstrument") : msg("instrumentEditor.closeInstrumentEditor31")}
           onClick={() => void tryClose()}
         >
-          {layerSource ? '← к инструменту' : '✕'}
+          {layerSource ? msg("instrumentEditor.backToInstrument32") : '✕'}
         </button>
       </div>
 
       <div className="instrument-audition">
         <button
           className="env-listen"
-          title="Проверить звук в регистре и строе этой дорожки" data-ob="preview-in-track"
+          title={msg("instrumentEditor.auditionInThisTrackSRegisterAnd")} data-ob="preview-in-track"
           onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}
         >
-          {layerSource ? '▶ в составе' : '▶ в партии'}
+          {layerSource ? msg("instrumentEditor.withLayers") : msg("instrumentEditor.inClip")}
         </button>
-        {layerSource && <button data-help="layer-audition-solo" onClick={() => onPreviewSolo?.(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}>▶ только слой</button>}
+        {layerSource && <button data-help="layer-audition-solo" onClick={() => onPreviewSolo?.(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst)}>{msg("instrumentEditor.soloLayer")}</button>}
         {!layerSource && <>
-        <label data-ob="recommended-hz">для библиотеки <NumField value={recommendedHz(st)} min={20} max={9000} step={1} w={65} ariaLabel="Частота прослушивания, Гц" onChange={recommendedHz => onChangeInst({ recommendedHz })} /> Гц</label>
-        <button data-ob="preview-timbre" title="Послушать на частоте для библиотеки, без влияния строя дорожки" onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst, true)}>▶ тембр</button>
+        <label data-ob="recommended-hz">{msg("instrumentEditor.audition")}<NumField value={recommendedHz(st)} min={20} max={9000} step={1} w={65} ariaLabel={msg("instrumentEditor.auditionFrequencyHz")} onChange={recommendedHz => onChangeInst({ recommendedHz })} /> {msg("instrumentEditor.hz")}</label>
+        <button data-ob="preview-timbre" title={msg("instrumentEditor.auditionAtTheLibraryFrequencyIndependentlyOf")} onClick={() => onPreviewNote(dirty && !isSample ? { ...inst, waveform: 'wave', wave } : inst, true)}>{msg("instrumentEditor.sound")}</button>
         <button
           className="save-inst"
           data-ob="save-inst"
-          title="Сохранить текущий тембр, включая черновик волны, в категорию «мои»"
-          aria-label="сохранить инструмент"
+          title={msg("instrumentEditor.saveThisSoundIncludingTheWaveformDraft")}
+          aria-label={msg("instrumentEditor.saveInstrument")}
           onClick={() => void saveInstrumentAs()}
         >
           {/* дискета: контур со срезом, жалюзи, окошко */}
@@ -459,24 +460,23 @@ export function InstrumentEditor({
             <path d="M1.7 1.7h8.2l2.4 2.4v8.2H1.7z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             <path d="M4.2 1.7v3.6h4.6V1.7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             <path d="M4.2 12.3V8h4.6v4.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-          </svg> сохранить
-        </button>
+          </svg> {msg("instrumentEditor.save")}</button>
         <button disabled={fileBusy} data-help="instrument-export" onClick={async () => {
           setFileBusy(true);
           const sound=structuredClone(dirty && !isSample ? {...st,waveform:'wave' as const,wave:normalizeWave(wave)} : st);
           try { const file=await exportInstrument({name:inst.name,category:'мои',track:sound});
             await saveInstrumentBlob(file,`${inst.name.replace(/[<>:"/\\|?*]/g,'-')}.barlow-instrument.zip`);
-          } catch(error) { await confirmDialog({title:'не удалось сохранить файл',text:String(error),okLabel:'понятно',onlyOk:true}); }
+          } catch(error) { await confirmDialog({title:msg("instrumentEditor.couldNotSaveFile"),text:String(error),okLabel:msg("instrumentEditor.ok47"),onlyOk:true}); }
           finally { setFileBusy(false); }
-        }}>{fileBusy?'сохраняем…':'в файл'}</button>
-        <HelpHint guide="audition" step={1} scope={scope} label="Гид: прослушивание и сохранение инструмента" />
+        }}>{fileBusy?msg("instrumentEditor.saving"):msg("instrumentEditor.export")}</button>
+        <HelpHint guide="audition" step={1} scope={scope} label={msg("instrumentEditor.guideAuditionAndSaveAnInstrument")} />
         </>}
       </div>
       {layerSource && <VoiceProcessing sound={inst} onChange={onChangeInst} />}
       {!layerSource && <LayerEditor inst={inst} onChange={onChangeInst} onEditSource={async id => { await settleDraft(); onEditLayer?.(id); }} />}
       <MacroEditor macros={inst.macros} onChange={(macros) => onChangeInst({ macros })} />
-      {busy && <div role="status" className="inline">ИИ обрабатывает запись… <button onClick={onCancelSampleJob}
-        title="Остановить загрузку и применение результата. Уже отправленное задание провайдер может выполнить и списать оплату">прекратить ожидание</button></div>}
+      {busy && <div role="status" className="inline">{msg("instrumentEditor.aiIsProcessingTheRecording")}<button onClick={onCancelSampleJob}
+        title={msg("instrumentEditor.stopWaitingForAndApplyingTheResult")}>{msg("instrumentEditor.stopWaiting")}</button></div>}
       {tab === 'snd' && (
         <div className="we-body">
           <div className="group" data-ob="inst-group">
@@ -486,7 +486,7 @@ export function InstrumentEditor({
             <div className="seg src-seg" data-ob="src-seg">
               <button
                 className={!isSample ? 'on' : ''}
-                title="Таблица строк-операторов: сумма и модуляция, хвосты-звоны. Возврат со сэмпла восстановит прежнюю таблицу"
+                title={msg("instrumentEditor.operatorRowsAdditiveSynthesisModulationAndResonant")}
                 onClick={() =>
                   onChangeInst({
                     waveform: 'wave',
@@ -494,30 +494,26 @@ export function InstrumentEditor({
                   })
                 }
               >
-                волна
-              </button>
+                {msg("instrumentEditor.waveform")}</button>
               <button
                 className={isSample ? 'on' : ''}
-                title="Сэмпл из библиотеки: строки нотного стана задают скорость воспроизведения; режимы — прямой, гранулярный, скрэтч"
+                title={msg("instrumentEditor.librarySampleNoteGridRowsSetThe")}
                 onClick={() => onChangeInst({ waveform: 'sample' })}
               >
-                сэмпл
-              </button>
+                {msg("instrumentEditor.sample")}</button>
             </div>
             {isSample && (
-              <label title="Основная запись: звучит вне настроенных зон. Тональный режим учитывает частоту записи; без него строки шкалы задают отношение скоростей." data-ob="snd-sample">
-                основной сэмпл
-                <span className="inline">
-                  <span className="sample-name" title={st.sampleName ?? 'сэмпл не выбран'}>
-                    {st.sampleName ?? 'не выбран'}
+              <label title={msg("instrumentEditor.mainRecordingUsedOutsideConfiguredZonesPitched")} data-ob="snd-sample">
+                {msg("instrumentEditor.mainSample")}<span className="inline">
+                  <span className="sample-name" title={st.sampleName ?? msg("instrumentEditor.noSampleSelected")}>
+                    {st.sampleName ?? msg("instrumentEditor.notSelected")}
                   </span>
                   <button
                     onClick={onPickSample}
-                    title="Выбрать из хранилища: прослушать и положить в слот"
+                    title={msg("instrumentEditor.browseStoredSamplesAuditionOneAndAssign")}
                   >
-                    выбрать…
-                  </button>
-                  <button onClick={() => sampleFileRef.current?.click()}>загрузить</button>
+                    {msg("instrumentEditor.choose")}</button>
+                  <button onClick={() => sampleFileRef.current?.click()}>{msg("instrumentEditor.import")}</button>
                   <input
                     ref={sampleFileRef} type="file" accept="audio/*" hidden
                     onChange={(e) => {
@@ -535,10 +531,10 @@ export function InstrumentEditor({
               канвас — сумма (модуляторы видны фазовой модуляцией целей),
               правки — в черновик; унисон, вибрато, форманты и заготовка —
               универсальные слои правой панелью, к строкам не привязаны. */}
-          {!isSample && <div className="mseg-toolbar" data-ob="synthesis-mode"><label>синтез <select aria-label="Способ синтеза" value={inst.wave?.wavetable ? 'table' : inst.wave?.va ? 'va' : 'operators'} onChange={e => onChangeInst({ wave: { ...(inst.wave ?? wave), wavetable: e.target.value === 'table' ? tableRecipe() : undefined, va: e.target.value === 'va' ? { shape: 'saw', pulseWidth: .5 } : undefined } }, true)}><option value="operators">операторы · FM</option><option value="table">wavetable · кадры</option><option value="va">VA · аналоговые формы</option></select></label></div>}
+          {!isSample && <div className="mseg-toolbar" data-ob="synthesis-mode"><label>{msg("instrumentEditor.synthesis")}<select aria-label={msg("instrumentEditor.synthesisMethod")} value={inst.wave?.wavetable ? 'table' : inst.wave?.va ? 'va' : 'operators'} onChange={e => onChangeInst({ wave: { ...(inst.wave ?? wave), wavetable: e.target.value === 'table' ? tableRecipe() : undefined, va: e.target.value === 'va' ? { shape: 'saw', pulseWidth: .5 } : undefined } }, true)}><option value="operators">{msg("instrumentEditor.operatorsFM")}</option><option value="table">{msg("instrumentEditor.wavetableFrames")}</option><option value="va">{msg("instrumentEditor.vaAnalogShapes")}</option></select></label></div>}
           {!isSample && inst.wave?.wavetable && <WavetableEditor value={inst.wave.wavetable} onChange={(wavetable, command) => onChangeInst({ wave: { ...inst.wave!, wavetable } }, command)} />}
-          {!isSample && inst.wave?.va && <div className="mseg-toolbar" data-ob="va-oscillator"><label>форма <select aria-label="Форма VA" value={inst.wave.va.shape} onChange={e => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, shape: e.target.value as 'saw' } } })}><option value="saw">пила</option><option value="pulse">импульс</option><option value="triangle">треугольник</option></select></label><label>ширина импульса, % <NumField ariaLabel="Ширина импульса VA, %" disabled={inst.wave.va.shape !== 'pulse'} value={inst.wave.va.pulseWidth * 100} min={5} max={95} step={.1} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pulseWidth: v / 100 } } })} /></label><Knob help="va-drift" label="дрейф, центы" value={inst.wave.va.driftCents ?? 0} min={0} max={10} step={.1} onChange={driftCents => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, driftCents } } })} />{inst.wave.va.shape === 'pulse' && <><Knob help="va-pwm" label="PWM, %" value={(inst.wave.va.pwmDepth ?? 0) * 100} min={0} max={45} step={.5} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pwmDepth: v / 100 } } })} /><Knob help="va-pwm" label="PWM, Гц" value={inst.wave.va.pwmRateHz ?? 1} min={.05} max={20} step={.01} log onChange={pwmRateHz => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pwmRateHz } } })} /></>}</div>}
-          {!isSample && (inst.wave?.wavetable || inst.wave?.va) && <div className="mseg-toolbar"><label>унисон <NumField help="instrument.unisonVoices" ariaLabel="Унисон нового синтеза" value={inst.unisonVoices ?? 1} min={1} max={8} step={1} onChange={unisonVoices => onChangeInst({ unisonVoices })} /></label><label>расстройка, ц <NumField help="instrument.unisonDetune" ariaLabel="Расстройка нового синтеза" value={inst.unisonDetune ?? 12} min={0} max={50} step={.5} onChange={unisonDetune => onChangeInst({ unisonDetune })} /></label><label>вибрато, ц <NumField help="instrument.vibratoDepth" ariaLabel="Вибрато нового синтеза" value={inst.vibratoDepth ?? 0} min={0} max={1200} step={1} onChange={vibratoDepth => onChangeInst({ vibratoDepth })} /></label></div>}
+          {!isSample && inst.wave?.va && <div className="mseg-toolbar" data-ob="va-oscillator"><label>{msg("instrumentEditor.shape")}<select aria-label={msg("instrumentEditor.vaWaveform")} value={inst.wave.va.shape} onChange={e => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, shape: e.target.value as 'saw' } } })}><option value="saw">{msg("instrumentEditor.sawtooth")}</option><option value="pulse">{msg("instrumentEditor.pulse")}</option><option value="triangle">{msg("instrumentEditor.triangle")}</option></select></label><label>{msg("instrumentEditor.pulseWidth")}<NumField ariaLabel={msg("instrumentEditor.vaPulseWidth")} disabled={inst.wave.va.shape !== 'pulse'} value={inst.wave.va.pulseWidth * 100} min={5} max={95} step={.1} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pulseWidth: v / 100 } } })} /></label><Knob help="va-drift" label={msg("instrumentEditor.driftCents")} value={inst.wave.va.driftCents ?? 0} min={0} max={10} step={.1} onChange={driftCents => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, driftCents } } })} />{inst.wave.va.shape === 'pulse' && <><Knob help="va-pwm" label="PWM, %" value={(inst.wave.va.pwmDepth ?? 0) * 100} min={0} max={45} step={.5} onChange={v => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pwmDepth: v / 100 } } })} /><Knob help="va-pwm" label={msg("instrumentEditor.pwmHz")} value={inst.wave.va.pwmRateHz ?? 1} min={.05} max={20} step={.01} log onChange={pwmRateHz => onChangeInst({ wave: { ...inst.wave!, va: { ...inst.wave!.va!, pwmRateHz } } })} /></>}</div>}
+          {!isSample && (inst.wave?.wavetable || inst.wave?.va) && <div className="mseg-toolbar"><label>{msg("instrumentEditor.unison")}<NumField help="instrument.unisonVoices" ariaLabel={msg("instrumentEditor.synthUnisonVoices")} value={inst.unisonVoices ?? 1} min={1} max={8} step={1} onChange={unisonVoices => onChangeInst({ unisonVoices })} /></label><label>{msg("instrumentEditor.detuneCents")}<NumField help="instrument.unisonDetune" ariaLabel={msg("instrumentEditor.synthUnisonDetune")} value={inst.unisonDetune ?? 12} min={0} max={50} step={.5} onChange={unisonDetune => onChangeInst({ unisonDetune })} /></label><label>{msg("instrumentEditor.vibratoCents")}<NumField help="instrument.vibratoDepth" ariaLabel={msg("instrumentEditor.synthVibratoDepth")} value={inst.vibratoDepth ?? 0} min={0} max={1200} step={1} onChange={vibratoDepth => onChangeInst({ vibratoDepth })} /></label></div>}
           {!isSample && !inst.wave?.wavetable && !inst.wave?.va && (
             <div className="we-wave-layers">
               <div className="we-wave-left">
@@ -547,7 +543,7 @@ export function InstrumentEditor({
                     <div
                       className="we-ghost"
                       aria-hidden="true"
-                      title="Приглушённая линия — звучащий сейчас тембр; яркая — черновик"
+                      title={msg("instrumentEditor.dimLineCurrentSoundBrightLineDraft")}
                     >
                       <WaveCanvas data={soundingForm} sampleRate={CYCLE_N} cycles={4} />
                     </div>
@@ -561,17 +557,16 @@ export function InstrumentEditor({
                 <div className="we-row" data-ob="we-draft-row">
                   {points ? (
                     <button
-                      title="Рисунок уже переведён в строки черновика — это возврат к их виду"
+                      title={msg("instrumentEditor.yourDrawingHasAlreadyBeenConvertedTo")}
                       onClick={() => {
                         pointsRef.current = null;
                         setPoints(null);
                       }}
                     >
-                      к строкам
-                    </button>
+                      {msg("instrumentEditor.operatorRows")}</button>
                   ) : (
                     <button
-                      title="Нарисовать форму мышью — рисунок разложится в строки черновика (маршруты модуляции при этом теряются), слушай «▶ нота»"
+                      title={msg("instrumentEditor.drawAWaveformWithTheMouseTo")}
                       onClick={() => {
                         const pts = Float32Array.from(
                           draftForm ?? soundingForm ?? new Float32Array(CYCLE_N),
@@ -580,30 +575,26 @@ export function InstrumentEditor({
                         setPoints(pts);
                       }}
                     >
-                      рисовать форму
-                    </button>
+                      {msg("instrumentEditor.drawWaveform")}</button>
                   )}
                   {dirty && (
                     <>
                       <button
                         className="we-apply"
-                        title="Черновик становится таблицей инструмента; до этого звучит прежний тембр"
+                        title={msg("instrumentEditor.applyTheDraftOperatorSetupUntilThen")}
                         onClick={applyDraft}
                       >
-                        применить
-                      </button>
+                        {msg("instrumentEditor.apply")}</button>
                       <button
-                        title="Отбросить черновик: вернуться к звучащей таблице"
+                        title={msg("instrumentEditor.discardTheDraftAndRestoreTheCurrent")}
                         onClick={() => setDraft(null)}
                       >
-                        сбросить
-                      </button>
+                        {msg("instrumentEditor.reset")}</button>
                       <span
                         className="mini-info"
-                        title="Черновик отличается от звучащей волны — «применить» перенесёт его в инструмент"
+                        title={msg("instrumentEditor.theDraftDiffersFromTheCurrentWaveform94")}
                       >
-                        черновик не применён
-                      </span>
+                        {msg("instrumentEditor.draftNotApplied")}</span>
                     </>
                   )}
                 </div>
@@ -611,11 +602,11 @@ export function InstrumentEditor({
                 <div className="we-partials" data-ob="we-partials">
                   <div className="partial-row head" aria-hidden="true">
                     <span />
-                    <span className="ph-cap">множитель</span>
-                    <span className="ph-cap">громкость</span>
-                    <span className="ph-cap">форма</span>
-                    <span className="ph-cap">хвост, с</span>
-                    <span className="ph-cap">куда</span>
+                    <span className="ph-cap">{msg("instrumentEditor.ratio")}</span>
+                    <span className="ph-cap">{msg("instrumentEditor.level")}</span>
+                    <span className="ph-cap">{msg("instrumentEditor.shape")}</span>
+                    <span className="ph-cap">{msg("instrumentEditor.tailS")}</span>
+                    <span className="ph-cap">{msg("instrumentEditor.route")}</span>
                   </div>
                   {wave.partials.map((p, i) => (
                     <div
@@ -626,14 +617,14 @@ export function InstrumentEditor({
                         className="remove"
                         title={
                           p.mod !== undefined
-                            ? 'Убрать строку (её модуляторы снимутся тоже)'
-                            : 'Убрать строку'
+                            ? msg("instrumentEditor.removeThisRowAndItsModulators")
+                            : msg("instrumentEditor.removeRow")
                         }
                         data-help="operator-delete" onClick={() => removePartial(i)}
                       >
                         ×
                       </button>
-                      <label data-help="operator-ratio" title="Множитель к ноте: 2 — октава выше, 1.5 — квинта, дроби — микротюнинг тембра">
+                      <label data-help="operator-ratio" title={msg("instrumentEditor.frequencyRatioToTheNote2Is")}>
                         ×
                         <NumField
                           value={Math.round(p.ratio * 100) / 100} min={0.25} max={64} step={0.25} narrow
@@ -641,14 +632,14 @@ export function InstrumentEditor({
                         />
                       </label>
                       {p.mod === undefined ? (
-                        <label data-help="operator-level" title="Громкость строки в сумме, %">
+                        <label data-help="operator-level" title={msg("instrumentEditor.operatorLevelInTheSum")}>
                           <NumField
                             value={Math.round(p.amp * 100)} min={0} max={100} step={5} narrow
                             onChange={(v) => setPartial(i, { amp: v / 100 })}
                           />%
                         </label>
                       ) : (
-                        <label data-help="operator-level" title="Глубина модуляции (индекс): девиация частоты цели = индекс × частота ноты × множитель строки. 1–3 — мягкие тембры, 5+ — ржа и металл">
+                        <label data-help="operator-level" title={msg("instrumentEditor.fmIndexTargetFrequencyDeviationIndexNote")}>
                           <NumField
                             value={Math.round(p.amp * 10) / 10} min={0} max={24} step={0.1} narrow
                             onChange={(v) => setPartial(i, { amp: v })}
@@ -657,14 +648,14 @@ export function InstrumentEditor({
                       )}
                       <select
                         value={p.type}
-                        data-help="operator-shape" title="Форма строки"
+                        data-help="operator-shape" title={msg("instrumentEditor.operatorWaveform")}
                         onChange={(e) => setPartial(i, { type: e.target.value as WavePartial['type'] })}
                       >
                         {(Object.keys(PARTIAL_TYPE_LABELS) as WavePartial['type'][]).map((t) => (
                           <option key={t} value={t}>{PARTIAL_TYPE_LABELS[t]}</option>
                         ))}
                       </select>
-                      <label title="Собственный хвост строки (T60): гаснет сам и переживает релиз ноты — звон колокола, темнеющая струна. 0 — живёт под общей огибающей">
+                      <label title={msg("instrumentEditor.operatorTailT60DecaysIndependentlyAndMay")}>
                         <NumField help="operator-tail"
                           value={p.decay ?? 0} min={0} max={8} step={0.05} narrow
                           onChange={(v) => setPartial(i, v <= 0.001 ? { decay: undefined } : { decay: v })}
@@ -672,17 +663,17 @@ export function InstrumentEditor({
                       </label>
                       <select
                         value={p.mod === undefined ? 'sum' : String(p.mod)}
-                        data-help="operator-route" title="Маршрут: в сумму или модулировать частоту другой строки (FM-оператор)"
+                        data-help="operator-route" title={msg("instrumentEditor.routeToTheOutputSumOrModulate")}
                         onChange={(e) => {
                           const v = e.target.value;
                           setPartial(i, v === 'sum' ? { mod: undefined } : { mod: Number(v) });
                         }}
                       >
-                        <option value="sum">в сумму</option>
+                        <option value="sum">{msg("instrumentEditor.toOutput")}</option>
                         {wave.partials.map((q, j) =>
                           j !== i ? (
                             <option key={j} value={j} disabled={!canRouteWave(wave.partials, i, j)}>
-                              мод. ×{Math.round(q.ratio * 100) / 100}
+                              {msg("instrumentEditor.mod")}{Math.round(q.ratio * 100) / 100}
                             </option>
                           ) : null,
                         )}
@@ -690,17 +681,16 @@ export function InstrumentEditor({
                     </div>
                   ))}
                   <div className="we-row">
-                    <button data-help="operator-add" onClick={addPartial} title="Добавить строку-оператор">+ строка</button>
+                    <button data-help="operator-add" onClick={addPartial} title={msg("instrumentEditor.addAnOperatorRow")}>{msg("instrumentEditor.operator")}</button>
                     {hasNoise && (
-                      <label title="Размер зерна шумовых строк, мс: 10 — пыль, 100 — крупа, 300 — лоскуты">
-                        зерно шума, мс
-                        <NumField
+                      <label title={msg("instrumentEditor.noiseGrainSizeMs10ForDust")}>
+                        {msg("instrumentEditor.noiseGrainMs")}<NumField
                           value={Math.round(wave.noiseGrainMs ?? 40)} min={5} max={500} step={5}
                           onChange={(v) => setDraft({ ...wave, noiseGrainMs: Math.round(v) })}
                         />
                       </label>
                     )}
-                    <span className="mini-info">{wave.partials.length}/64 строк</span>
+                    <span className="mini-info">{wave.partials.length}{msg("instrumentEditor.64Operators")}</span>
                   </div>
                 </div>
               </div>
@@ -708,82 +698,79 @@ export function InstrumentEditor({
               {/* Правая панель: слои тембра, не привязанные к строкам. */}
               <div className="we-layers" data-ob="we-layers">
                 <div className="group sub" data-ob="unison-group">
-                  <span className="sub-cap">унисон</span>
+                  <span className="sub-cap">{msg("instrumentEditor.unison")}</span>
                   {isSample && !scratchMode && (
                     <span
                       className="scope-cap"
-                      title="Унисон на сэмпле — N копий со скоростью ±детюн (хорус/стена из одного сэмпла); в гранулярном режиме — разброс зёрен"
+                      title={msg("instrumentEditor.sampleUnisonDetunedPlaybackCopiesForA")}
                     >
-                      сэмпл
-                    </span>
+                      {msg("instrumentEditor.sample")}</span>
                   )}
                   {scratchMode && (
-                    <span className="scope-cap" title="Скрэтчу унисон не нужен: скорость задаёт жест иглы">
-                      скрэтч
-                    </span>
+                    <span className="scope-cap" title={msg("instrumentEditor.scratchPlaybackFollowsTheNeedleGestureAnd")}>
+                      {msg("instrumentEditor.scratch")}</span>
                   )}
                   <span className={'knob-row' + (scratchMode ? ' dim' : '')}>
                     <Knob help="instrument.unisonVoices"
-                      label="голоса"
-                      title="Унисон: сколько расстроенных копий играет на ноту. 1 — обычный голос; 3–5 — жирнее и шире (супер-пила = пила + унисон). Двойной клик — точное число"
+                      label={msg("instrumentEditor.voices")}
+                      title={msg("instrumentEditor.detunedCopiesPerNote1IsA")}
                       value={st.unisonVoices ?? 1} min={1} max={8} step={1}
                       onChange={(unisonVoices) => onChangeInst({ unisonVoices })}
                     />
                     <Knob help="instrument.unisonDetune"
-                      label="детюн"
-                      title="Унисон: расстройка крайнего голоса в центах. 5–10 — лёгкий хорус; 20–40 — широкая стена. Двойной клик — точное число"
+                      label={msg("instrumentEditor.detune")}
+                      title={msg("instrumentEditor.detuneOfTheOutermostUnisonVoiceIn")}
                       value={st.unisonDetune ?? 12} min={0} max={50} step={1}
                       onChange={(unisonDetune) => onChangeInst({ unisonDetune })}
                     />
                     <Knob help="instrument.unisonSpread"
-                      label="разброс"
-                      title="Унисон: развод голосов по каналам (стерео-ширина), 0 — в центре. Двойной клик — точное число"
+                      label={msg("instrumentEditor.width")}
+                      title={msg("instrumentEditor.stereoSpreadOfUnisonVoices0Places")}
                       value={Math.round((st.unisonSpread ?? 0) * 100)} min={0} max={100} step={5}
                       onChange={(v) => onChangeInst({ unisonSpread: v / 100 })}
                     />
                   </span>
                 </div>
                 <div className="group sub knob-row">
-                  <span className="sub-cap">вибрато</span>
+                  <span className="sub-cap">{msg("instrumentEditor.vibrato")}</span>
                   <Knob help="instrument.vibratoRate"
-                    label="скорость"
-                    title="Вибрато: частота качания высоты тона (Гц). 5–6 Гц — классическое певческое; 10–20 — нервное дрожание воббл-баса. Двойной клик — точное число"
+                    label={msg("instrumentEditor.rate")}
+                    title={msg("instrumentEditor.pitchOscillationRateHzTry56")}
                     value={st.vibratoRate ?? 5} min={0.1} max={30} step={0.1}
                     onChange={(vibratoRate) => onChangeInst({ vibratoRate })}
                   />
                   <Knob help="instrument.vibratoDepth"
-                    label="глубина"
-                    title="Вибрато: глубина в центах (1/100 полутона). 0 — выключено; 20–50 — заметное; 100 — широкий ук; 200–400 — воющий воббл; 1200 — октава. Двойной клик — точное число"
+                    label={msg("instrumentEditor.depth")}
+                    title={msg("instrumentEditor.vibratoDepthInCents100CentsIs")}
                     value={st.vibratoDepth ?? 0} min={0} max={1200} step={5}
                     onChange={(vibratoDepth) => onChangeInst({ vibratoDepth })}
                   />
                   <Knob help="instrument.vibratoDelay"
-                    label="задержка"
-                    title="Вибрато с задержкой: глубина нарастает от нуля за это время — голос «доплывает» до дрожания, как живое пение. Двойной клик — точное число"
+                    label={msg("instrumentEditor.fadeIn")}
+                    title={msg("instrumentEditor.vibratoDepthGraduallyRisesFromZeroOver")}
                     value={st.vibratoDelay ?? 0} min={0} max={2} step={0.05}
                     onChange={(vibratoDelay) => onChangeInst({ vibratoDelay })}
                   />
                 </div>
                 <div className="group sub" data-ob="formant-group">
-                  <span className="sub-cap">форманты</span>
+                  <span className="sub-cap">{msg("instrumentEditor.formants")}</span>
                   <span
                     className="mini-info"
-                    title="Бугры громкости на фиксированных герцах поверх любой волны и сэмпла: гласная не зависит от высоты ноты (как гортань у человека). Пусто — слой выключен"
+                    title={msg("instrumentEditor.resonantSpectralRegionsAtFixedFrequenciesAdd")}
                   >
-                    бугры, Гц
-                  </span>
+                    {msg("instrumentEditor.frequenciesHz")}</span>
                   {(st.formants ?? []).map((b, i) => (
                     <div className="formant-row" key={i}>
                       <button
                         className="remove"
-                        data-help="formant-delete" title="Убрать форманту"
+                        data-help="formant-delete" title={msg("instrumentEditor.removeFormant")}
                         onClick={() =>
                           onChangeInst({ formants: (st.formants ?? []).filter((_, j) => j !== i) })
                         }
                       >
                         ×
                       </button>
-                      <label data-help="formant-frequency" title="Частота форманты, Гц">
+                      <label data-help="formant-frequency" title={msg("instrumentEditor.formantFrequencyHz")}>
                         <NumField help="formant-frequency"
                           value={Math.round(b.freq)} min={80} max={9000} step={10} narrow
                           onChange={(freq) =>
@@ -793,7 +780,7 @@ export function InstrumentEditor({
                           }
                         />
                       </label>
-                      <label data-help="formant-gain" title="Уровень форманты, ×">
+                      <label data-help="formant-gain" title={msg("instrumentEditor.formantLevel")}>
                         <NumField
                           value={Math.round(b.gain * 100) / 100} min={0} max={2} step={0.05} narrow
                           onChange={(gain) =>
@@ -807,18 +794,17 @@ export function InstrumentEditor({
                   ))}
                   {(st.formants ?? []).length < 5 && (
                     <button
-                      data-help="formant-add" title="Добавить формантный бугор (вокальная гласная — три бугра, заготовка «вокал» ставит их сама)"
+                      data-help="formant-add" title={msg("instrumentEditor.addAFormantPeakTheVocalRecipe")}
                       onClick={() => onChangeInst({ formants: [...(st.formants ?? []), { freq: 800, gain: 1 }] })}
                     >
-                      + формант
-                    </button>
+                      {msg("instrumentEditor.formant")}</button>
                   )}
                 </div>
                 <div className="group sub" data-ob="recipe-pick">
-                  <span className="sub-cap">заготовка волны</span>
+                  <span className="sub-cap">{msg("instrumentEditor.waveformRecipe")}</span>
                   <select
                     value=""
-                    title="Пересобрать таблицу строк из заготовки — ляжет черновиком, огибающая ноты остаётся. «Вокал» ставит форманты, «супер-пила» — унисон"
+                    title={msg("instrumentEditor.buildADraftOperatorSetupFromA")}
                     onChange={(e) => {
                       const id = e.target.value as RecipeId;
                       if (!id) return;
@@ -835,7 +821,7 @@ export function InstrumentEditor({
                       }
                     }}
                   >
-                    <option value="">выбрать…</option>
+                    <option value="">{msg("instrumentEditor.choose")}</option>
                     {(Object.keys(RECIPE_LABELS) as RecipeId[]).map((id) => (
                       <option key={id} value={id}>{RECIPE_LABELS[id]}</option>
                     ))}
@@ -846,13 +832,13 @@ export function InstrumentEditor({
           )}
 
           {isSample && sampleError && <div role="alert" className="sample-load-error">
-            Не удалось загрузить сэмпл: {sampleError} <button onClick={() => setSampleRetry(v => v + 1)}>повторить загрузку</button>
+            {msg("instrumentEditor.couldNotLoadSample")}{sampleError} <button onClick={() => setSampleRetry(v => v + 1)}>{msg("instrumentEditor.retry")}</button>
           </div>}
           {isSample && (!inst.sampleId || !buffer ? (
             <p className="empty">
               {inst.sampleId
-                ? sampleError ? 'Волна недоступна.' : 'сэмпл ещё грузится…'
-                : inst.sampleZones?.length ? 'Основной сэмпл не выбран; ноты внутри настроенных зон используют записи зон.' : 'Основной сэмпл не выбран — выбери из хранилища или загрузи файл.'}
+                ? sampleError ? msg("instrumentEditor.waveformUnavailable") : msg("instrumentEditor.loadingSample")
+                : inst.sampleZones?.length ? msg("instrumentEditor.noMainSampleSelectedNotesWithinConfigured") : msg("instrumentEditor.noMainSampleSelectedChooseOneFrom")}
             </p>
           ) : (
             <>
@@ -872,14 +858,13 @@ export function InstrumentEditor({
               <div className="we-row">
                 <button
                   disabled={!selSec}
-                  title="Прослушать выделенный кусок"
+                  title={msg("instrumentEditor.auditionTheSelectedRegion")}
                   onClick={() => selSec && onPreviewRegion(inst, selSec[0], selSec[1])}
                 >
-                  ▶ выделение
-                </button>
+                  {msg("instrumentEditor.selection")}</button>
                 <button
                   disabled={!selSec}
-                  title="Ноты (и скрэтч) будут играть только этот кусок сэмпла"
+                  title={msg("instrumentEditor.notesAndScratchGesturesWillPlayOnly")}
                   onClick={() =>
                     selSec &&
                     onChangeInst({
@@ -888,53 +873,46 @@ export function InstrumentEditor({
                     })
                   }
                 >
-                  оставить кусок
-                </button>
+                  {msg("instrumentEditor.useRegion")}</button>
                 <button
                   disabled={inst.sampleStart === undefined && inst.sampleEnd === undefined}
-                  title="Убрать обрезку — играть сэмпл целиком"
+                  title={msg("instrumentEditor.clearTheTrimAndPlayTheWhole")}
                   onClick={() => onChangeInst({ sampleStart: undefined, sampleEnd: undefined })}
                 >
-                  сброс
-                </button>
+                  {msg("instrumentEditor.reset156")}</button>
                 <span className="we-sep" />
-                <label title="Начало куска, с">
-                  старт
-                  <NumField help="instrument.sampleStart"
+                <label title={msg("instrumentEditor.regionStartS")}>
+                  {msg("instrumentEditor.start")}<NumField help="instrument.sampleStart"
                     value={Math.round(regStart * 1000) / 1000} min={0} max={Math.max(0.001, dur - 0.001)} step={0.01} narrow
                     onChange={(v) => onChangeInst({ sampleStart: +v.toFixed(4) })}
                   />
                 </label>
-                <label title="Конец куска, с">
-                  конец
-                  <NumField help="instrument.sampleEnd"
+                <label title={msg("instrumentEditor.regionEndS")}>
+                  {msg("instrumentEditor.end")}<NumField help="instrument.sampleEnd"
                     value={Math.round(regEnd * 1000) / 1000} min={0.001} max={dur} step={0.01} narrow
                     onChange={(v) => onChangeInst({ sampleEnd: +v.toFixed(4) })}
                   />
                 </label>
                 {selSec && (
                   <span className="mini-info">
-                    выделено {(selSec[1] - selSec[0]).toFixed(2)} с ({selSec[0].toFixed(2)}–{selSec[1].toFixed(2)})
+                    {msg("instrumentEditor.selected")}{(selSec[1] - selSec[0]).toFixed(2)} {msg("instrumentEditor.s")}{selSec[0].toFixed(2)}–{selSec[1].toFixed(2)})
                   </span>
                 )}
               </div>
               <div className="we-row" data-ob="we-fft">
                 <button
-                  title="Тембровый слепок куска (или всего сэмпла): усреднённый спектр → гармоники, инструмент станет «своей волной» — уйдёт черновиком на вкладку «волна», сравни и примени"
+                  title={msg("instrumentEditor.analyzeTheRegionSAverageSpectrumAnd")}
                   onClick={decompose}
                 >
-                  сэмпл → в волну
-                </button>
-                <label title="Максимум гармоник: 64 — на слух почти оригинал и копеечная нагрузка, 128–256 — точнее, дороже">
-                  точность
-                  <NumField
+                  {msg("instrumentEditor.sampleWaveform")}</button>
+                <label title={msg("instrumentEditor.maximumHarmonicCountMoreHarmonicsCanDescribe")}>
+                  {msg("instrumentEditor.harmonics")}<NumField
                     value={fftK} min={8} max={256} step={8} narrow
                     onChange={(v) => setFftK(Math.round(v))}
                   />
                 </label>
-                <label title="Основная частота, Гц: 0 — определить автоматически (автокорреляция). Нетональному материалу задай сам">
-                  f0, Гц
-                  <NumField
+                <label title={msg("instrumentEditor.fundamentalFrequencyHz0UsesAutomaticDetection")}>
+                  {msg("instrumentEditor.f0Hz")}<NumField
                     value={Math.round(f0Manual)} min={0} max={2000} step={5} narrow
                     onChange={(v) => setF0Manual(v)}
                   />
@@ -943,17 +921,16 @@ export function InstrumentEditor({
               {!layerSource && <div className="we-row ai-transform">
                 <input
                   className="gen-prompt"
-                  placeholder="преобразовать по описанию: темнее, с реверберацией, замедленно…"
-                  title="ИИ-морфинг сэмпла (audio-to-audio, fal.ai): опиши, что сделать с этим звуком — результат ляжет в слот новым сэмпла, исходник останется в библиотеке"
+                  placeholder={msg("instrumentEditor.describeAChangeDarkerWithReverbSlower")}
+                  title={msg("instrumentEditor.aiSampleTransformationAudioToAudioFal")}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && aiPrompt.trim()) onTransformSample(track.id, aiPrompt.trim(), aiStrength, aiDuration);
                   }}
                 />
-                <label title="Сила морфинга: 20% — лёгкая приправа, 80% — почти новый звук">
-                  сила
-                  <NumField
+                <label title={msg("instrumentEditor.transformationStrengthLowValuesFavorSubtleChanges")}>
+                  {msg("instrumentEditor.strength")}<NumField
                     value={Math.round(aiStrength * 100)} min={5} max={100} step={5} narrow
                     onChange={(v) => setAiStrength(v / 100)}
                   />%
@@ -962,7 +939,7 @@ export function InstrumentEditor({
                   disabled={!aiPrompt.trim() || busy}
                   onClick={() => onTransformSample(track.id, aiPrompt.trim(), aiStrength, aiDuration)}
                 >
-                  {busy ? 'преобразую…' : 'преобразовать'}
+                  {busy ? msg("instrumentEditor.transforming") : msg("instrumentEditor.transform")}
                 </button>
               </div>}
             </>
@@ -970,28 +947,25 @@ export function InstrumentEditor({
 
           {isSample && (
             <div className="inline sampler-tuning">
-              <label title="Высота = тоника дорожки × отношение шкалы. Выключено — прежнее воспроизведение по отношениям шкалы">
+              <label title={msg("instrumentEditor.pitchTrackRootFrequencyTuningRatioWhen")}>
                 <input type="checkbox" checked={inst.keyTracking ?? false}
                   onChange={(e) => onChangeInst({ keyTracking: e.target.checked })} />
-                тональный сэмпл
-              </label>
-              <label title="Частота исходной записи; используется только для тонального сэмпла">
-                тоника записи, Гц
-                <NumField help="instrument.rootHz" value={inst.rootHz ?? 440} {...parameterRange('instrument.rootHz')}
+                {msg("instrumentEditor.pitchedSample")}</label>
+              <label title={msg("instrumentEditor.fundamentalFrequencyOfTheRecordingUsedFor")}>
+                {msg("instrumentEditor.sampleRootHz")}<NumField help="instrument.rootHz" value={inst.rootHz ?? 440} {...parameterRange('instrument.rootHz')}
                   onChange={(rootHz) => onChangeInst({ rootHz })} />
               </label>
             </div>
           )}
           {isSample && (
-            <label title="Как сэмплер играет буфер: напрямую (нота = сэмпл целиком с новой скоростью), гранулярно (нота = облако коротких осколков) или скрэтчем (нота = жест иглы)" data-ob="sample-mode">
-              режим
-              <select
+            <label title={msg("instrumentEditor.directPlaysTheRecordingAtTheNote")} data-ob="sample-mode">
+              {msg("instrumentEditor.mode")}<select
                 value={st.sampleMode ?? 'plain'}
                 onChange={(e) => onChangeInst({ sampleMode: e.target.value as Instrument['sampleMode'] })}
               >
-                <option value="plain">прямой</option>
-                <option value="grain">гранулярный</option>
-                <option value="scratch">скрэтч</option>
+                <option value="plain">{msg("instrumentEditor.direct")}</option>
+                <option value="grain">{msg("instrumentEditor.granular")}</option>
+                <option value="scratch">{msg("instrumentEditor.scratch")}</option>
               </select>
             </label>
           )}
@@ -1000,11 +974,11 @@ export function InstrumentEditor({
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
             <div className="inline sampler-tuning">
               <label><input data-help="sample-reverse" type="checkbox" checked={inst.sampleReverse ?? false}
-                onChange={(e) => onChangeInst({ sampleReverse: e.target.checked })} />реверс фрагмента</label>
+                onChange={(e) => onChangeInst({ sampleReverse: e.target.checked })} />{msg("instrumentEditor.reverseRegion")}</label>
               <label><input data-help="sample-loop" type="checkbox" checked={inst.sampleLoop ?? false}
-                onChange={(e) => onChangeInst({ sampleLoop: e.target.checked })} />петля на длину ноты</label>
-              {inst.sampleLoop && <label title="Сглаживание стыка; ограничено половиной фрагмента. Первая атака сохраняется">
-                стык, мс <NumField help="instrument.loopCrossfadeMs" value={inst.loopCrossfadeMs ?? 10} {...parameterRange('instrument.loopCrossfadeMs')}
+                onChange={(e) => onChangeInst({ sampleLoop: e.target.checked })} />{msg("instrumentEditor.loopForNoteDuration")}</label>
+              {inst.sampleLoop && <label title={msg("instrumentEditor.loopCrossfadeLimitedToHalfTheRegion")}>
+                {msg("instrumentEditor.crossfadeMs")}<NumField help="instrument.loopCrossfadeMs" value={inst.loopCrossfadeMs ?? 10} {...parameterRange('instrument.loopCrossfadeMs')}
                   onChange={(loopCrossfadeMs) => onChangeInst({ loopCrossfadeMs })} />
               </label>}
             </div>
@@ -1013,39 +987,32 @@ export function InstrumentEditor({
             <>
               <span className="inline grain-presets">
                 <button
-                  title="Мелкая крошка: короткие зёрна, много, широкий разброс — шершавая пыль"
+                  title={msg("instrumentEditor.shortGrainsManyOverlapsAndWidePosition")}
                   onClick={() => onChangeInst({ grainSizeMs: 20, grainCount: 24, grainScatter: 0.6 })}
                 >
-                  пыль
-                </button>
+                  {msg("instrumentEditor.dust")}</button>
                 <button
-                  title="Тёплое облако: средние зёрна, плотный поток"
+                  title={msg("instrumentEditor.mediumGrainsAndADenseStreamFor")}
                   onClick={() => onChangeInst({ grainSizeMs: 180, grainCount: 12, grainScatter: 0.25 })}
                 >
-                  облако
-                </button>
+                  {msg("instrumentEditor.cloud")}</button>
                 <button
-                  title="Почти цельные куски: длинные зёрна, мало, из одного места — лента"
+                  title={msg("instrumentEditor.longGrainsFewerOverlapsAndAFixed")}
                   onClick={() => onChangeInst({ grainSizeMs: 400, grainCount: 4, grainScatter: 0.05 })}
                 >
-                  лента
-                </button>
+                  {msg("instrumentEditor.tape")}</button>
               </span>
-              <label title="Длина осколка (зерна) в миллисекундах: 20–60 — почти крап, 100–300 — тёплое облако, 400+ — почти слышимый сэмпл">
-                зерно, мс
-                <NumField help="instrument.grainSizeMs" value={st.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => onChangeInst({ grainSizeMs })} />
+              <label title={msg("instrumentEditor.grainDurationMsShortGrainsFragmentThe")}>
+                {msg("instrumentEditor.grainMs")}<NumField help="instrument.grainSizeMs" value={st.grainSizeMs ?? 120} min={10} max={800} step={10} onChange={(grainSizeMs) => onChangeInst({ grainSizeMs })} />
               </label>
-              <label title="Сколько зёрен выпускает одна нота — плотность облака. 1–3 — редкие брызги, 15+ — сплошной поток">
-                зёрен на ноту
-                <NumField help="instrument.grainCount" value={st.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => onChangeInst({ grainCount: Math.round(grainCount) })} />
+              <label title={msg("instrumentEditor.grainsEmittedPerNoteLowValuesCreate")}>
+                {msg("instrumentEditor.grainsPerNote")}<NumField help="instrument.grainCount" value={st.grainCount ?? 10} min={1} max={32} onChange={(grainCount) => onChangeInst({ grainCount: Math.round(grainCount) })} />
               </label>
-              <label title="Откуда в сэмпле брать осколки: 0 — начало, 0.5 — середина, 1 — конец">
-                позиция
-                <NumField help="instrument.grainPos" value={Math.round((st.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainPos: v / 100 })} />
+              <label title={msg("instrumentEditor.grainPositionInTheSample0Is")}>
+                {msg("instrumentEditor.position")}<NumField help="instrument.grainPos" value={Math.round((st.grainPos ?? 0.3) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainPos: v / 100 })} />
               </label>
-              <label title="Разброс позиций зёрен вокруг заданной точки: 0 — все из одного места, 1 — по всему сэмпла">
-                разброс
-                <NumField help="instrument.grainScatter" value={Math.round((st.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainScatter: v / 100 })} />
+              <label title={msg("instrumentEditor.spreadOfGrainPositionsAroundTheSelected")}>
+                {msg("instrumentEditor.spread")}<NumField help="instrument.grainScatter" value={Math.round((st.grainScatter ?? 0.15) * 100)} min={0} max={100} step={1} onChange={(v) => onChangeInst({ grainScatter: v / 100 })} />
               </label>
             </>
           )}
@@ -1054,12 +1021,11 @@ export function InstrumentEditor({
             <div className="gen-bar" data-ob="gen-bar">
               <label
                 className="gen-label"
-                title="Опиши звук словами — ИИ сгенерирует сэмпл прямо в слот. Например: «глубокий басовый удар с глиной», «хрустящее стеклянное тиканье», «шорох виниловой пыли»"
+                title={msg("instrumentEditor.describeASoundAndAIGeneratesA")}
               >
-                описание
-                <input
+                {msg("instrumentEditor.description")}<input
                   className="gen-prompt"
-                  placeholder="например: глубокий басовый удар с глиной, хрустящее стеклянное тиканье, шорох виниловой пыли…"
+                  placeholder={msg("instrumentEditor.eGADeepEarthyBassHit")}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={(e) => {
@@ -1067,24 +1033,23 @@ export function InstrumentEditor({
                   }}
                 />
               </label>
-              <label title="Длительность сэмпла в секундах">
-                сек
-                <NumField
+              <label title={msg("instrumentEditor.sampleDurationInSeconds")}>
+                {msg("instrumentEditor.s206")}<NumField
                   value={genSeconds} min={0.5} max={20} step={0.5}
                   onChange={(v) => setGenSeconds(v)}
                 />
               </label>
               <button
                 disabled={busy || !prompt.trim()}
-                title="Сгенерировать и положить в слот (Enter в поле тоже работает)"
+                title={msg("instrumentEditor.generateAndAssignToTheSlotEnter")}
                 onClick={() => onGenerateSample(track.id, prompt.trim(), genSeconds)}
               >
-                {busy ? 'генерирую…' : 'сгенерировать'}
+                {busy ? msg("instrumentEditor.generating") : msg("instrumentEditor.generate")}
               </button>
               {st.sampleName && !busy && (
-                <span className="mini-info" title="Сейчас в слоте">в слоте: {st.sampleName}</span>
+                <span className="mini-info" title={msg("instrumentEditor.currentSample")}>{msg("instrumentEditor.inSlot")}{st.sampleName}</span>
               )}
-              <HelpHint guide="samples" step={3} scope={scope} label="Гид: сгенерировать сэмпл" />
+              <HelpHint guide="samples" step={3} scope={scope} label={msg("instrumentEditor.guideGenerateASample")} />
             </div>
           )}
 
@@ -1094,41 +1059,40 @@ export function InstrumentEditor({
                 {!layerSource && <button
                   className={scratchArmed || scratchLive ? 'on' : ''}
                   data-ob="scratch-rec"
-                  title="Нажми — и проведи мышью по пэду: путь запишется жестом (до 48 сглаженных точек). Отпустишь — запись закончится сама"
+                  title={msg("instrumentEditor.pressAndDragAcrossThePadTo")}
                   onClick={() => setScratchArmed((v) => !v)}
                 >
-                  {scratchArmed || scratchLive ? '● веди по пэду…' : '● записать жест'}
+                  {scratchArmed || scratchLive ? msg("instrumentEditor.dragAcrossThePad") : msg("instrumentEditor.recordGesture")}
                 </button>}
                 {(st.scratchPoints ?? []).length > 0 && (
                   <button
-                    title="Стереть жест: пэд станет пустым (границы куска не трогаются)"
+                    title={msg("instrumentEditor.clearTheGestureWithoutChangingTheSample")}
                     onClick={() => onChangeInst({ scratchPoints: [] })}
                   >
-                    очистить жест
-                  </button>
+                    {msg("instrumentEditor.clearGesture")}</button>
                 )}
                 <button
                   className={scratchPlaying ? 'on' : ''}
                   data-ob="scratch-play"
-                  title="Проиграть жест одной нотой — проверить, как он звучит в нотах"
+                  title={msg("instrumentEditor.auditionTheGestureAsASingleNote")}
                   onClick={() => {
                     onScratchPreview();
                     setScratchPlaying(true);
                     window.setTimeout(() => setScratchPlaying(false), (noteSec + 0.15) * 1000);
                   }}
                 >
-                  {scratchPlaying ? '▶ играет…' : '▶ послушать'}
+                  {scratchPlaying ? msg("instrumentEditor.playing") : msg("instrumentEditor.audition220")}
                 </button>
                 {!layerSource && <button
                   disabled={scratchSaving}
                   data-ob="scratch-save"
-                  title="Назвать и заморозить жест: справа появится поле имени — «ок» отрендерит WAV в библиотеку сэмплов, готовый скрэтч без пэда и точек"
+                  title={msg("instrumentEditor.nameAndRenderTheGestureAsA")}
                   onClick={() => {
-                    setScratchName(`${track.name} скрэтч`);
+                    setScratchName(msg("instrumentEditor.scratch222", {p0: track.name}));
                     setScratchNaming(true);
                   }}
                 >
-                  {scratchSaving ? 'рендер…' : 'в сэмпл'}
+                  {scratchSaving ? msg("instrumentEditor.rendering") : msg("instrumentEditor.renderToSample")}
                 </button>}
                 {scratchNaming && !scratchSaving && (
                   <>
@@ -1138,7 +1102,7 @@ export function InstrumentEditor({
                       autoFocus
                       value={scratchName}
                       spellCheck={false}
-                      title="Имя, под которым жест ляжет в библиотеку — файл будет называться ровно так. Одинаковые имена различай сам: например, дописывай номер"
+                      title={msg("instrumentEditor.nameUsedInTheSampleLibraryAnd")}
                       onChange={(e) => setScratchName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') saveScratchNamed();
@@ -1147,14 +1111,13 @@ export function InstrumentEditor({
                     />
                     <button
                       className="scratch-ok"
-                      title="Сохранить жест в библиотеку под этим именем"
+                      title={msg("instrumentEditor.saveTheGestureToTheLibraryWith")}
                       onClick={saveScratchNamed}
                     >
-                      ок
-                    </button>
+                      {msg("instrumentEditor.ok")}</button>
                     <button
                       className="scratch-cancel"
-                      title="Отменить — жест не сохранится"
+                      title={msg("instrumentEditor.cancelWithoutSavingTheGesture")}
                       onClick={() => setScratchNaming(false)}
                     >
                       ×
@@ -1162,22 +1125,21 @@ export function InstrumentEditor({
                   </>
                 )}
                 {scratchSavedTick && (
-                  <span className="scratch-saved" title="Жест в библиотеке сэмплов">
+                  <span className="scratch-saved" title={msg("instrumentEditor.gestureSavedToTheSampleLibrary")}>
                     ✓
                   </span>
                 )}
-                <HelpHint guide="scratch" scope={scope} label="Гид: скрэтч жестом" />
+                <HelpHint guide="scratch" scope={scope} label={msg("instrumentEditor.guideScratchGestures")} />
                 <span
                   className="mini-info"
-                  title="Длительность жеста = длина ноты: «нота» в тулбаре стана (шаги) или атака+спад во вкладке «огибающая»"
+                  title={msg("instrumentEditor.theGestureFollowsTheNoteDurationSet")}
                 >
-                  жест ≈ {noteSec.toFixed(2)} с
-                </span>
+                  {msg("instrumentEditor.gesture")}{noteSec.toFixed(2)} {msg("instrumentEditor.s233")}</span>
               </div>
               <div className="scratch-row">
                 <div
                   className="scratch-side"
-                  title="Кусок сэмпла: тяни верхнюю или нижнюю границу — подвинешь конец/начало куска. Полоски — громкость"
+                  title={msg("instrumentEditor.dragTheUpperOrLowerBoundaryTo")}
                 >
                   <svg
                     className="scratch-map"
@@ -1253,7 +1215,7 @@ export function InstrumentEditor({
                     className="scratch-track"
                     ref={scratchRef}
                     data-ob="scratch-pad"
-                    title="Жест иглы. Клик — добавить точку, тянуть точку — править, правый клик — удалить. Наклон = скорость иглы: круче — быстрее"
+                    title={msg("instrumentEditor.clickToAddANeedlePositionPoint")}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;
                       const el = scratchRef.current;
@@ -1374,7 +1336,7 @@ export function InstrumentEditor({
                         key={i}
                         className="scratch-dot"
                         style={{ left: `${pt.t * 100}%`, top: `${(1 - pt.pos) * 100}%` }}
-                        title={`место ${Math.round(pt.pos * 100)}% · момент ${Math.round(pt.t * 100)}% ноты · тянуть — править, правый клик — удалить`}
+                        title={msg("instrumentEditor.positionTimeOfNoteDragToEdit", {p0: Math.round(pt.pos * 100), p1: Math.round(pt.t * 100)})}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -1383,13 +1345,13 @@ export function InstrumentEditor({
                       />
                     ))}
                     {(scratchArmed || scratchLive) && (
-                      <span className="scratch-hint">идёт запись — веди мышью по пэду</span>
+                      <span className="scratch-hint">{msg("instrumentEditor.recordingDragAcrossThePad")}</span>
                     )}
                     {(st.scratchPoints ?? []).length === 0 && !dragPts && !scratchArmed && (
-                      <span className="scratch-hint" data-help="scratch-pad" title="Клик добавляет точку; несколько точек задают движение иглы">нет жеста</span>
+                      <span className="scratch-hint" data-help="scratch-pad" title={msg("instrumentEditor.clickToAddAPointMultiplePoints")}>{msg("instrumentEditor.noGesture")}</span>
                     )}
                   </div>
-                  <span className="scratch-axis">время ноты →</span>
+                  <span className="scratch-axis">{msg("instrumentEditor.noteTime")}</span>
                 </div>
               </div>
             </div>
@@ -1400,14 +1362,14 @@ export function InstrumentEditor({
         <div className="we-body">
           <div className="env-tab" data-ob="env-tab">
             <div className="mseg-targets" data-help="mseg-target">
-              {(['amp', 'pitch', 'filter'] as const).map(target => <button key={target} aria-pressed={envelopeTarget === target} onClick={() => setEnvelopeTarget(target)}>{({amp:'громкость',pitch:'высота',filter:'локальный фильтр'})[target]}{(target === 'pitch' ? st.pitchMseg : target === 'filter' ? st.filterMseg : st.ampMseg) ? ' ·' : ''}</button>)}
-              <button onClick={() => onPreviewNote(inst)} data-help="mseg-listen">▶ послушать</button>
+              {(['amp', 'pitch', 'filter'] as const).map(target => <button key={target} aria-pressed={envelopeTarget === target} onClick={() => setEnvelopeTarget(target)}>{({amp:msg("instrumentEditor.amplitude"),pitch:msg("instrumentEditor.pitch"),filter:msg("instrumentEditor.localFilter")})[target]}{(target === 'pitch' ? st.pitchMseg : target === 'filter' ? st.filterMseg : st.ampMseg) ? ' ·' : ''}</button>)}
+              <button onClick={() => onPreviewNote(inst)} data-help="mseg-listen">{msg("instrumentEditor.audition244")}</button>
             </div>
             {envelopeTarget !== 'amp' ? <ControlEnvelopeEditor key={envelopeTarget} target={envelopeTarget} inst={inst} onChange={onChangeInst} /> : <>
 
-            <div className="mseg-toolbar" data-ob="envelope-mode"><span>громкость ноты</span><select aria-label="Режим огибающей" value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">атака · плато · спад</option><option value="points">по точкам (MSEG)</option></select></div>
+            <div className="mseg-toolbar" data-ob="envelope-mode"><span>{msg("instrumentEditor.noteAmplitude")}</span><select aria-label={msg("instrumentEditor.envelopeMode")} value={st.ampMseg ? 'points' : 'classic'} onChange={e => onChangeInst({ ampMseg: e.target.value === 'points' ? { seconds: .5, points: structuredClone(MSEG_SHAPES['удар']) } : undefined })}><option value="classic">{msg("instrumentEditor.attackHoldDecay")}</option><option value="points">{msg("instrumentEditor.breakpointsMSEG")}</option></select></div>
             {st.ampMseg ? <MsegEditor value={st.ampMseg} onChange={(ampMseg, command) => onChangeInst({ ampMseg }, command)} /> : <>
-            <span className="sub-cap" data-help="tab-env" title="Громкость и падение тона на одной оси времени">форма ноты</span>
+            <span className="sub-cap" data-help="tab-env" title={msg("instrumentEditor.amplitudeAndPitchDropOnOneTimeline")}>{msg("instrumentEditor.noteShape")}</span>
             <NoteGraph
               attack={st.attack}
               decay={st.decay}
@@ -1423,23 +1385,23 @@ export function InstrumentEditor({
             />
             <div className="env-fields">
               <Knob help="instrument.attack"
-                label="атака, мс"
-                title="За сколько миллисекунд нота достигает полной громкости. Быстрые — удар, медленные — мягкие. Двойной клик — точное число"
+                label={msg("instrumentEditor.attackMs")}
+                title={msg("instrumentEditor.timeForAmplitudeToRiseToIts")}
                 value={Math.round(Math.max(st.attack, 0.0005) * 1000)} min={0} max={500} step={1}
                 onChange={(ms) => onChangeInst({ attack: Math.max(0.0005, ms / 1000) })}
               />
               <Knob help="instrument.sustain"
-                label="плато, %"
-                title="Плато (sustain): доля ноты на полной громкости после атаки, остаток — спад. 0% — сразу спад после атаки (перкуссионный хвост); 50–90% — тянущиеся ноты с мягким затуханием; 100% — тянется до перебоя (до 16 с), пока следующая нота не перехватит. Двойной клик — точное число"
+                label={msg("instrumentEditor.hold")}
+                title={msg("instrumentEditor.proportionOfTimeAfterTheAttackHeld")}
                 value={Math.round((st.sustain ?? 0) * 100)} min={0} max={100} step={5}
                 onChange={(v) => onChangeInst({ sustain: v / 100 })}
               />
               <Knob help="instrument.decay"
-                label="спад, с"
+                label={msg("instrumentEditor.decayS")}
                 title={
                   st.waveform === 'sample'
-                    ? 'Сколько секунд звучит нота — сэмпл длиннее обрезается. Для длинных сэмплов ставь больше'
-                    : 'Сколько секунд звучит нота после удара'
+                    ? msg("instrumentEditor.fadeOutTimeAfterThePeakHold")
+                    : msg("instrumentEditor.fadeOutTimeAfterThePeakHold258")
                 }
                 value={st.decay} min={0.01} max={4} step={0.01}
                 onChange={(decay) => onChangeInst({ decay })}
@@ -1447,24 +1409,23 @@ export function InstrumentEditor({
             </div></>}
             <div className="env-fields">
               <Knob help="instrument.pitchDrop"
-                label="падение, ×"
-                title="Нота стартует во столько раз выше тоники и слетает вниз за время падения — так делается бочка («вумп»). 1 — выключено. Не работает на шуме и струне; на сэмпле (прямом и гранулярном) рампит скорость воспроизведения. Двойной клик — точное число"
+                label={msg("instrumentEditor.pitchDrop")}
+                title={msg("instrumentEditor.theNoteStartsAtThisMultipleOf")}
                 value={st.pitchDrop} min={1} max={16} step={0.5}
                 onChange={(pitchDrop) => onChangeInst({ pitchDrop })}
               />
               <Knob help="instrument.pitchTime"
-                label="время падения, с"
-                title="За сколько секунд тон падает от верха до тоники. Бочке обычно 0.05–0.12. Двойной клик — точное число"
+                label={msg("instrumentEditor.dropTimeS")}
+                title={msg("instrumentEditor.timeForPitchToFallToIts")}
                 value={st.pitchTime} min={0} max={2} step={0.01}
                 onChange={(pitchTime) => onChangeInst({ pitchTime })}
               />
               <button
                 className="env-listen"
-                title="Прослушать ноту с этой огибающей, фильтрами и падением тона"
+                title={msg("instrumentEditor.auditionTheNoteWithThisEnvelopeFiltering")}
                 onClick={() => onPreviewNote(inst)}
               >
-                ▶ послушать
-              </button>
+                {msg("instrumentEditor.audition264")}</button>
             </div>
             </>}
           </div>
@@ -1474,64 +1435,64 @@ export function InstrumentEditor({
       {tab === 'timbre' && (
         <div className="we-body">
           <div className="group sub" data-ob="voice-color">
-                <span className="sub-cap" title="Окраска голоса до эффектов дорожки">характер голоса</span>
+                <span className="sub-cap" title={msg("instrumentEditor.voiceColorationBeforeTrackEffects")}>{msg("instrumentEditor.voiceColor")}</span>
             <div className="mseg-toolbar">
-              <label>ring, % <NumField help="instrument.ringMix" ariaLabel="Доля ring, %" value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
-              <label>частота × <NumField help="instrument.ringRatio" ariaLabel="Частота ring, ×" value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>
+              <label>ring, % <NumField help="instrument.ringMix" ariaLabel={msg("instrumentEditor.ringModulationMix")} value={(inst.ringMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ ringMix: v / 100 })} /></label>
+              <label>{msg("instrumentEditor.frequency")}<NumField help="instrument.ringRatio" ariaLabel={msg("instrumentEditor.ringModulationFrequencyRatio")} value={inst.ringRatio ?? 1} min={.125} max={16} step={.01} onChange={ringRatio => onChangeInst({ ringRatio })} /></label>
               <label>wavefold <NumField help="instrument.foldDrive" ariaLabel="Wavefold" value={inst.foldDrive ?? 0} min={0} max={8} step={.1} onChange={foldDrive => onChangeInst({ foldDrive })} /></label>
-              <select data-help="wave-quality" aria-label="Качество wavefold" value={inst.synthQuality ?? '4x'} onChange={e => onChangeInst({ synthQuality: e.target.value as '2x' | '4x' })}><option value="4x">качество 4×</option><option value="2x">экономия 2×</option></select>
+              <select data-help="wave-quality" aria-label={msg("instrumentEditor.wavefolderOversampling")} value={inst.synthQuality ?? '4x'} onChange={e => onChangeInst({ synthQuality: e.target.value as '2x' | '4x' })}><option value="4x">{msg("instrumentEditor.quality4")}</option><option value="2x">{msg("instrumentEditor.economy2")}</option></select>
             </div>
             <div className="mseg-toolbar">
-              <label>comb, % <NumField help="instrument.combMix" ariaLabel="Доля comb, %" value={(inst.combMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ combMix: v / 100 })} /></label>
-              <label>резонанс, Гц <NumField help="instrument.combHz" ariaLabel="Резонанс comb, Гц" value={inst.combHz ?? 220} min={40} max={4000} step={1} onChange={combHz => onChangeInst({ combHz })} /></label>
-              <label>звонкость, % <NumField help="instrument.combFeedback" ariaLabel="Звонкость comb, %" value={(inst.combFeedback ?? .5) * 100} min={0} max={85} step={1} onChange={v => onChangeInst({ combFeedback: v / 100 })} /></label>
+              <label>comb, % <NumField help="instrument.combMix" ariaLabel={msg("instrumentEditor.combFilterMix")} value={(inst.combMix ?? 0) * 100} min={0} max={100} step={1} onChange={v => onChangeInst({ combMix: v / 100 })} /></label>
+              <label>{msg("instrumentEditor.frequencyHz")}<NumField help="instrument.combHz" ariaLabel={msg("instrumentEditor.combFilterFrequencyHz")} value={inst.combHz ?? 220} min={40} max={4000} step={1} onChange={combHz => onChangeInst({ combHz })} /></label>
+              <label>{msg("instrumentEditor.feedback")}<NumField help="instrument.combFeedback" ariaLabel={msg("instrumentEditor.combFilterFeedback")} value={(inst.combFeedback ?? .5) * 100} min={0} max={85} step={1} onChange={v => onChangeInst({ combFeedback: v / 100 })} /></label>
             </div>
           </div>
           {/* Вибрато и унисон переехали на «источник» (v39): это слои
               тембра рядом с таблицей операторов, а не вкладка фильтров. */}
           <div className="group sub knob-row" data-ob="timbre-tab">
-            <span className="sub-cap">фильтры</span>
+            <span className="sub-cap">{msg("instrumentEditor.filters")}</span>
             {!layerSource && <Knob help="instrument.filterLow"
-              label="низ"
-              title="Обрезка низа (highpass): убирает гул и рокот ниже этой частоты. У басов аккуратно (не выше 30–40), у хэтов смело поднимай. Двойной клик — точное число"
+              label={msg("instrumentEditor.lowCut")}
+              title={msg("instrumentEditor.highPassCutoffAttenuatesFrequenciesBelowThis")}
               value={st.filterLow} min={20} max={4000} step={10} log
               onChange={(filterLow) => onChangeInst({ filterLow })}
             />}
             <Knob help={layerSource ? "layer-filter-base" : "instrument.filterFreq"}
-              label={layerSource ? "база огиб., Гц" : "верх"}
-              title={layerSource ? "Частота, к которой приходит фильтровая огибающая слоя; действует при ненулевом размахе. Двойной клик — точное число" : "Обрезка верха (lowpass): всё выше частоты приглушается. Меньше — глуше и мягче, больше — ярче и звонче. У баса 200–500, у хэтов 6000+. Двойной клик — точное число"}
+              label={layerSource ? msg("instrumentEditor.envBaseHz") : msg("instrumentEditor.highCut")}
+              title={layerSource ? msg("instrumentEditor.frequencyTheLayerSFilterEnvelopeSettles") : msg("instrumentEditor.lowPassCutoffAttenuatesFrequenciesAboveThis")}
               value={st.filterFreq} min={60} max={12000} step={10} log
               onChange={(filterFreq) => onChangeInst({ filterFreq })}
             />
             {!layerSource && <Knob help="instrument.filterQ"
-              label="резонанс"
-              title="Резонанс фильтра (Q): подъём на частоте среза. 0.8 — ровный обрез; 4–10 — звонкое «горло» (воббл, сквелч); выше 15 — фильтр звенит сам по себе. Двойной клик — точное число"
+              label={msg("instrumentEditor.resonance")}
+              title={msg("instrumentEditor.filterResonanceQEmphasizesFrequenciesNearThe")}
               value={st.filterQ ?? 0.8} min={0.5} max={20} step={0.1}
               onChange={(filterQ) => onChangeInst({ filterQ })}
             />}
-            {st.filterMseg ? <button data-help="mseg-filter" onClick={() => { setEnvelopeTarget('filter'); onTab('env'); }}>фильтр по точкам →</button> : <><Knob help="instrument.filterEnvAmount"
-              label="огиб. ↑↓"
+            {st.filterMseg ? <button data-help="mseg-filter" onClick={() => { setEnvelopeTarget('filter'); onTab('env'); }}>{msg("instrumentEditor.filterBreakpoints")}</button> : <><Knob help="instrument.filterEnvAmount"
+              label={msg("instrumentEditor.envAmount")}
               bipolar
-              title="Огибающая фильтра: старт в полутонах от ручки «верх». Плюс — яркая атака-плак, минус — тёмный свелл; за «время» фильтр съезжает к базе. Двойной клик — точное число"
+              title={msg("instrumentEditor.filterEnvelopeStartOffsetInSemitonesFrom")}
               value={st.filterEnvAmount ?? 0} min={-24} max={24} step={0.5}
               onChange={(filterEnvAmount) => onChangeInst({ filterEnvAmount })}
             />
             <Knob help="instrument.filterEnvTime"
-              label="время"
-              title="Огибающая фильтра: за сколько секунд фильтр съезжает к базе. 0.05–0.2 — щипок, 1+ — плавный свелл. Двойной клик — точное число"
+              label={msg("instrumentEditor.time")}
+              title={msg("instrumentEditor.timeForTheFilterEnvelopeToSettle")}
               value={st.filterEnvTime ?? 0.3} min={0.05} max={2} step={0.05}
               onChange={(filterEnvTime) => onChangeInst({ filterEnvTime })}
             /></>}
           </div>
           {!layerSource && <div className="group sub" data-ob="arp-group">
             <div className="sub-head">
-              <span className="sub-cap">арпеджиатор</span>
-              <span className="scope-cap" title="Арпеджиатор — свойство дорожки: общий для всех её инструментов и эскизов">дорожка</span>
+              <span className="sub-cap">{msg("instrumentEditor.arpeggiator")}</span>
+              <span className="scope-cap" title={msg("instrumentEditor.theArpeggiatorBelongsToTheTrackAnd")}>{msg("instrumentEditor.track")}</span>
               <span className="spacer" />
-              <HelpHint guide="arp" scope={scope} label="Гид: арпеджиатор" />
+              <HelpHint guide="arp" scope={scope} label={msg("instrumentEditor.guideArpeggiator")} />
             </div>
             <label
-              title="Арпеджиатор: аккорд шага играет по нотке — вверх, вниз, вверх-вниз, как сыграно, случайно. Работает и для сэмплов, и для нот"
+              title={msg("instrumentEditor.playAStepSChordOneNote")}
               data-ob="arp"
             >
               <input
@@ -1541,13 +1502,11 @@ export function InstrumentEditor({
                   onChangeTrack({ arp: e.target.checked ? { mode: 'up', div: 1, octaves: 1 } : undefined })
                 }
               />
-              включить
-            </label>
+              {msg("instrumentEditor.enable")}</label>
             {track.arp && (
               <>
-                <label title="Форма фигуры: типы как в Ableton Live. «аккорд» — все ноты разом (как без арпеджиатора)" data-ob="arp-mode">
-                  тип
-                  <select
+                <label title={msg("instrumentEditor.noteOrderForTheArpeggioChordPlays")} data-ob="arp-mode">
+                  {msg("instrumentEditor.order")}<select
                     value={track.arp.mode}
                     onChange={(e) => onChangeTrack({ arp: { ...track.arp!, mode: e.target.value as ArpMode } })}
                   >
@@ -1556,16 +1515,14 @@ export function InstrumentEditor({
                     ))}
                   </select>
                 </label>
-                <label title="На сколько долей дробится шаг: нота делится на равные доли, по ним идёт фигура — перелив умещается внутри ноты. 2 — восьмые внутри ноты, 4 — шестнадцатые" data-ob="arp-speed">
-                  дробление
-                  <NumField
+                <label title={msg("instrumentEditor.numberOfEqualSubdivisionsPerNoteFor")} data-ob="arp-speed">
+                  {msg("instrumentEditor.subdivision")}<NumField
                     value={track.arp.div} min={0.25} max={8} step={0.25} narrow
                     onChange={(div) => onChangeTrack({ arp: { ...track.arp!, div } })}
                   />
                 </label>
-                <label title="Повтор фигуры по октавам — классика арпеджио">
-                  октавы
-                  <NumField
+                <label title={msg("instrumentEditor.repeatTheFigureAcrossOctaves")}>
+                  {msg("instrumentEditor.octaves")}<NumField
                     value={track.arp.octaves} min={1} max={4} narrow
                     onChange={(octaves) => onChangeTrack({ arp: { ...track.arp!, octaves: Math.round(octaves) } })}
                   />

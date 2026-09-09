@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Чипы эскизов дорожки + мьют-чип «M» первым: «не играть» как альтернатива
 // выбору партии. Мьют — свойство слота сцены (v38): дорожка молчит в ЭТОЙ
 // сцене, в других тот же эскиз играет как обычно. Выделено из TrackRow.
@@ -31,6 +32,7 @@ export function PatternChips({
   onForkPattern,
   onRemovePattern,
 }: Props) {
+  useLocale();
   return (
     <div className="pattern-chips" data-ob="chips">
       {/* Мьют — «эскиз тишины» в том же ряду выбора: горит либо он,
@@ -41,8 +43,8 @@ export function PatternChips({
         className={slotMuted ? 'chip mute on-m' : 'chip mute'}
         data-ob="chip-mute"
         title={
-          'Тишина в этой сцене — как пустой эскиз: дорожка молчит, но часы партии идут — сняв мьют, войдёшь в фазе. В других сценах эскиз играет как обычно' +
-          (muteSceneCount > 1 ? `. Мьют в ${muteSceneCount} сценах` : '')
+          msg("patternChips.muteThisTrackInTheCurrentScene") +
+          (muteSceneCount > 1 ? msg("patternChips.mutedInScenes", {p0: muteSceneCount}) : '')
         }
         onClick={() => onToggleSlotMute(track.id)}
       >
@@ -57,9 +59,9 @@ export function PatternChips({
             className={'chip' + (pt.id === pattern.id && !slotMuted ? ' on' : '')}
             title={
               (pt.forkedFrom
-                ? 'вариация (форк). Клик — играть в этой сцене, правый клик — новая вариация от этого'
-                : 'эскиз дорожки — общий для всех сцен, где играет. Клик — играть, правый клик — независимая копия (форк)') +
-              (scenes > 1 ? `. Играет в ${scenes} сценах — правка эскиза меняет его во всех них` : '')
+                ? msg("patternChips.independentVariationClickToPlayInThis")
+                : msg("patternChips.aClipSharedByEverySceneThat")) +
+              (scenes > 1 ? msg("patternChips.usedInScenesEditsAffectAllOf", {p0: scenes}) : '')
             }
             onClick={() => onSelectPattern(track.id, pt.id)}
             onContextMenu={(e) => {
@@ -72,13 +74,13 @@ export function PatternChips({
           </button>
         );
       })}
-      <button className="chip add" data-ob="chip-add" title="Новый пустой эскиз (до 128)" disabled={track.patterns.length >= 128} onClick={() => onAddPattern(track.id)}>
+      <button className="chip add" data-ob="chip-add" title={msg("patternChips.newEmptyClipUpTo128")} disabled={track.patterns.length >= 128} onClick={() => onAddPattern(track.id)}>
         +
       </button>
       {track.patterns.length > 1 && (
         <button
           className="chip del"
-          title={`Удалить эскиз «${pattern.name}» — сцены, где он играл, перейдут на первый оставшийся`}
+          title={msg("patternChips.deleteClipScenesUsingItWillSwitch", {p0: pattern.name})}
           onClick={() => onRemovePattern(track.id, pattern.id)}
         >
           ×

@@ -1,3 +1,4 @@
+import { t as localeText } from './i18n/runtime.ts';
 // Дебаг-мост: приложение — WebSocket-клиент хоста из ИИ-агента (MCP-сервер
 // scripts/mcp-barlow.mjs поднимает ws://127.0.0.1:22756). Подключение
 // включается кодом из настроек; до взаимного proof патч не передаётся.
@@ -75,7 +76,7 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
     if (!authenticated || !ws || ws.readyState !== WebSocket.OPEN) return false;
     const data = JSON.stringify(msg);
     if (new TextEncoder().encode(data).byteLength > BRIDGE_MAX_BYTES) {
-      handlers.onStatus?.({ phase: 'error', message: 'Снимок проекта превышает лимит моста 8 МиБ.' });
+      handlers.onStatus?.({ phase: 'error', message: localeText("bridge.theProjectSnapshotExceedsTheBridgeS") });
       return false;
     }
     ws.send(data);
@@ -124,20 +125,20 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
         }
         if (msg.type !== 'authenticated' || msg.protocol !== BRIDGE_PROTOCOL || !challenge
           || JSON.stringify(capabilities(msg.capabilities)) !== JSON.stringify(capabilities(session.capabilities))
-          || !await verifyProof(session.secret, msg.proof, 'server', challenge, nonce, session.capabilities)) throw new Error('Не удалось подтвердить локальный хост. Проверь код подключения.');
+          || !await verifyProof(session.secret, msg.proof, 'server', challenge, nonce, session.capabilities)) throw new Error(localeText("bridge.couldNotVerifyTheLocalHostCheck"));
         if (disposed || socket !== ws || socket.readyState !== WebSocket.OPEN) return;
         authenticated = true;
         window.clearTimeout(handshakeTimer); handshakeTimer = 0;
         const patch = handlers.getPatch(); lastSentPatch = JSON.stringify(patch);
         if (send({ type: 'hello', app: handlers.appKind, patch, transport: handlers.getTransport() }))
-          handlers.onStatus?.({ phase: 'connected', message: 'Локальный агент подключён.' });
+          handlers.onStatus?.({ phase: 'connected', message: localeText("bridge.localAgentConnected") });
         return;
       }
       const required = ({ get_state: 'read', ping: 'read', set_patch: 'write', set_param: 'write', transport: 'transport' } as Record<string, string>)[String(msg.type)];
-      if (!required || !session.capabilities.some(c => c === required)) throw new Error(`Нет разрешения: ${required ?? 'неизвестная команда'}`);
+      if (!required || !session.capabilities.some(c => c === required)) throw new Error(localeText("bridge.permissionRequired", {p0: required ?? localeText('bridge.unknownCommand')}));
       switch (msg.type) {
         case 'get_state':
-          if (!send({ type: 'patch', patch: handlers.getPatch() })) throw new Error('Не удалось передать снимок проекта');
+          if (!send({ type: 'patch', patch: handlers.getPatch() })) throw new Error(localeText("bridge.couldNotSendTheProjectSnapshot"));
           send({ type: 'transport', transport: handlers.getTransport() });
           // Статус по запросу: хост сам держит последнее, но свежий снапшот
           // полезен сразу после переподключения.
@@ -168,7 +169,7 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
     } catch (e) {
       if (!authenticated) {
         authFailed = true;
-        handlers.onStatus?.({ phase: 'error', message: e instanceof Error ? e.message : 'Ошибка подтверждения хоста.' });
+        handlers.onStatus?.({ phase: 'error', message: e instanceof Error ? e.message : localeText("bridge.hostVerificationFailed") });
         socket.close(4003, 'authentication failed'); return;
       }
       ack(reqId, false, e instanceof Error ? e.message : String(e));
@@ -178,7 +179,7 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
   const connect = () => {
     if (disposed || !session || authFailed) return;
     authenticated = false; challenge = ''; nonce = '';
-    handlers.onStatus?.({ phase: 'connecting', message: 'Подключение к локальному агенту…' });
+    handlers.onStatus?.({ phase: 'connecting', message: localeText("bridge.connectingToTheLocalAgent") });
     try {
       ws = new WebSocket(url);
     } catch {
@@ -197,10 +198,10 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
       authenticated = false;
       if (ev.code === 4001 || ev.code === 4003) {
         authFailed = true;
-        handlers.onStatus?.({ phase: 'error', message: ev.code === 4001 ? 'Агент подключён к другой вкладке. Нажми «подключить», чтобы вернуть управление.' : 'Код подключения отклонён или устарел. Получи новый код у локального агента.' });
+        handlers.onStatus?.({ phase: 'error', message: ev.code === 4001 ? localeText("bridge.theAgentIsConnectedToAnotherTab") : localeText("bridge.thePairingCodeWasRejectedOrHas") });
         return;
       }
-      handlers.onStatus?.({ phase: 'waiting', message: 'Ожидание локального агента…' });
+      handlers.onStatus?.({ phase: 'waiting', message: localeText("bridge.waitingForTheLocalAgent") });
       scheduleReconnect();
     };
     ws.onerror = () => {
@@ -217,7 +218,7 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
   };
 
   connect();
-  if (!session) handlers.onStatus?.({ phase: 'off', message: 'Локальный агент отключён.' });
+  if (!session) handlers.onStatus?.({ phase: 'off', message: localeText("bridge.localAgentDisconnected") });
 
   return {
     pushPatch(patch) {
@@ -254,29 +255,29 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
 /** Применить JSON-указатель (RFC 6901) к объекту, вернув копию.
  *  Родитель пути должен существовать; выходит за патч — исключение. */
 export function setByPointer<T>(root: T, pointer: string, value: unknown): T {
-  if (!pointer.startsWith('/')) throw new Error('указатель должен начинаться с «/»');
+  if (!pointer.startsWith('/')) throw new Error(localeText("bridge.thePointerMustStartWith"));
   const tokens = pointer
     .slice(1)
     .split('/')
     .map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'));
   if (pointer.length > 4096 || tokens.length > 24 || tokens.some(t => ['__proto__', 'prototype', 'constructor'].includes(t)))
-    throw new Error('недопустимый путь параметра');
-  if (tokens.length === 0) throw new Error('пустой указатель');
+    throw new Error(localeText("bridge.invalidParameterPath"));
+  if (tokens.length === 0) throw new Error(localeText("bridge.emptyPointer"));
   const clone = structuredClone(root);
   let node: unknown = clone;
   for (let i = 0; i < tokens.length - 1; i++) {
     if (node === null || typeof node !== 'object') {
-      throw new Error(`путь обрывается на «/${tokens.slice(0, i + 1).join('/')}»`);
+      throw new Error(localeText("bridge.thePathEndsAt", {p0: tokens.slice(0, i + 1).join('/')}));
     }
-    if (!Object.hasOwn(node, tokens[i])) throw new Error('путь должен содержать только собственные поля патча');
+    if (!Object.hasOwn(node, tokens[i])) throw new Error(localeText("bridge.thePathMustContainOnlyThePatch"));
     node = (node as Record<string, unknown>)[tokens[i]];
   }
   if (node === null || typeof node !== 'object') {
-    throw new Error(`родитель «/${tokens.slice(0, -1).join('/')}» — не объект`);
+    throw new Error(localeText("bridge.theParentIsNotAnObject", {p0: tokens.slice(0, -1).join('/')}));
   }
   const key = tokens[tokens.length - 1];
   const holder = node as Record<string, unknown>;
-  if (!Object.hasOwn(holder, key)) throw new Error(`поля «${key}» нет по этому пути`);
+  if (!Object.hasOwn(holder, key)) throw new Error(localeText("bridge.propertyDoesNotExistAtThisPath", {p0: key}));
   holder[key] = value;
   return clone;
 }

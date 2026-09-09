@@ -1,30 +1,52 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { makeTrackWithInstrument, makePattern, makeStep, makeScene, normalizePatch, PATCH_VERSION, type Patch, type Track, type Instrument } from '../types';
 import { tableRecipe } from './wavetable';
 
 export type Lesson = { title: string; goal: string; action: string; listen: string; term: string; check: (p: Patch) => boolean };
+/** Resolve tutorial references against the open copy, including names chosen by the user. */
+export function learningAction(text: string, patch: Patch): string {
+  const refs: [RegExp, string | undefined][] = [
+    [/«Мотив(?:а)?»|\bMotif\b/g, patch.tracks.find(t => t.id === 'learn-track-4')?.name],
+    [/«Осколков»|\bShards\b/g, patch.tracks.find(t => t.id === 'learn-track-2')?.name],
+    [/«Лаборатория»|\bLab\b/g, patch.tracks.length === 1 ? patch.tracks.find(t => t.id === 'learn-track-0')?.name : undefined],
+  ];
+  const scenes: [RegExp, string, string, number][] = [
+    [/«Зерно»|\bSeed\b/g, 'Зерно', 'Seed', 0], [/«Опор[ае]»|\bFoundation\b/g, 'Опора', 'Foundation', 1],
+    [/«Напряжение»|\bTension\b/g, 'Напряжение', 'Tension', 3], [/«Пустот[ае]»|\bSpace\b/g, 'Пустота', 'Space', 4],
+    [/«Вспышке»|\bBurst\b/g, 'Вспышка', 'Burst', 5], [/«Возвращение»|\bReturn\b/g, 'Возвращение', 'Return', 6],
+    [/«Коде»|\bCoda\b/g, 'Кода', 'Coda', 7],
+  ];
+  for (const [pattern, ru, en, index] of scenes) refs.push([pattern, patch.scenes.find(s => s.id === `learn-scene-${index}` || s.name === ru || s.name === en)?.name]);
+  // Single pass: an inserted user name must never be interpreted as another reference.
+  const combined = new RegExp(refs.map(([pattern]) => `(${pattern.source})`).join('|'), 'g');
+  return text.replace(combined, (match: string) => {
+    const found = refs.find(([pattern]) => new RegExp(`^(?:${pattern.source})$`).test(match));
+    return found?.[1] ? `“${found[1]}”` : match;
+  });
+}
 const anyPattern = (p: Patch, f: (s: Patch['tracks'][number]['patterns'][number]) => boolean) => p.tracks.some(t => t.patterns.some(f));
 export const compositionLessons: Lesson[] = [
-  { title:'Зерно идеи', goal:'Узнаваемый мотив связывает начало и финал.', action:'Открой эскиз дорожки «Мотив». Измени одну высоту или один акцент. Прослушай «Зерно» и «Возвращение».', listen:'Узнаётся ли герой после паузы? Слишком много изменений могут стереть сходство.', term:'Мотив — короткий жест, который можно узнать в новом окружении.', check:p => p.tracks.some(t => t.name === 'Мотив' && t.patterns.some(s => s.steps.some(n => n.notes.length))) },
-  { title:'Опора и ответ', goal:'Бас и бочка оставляют друг другу место.', action:'В «Опоре» убери одну ноту баса рядом с бочкой. Сравни с исходником; затем попробуй вернуть её тише.', listen:'Появились ли ясность и дыхание, не пропал ли вес?', term:'Пауза — часть ритма, а не отсутствие материала.', check:p => p.tracks.filter(t => t.name === 'Бас' || t.name === 'Бочка').length === 2 },
-  { title:'Нарушение ожидания', goal:'Независимый цикл меняет окружение устойчивой опоры.', action:'У «Осколков» сравни длины эскиза 7 и 8. Не меняй одновременно темп.', listen:'В каком варианте акценты каждый раз встречаются иначе?', term:'Полиритмия возникает при взаимодействии разных ритмических периодов.', check:p => new Set(p.tracks.flatMap(t => t.patterns.map(s => s.length))).size > 1 },
-  { title:'Нарастание', goal:'Подними напряжение без подъёма мастера.', action:'В эскизе B «Мотива» нарисуй подъём автоматизации фильтра. Прослушай «Напряжение» перед паузой.', listen:'Есть ли направление, а не просто более громкая версия?', term:'Развитие — постепенное изменение знакомого материала.', check:p => anyPattern(p,s => !!s.automation?.some(a => a.target === 'filterFreq')) },
-  { title:'Пустота', goal:'Сделай возвращение сильнее контрастом.', action:'В сцене «Пустота» оставь один голос. Сравни 2 и 4 такта в цепочке.', listen:'Пауза ещё создаёт ожидание или уже теряется связь с пьесой?', term:'Контраст даёт слуху новую точку отсчёта.', check:p => p.scenes.some(s => Object.values(s.slots).filter(v => !v.muted).length === 1) },
-  { title:'Кульминация', goal:'Верни идею в изменённом виде.', action:'В «Вспышке» выбери B у мотива и добавь один ответ перкуссии. Сравни с «Опорой».', listen:'Кульминация отличается содержанием, а не только количеством голосов?', term:'Кульминация — момент максимального напряжения выбранной истории.', check:p => p.scenes.length >= 6 },
-  { title:'Развязка', goal:'Закончи историю намеренно.', action:'В «Коде» оставь мотив и фон, проверь хвост общего пространства. Попробуй закончить на один ответ раньше.', listen:'Последний звук воспринимается завершением или обрывом?', term:'Кода — короткое завершение после главного события.', check:p => !!p.sceneSpace && p.chain.length >= 6 },
-  { title:'Баланс и выпуск', goal:'Сохрани законченную вариацию.', action:'Сравни бас и мотив на тихой громкости. Проверь EQ и экспортируй цепочку в WAV с естественным хвостом через меню «Файл».', listen:'Все роли читаются? Хвост не обрезан? Прослушай начало и конец файла.', term:'Экспорт фиксирует выбранную аранжировку; он не оценивает художественное качество.', check:p => p.followChain && p.chain.length >= 6 },
+  { get title() { return msg("learning.theSeedOfAnIdea"); }, get goal() { return msg("learning.aRecognizableMotifConnectsTheOpeningAnd"); }, get action() { return msg("learning.openAClipOnTheMotifTrack"); }, get listen() { return msg("learning.canYouRecognizeTheMainIdeaAfter"); }, get term() { return msg("learning.aMotifIsAShortMusicalGesture"); }, check:p => p.tracks.some(t => t.id === 'learn-track-4' && t.patterns.some(s => s.steps.some(n => n.notes.length))) },
+  { get title() { return msg("learning.foundationAndResponse"); }, get goal() { return msg("learning.theBassAndKickLeaveRoomFor"); }, get action() { return msg("learning.inFoundationRemoveABassNoteClose"); }, get listen() { return msg("learning.isThereMoreClarityAndBreathingRoom"); }, get term() { return msg("learning.aRestIsPartOfTheRhythm"); }, check:p => p.tracks.filter(t => t.id === 'learn-track-3' || t.id === 'learn-track-0').length === 2 },
+  { get title() { return msg("learning.breakingExpectations"); }, get goal() { return msg("learning.anIndependentCycleChangesTheContextAround"); }, get action() { return msg("learning.compareClipLengthsOf7And8"); }, get listen() { return msg("learning.inWhichVersionDoTheAccentsMeet"); }, get term() { return msg("learning.differentCycleLengthsShiftHowAccentsLine"); }, check:p => new Set(p.tracks.flatMap(t => t.patterns.map(s => s.length))).size > 1 },
+  { get title() { return msg("learning.buildingTension"); }, get goal() { return msg("learning.increaseTensionWithoutTurningUpTheMaster"); }, get action() { return msg("learning.drawARisingFilterAutomationCurveIn"); }, get listen() { return msg("learning.doesItHaveDirectionOrIsIt"); }, get term() { return msg("learning.developmentGraduallyTransformsFamiliarMaterial"); }, check:p => anyPattern(p,s => !!s.automation?.some(a => a.target === 'filterFreq')) },
+  { get title() { return msg("learning.space"); }, get goal() { return msg("learning.makeTheReturnStrongerThroughContrast"); }, get action() { return msg("learning.leaveOneVoiceInTheSpaceScene"); }, get listen() { return msg("learning.doesThePauseStillCreateAnticipationOr"); }, get term() { return msg("learning.contrastGivesTheListenerANewPoint"); }, check:p => p.scenes.some(s => Object.values(s.slots).filter(v => !v.muted).length === 1) },
+  { get title() { return msg("learning.climax"); }, get goal() { return msg("learning.bringTheIdeaBackInAChanged"); }, get action() { return msg("learning.inBurstChooseClipBForThe"); }, get listen() { return msg("learning.doesTheClimaxDifferInSubstanceAs"); }, get term() { return msg("learning.theClimaxIsThePointOfGreatest"); }, check:p => p.scenes.length >= 6 },
+  { get title() { return msg("learning.resolution"); }, get goal() { return msg("learning.endTheStoryDeliberately"); }, get action() { return msg("learning.inCodaLeaveTheMotifAndAtmosphere"); }, get listen() { return msg("learning.doesTheLastSoundFeelLikeAn"); }, get term() { return msg("learning.aCodaIsAShortClosingSection"); }, check:p => !!p.sceneSpace && p.chain.length >= 6 },
+  { get title() { return msg("learning.balanceAndExport"); }, get goal() { return msg("learning.saveAFinishedVariation"); }, get action() { return msg("learning.compareTheBassAndMotifAtA"); }, get listen() { return msg("learning.canYouHearEveryMusicalRoleIs"); }, get term() { return msg("learning.exportCapturesTheChosenArrangementItDoes"); }, check:p => p.followChain && p.chain.length >= 6 },
 ];
 export const soundLessons: Lesson[] = [
-  { title:'Источник и обертоны', goal:'Сделай из мягкого звука яркий.', action:'На дорожке «Лаборатория» открой инструмент. Сравни синус, пилу и импульс в VA, оставляя громкость умеренной.', listen:'Обертоны добавляют яркость даже при одной высоте.', term:'Обертоны — составляющие выше основной частоты.', check:p => !!p.instruments[0]?.wave?.va },
-  { title:'Форма ноты', goal:'Один источник превращается в удар или фон.', action:'Сравни короткий спад с длинной атакой. Затем включи MSEG и изогни один сегмент.', listen:'Как меняются жест и роль инструмента без смены источника?', term:'Огибающая — изменение параметра от начала до конца ноты.', check:p => !!p.instruments[0]?.ampMseg },
-  { title:'Фильтр и EQ', goal:'Освободи место для соседнего голоса.', action:'Добавь EQ на дорожку. Сравни широкое ослабление середины с узким усилением. Выключай EQ для сравнения.', listen:'Становится ли звук яснее, или только громче?', term:'EQ меняет баланс частот; ширина полосы определяет область вмешательства.', check:p => p.tracks.some(t => t.effects?.some(e => e.type === 'eq')) },
-  { title:'FM и движение', goal:'Получи упругий бас или негармоничный звон.', action:'Переключи синтез на операторы, добавь модулятор частоты. Сравни целое отношение частот с дробным.', listen:'Когда тон становится металлическим? Уменьши глубину, чтобы вернуть опору.', term:'FM меняет мгновенную частоту одного генератора сигналом другого.', check:p => !!p.instruments[0]?.wave?.partials.some(x => x.mod !== undefined) },
-  { title:'Wavetable и PWM', goal:'Тембр движется внутри длинной ноты.', action:'Выбери wavetable, включи LFO позиции. Затем сравни с импульсом VA и PWM. Импорт собственной WAV-таблицы — дополнительное упражнение.', listen:'Похожи ли движения и чем отличаются?', term:'Wavetable смешивает кадры; PWM меняет ширину импульса.', check:p => p.instruments.some(i => !!i.wave?.wavetable?.positionLfo || !!i.wave?.va?.pwmDepth) },
-  { title:'Слои и диапазоны', goal:'Сильная нота открывает дополнительную окраску.', action:'Добавь слой. В «обработке и диапазоне» ограничь его силу 70–100%, добавь локальный перегруз. Сравни слабую и сильную ноту.', listen:'Сохраняется ли основной характер, когда подключается слой?', term:'Диапазон силы ноты управляет участием голоса, а не общей громкостью проекта.', check:p => p.instruments.some(i => i.layers?.some(l => !!l.sound.voiceRange)) },
-  { title:'Макрос и обмен', goal:'Преврати опыт в инструмент для музыки.', action:'Назначь макрос яркости, сохрани инструмент и экспортируй его. Собери несколько вариантов в пак через меню «Файл».', listen:'Понятен ли диапазон макроса без знания внутренней схемы?', term:'Макрос связывает несколько параметров с одним выразительным жестом.', check:p => p.instruments.some(i => !!i.macros?.length) },
+  { get title() { return msg("learning.sourcesAndOvertones"); }, get goal() { return msg("learning.turnAMellowSoundIntoABright"); }, get action() { return msg("learning.openTheInstrumentOnTheLabTrack"); }, get listen() { return msg("learning.overtonesAddBrightnessEvenAtASingle"); }, get term() { return msg("learning.overtonesAreFrequencyComponentsAboveTheFundamental"); }, check:p => !!p.instruments[0]?.wave?.va },
+  { get title() { return msg("learning.theShapeOfANote"); }, get goal() { return msg("learning.oneSourceCanBecomeAHitOr"); }, get action() { return msg("learning.compareAShortDecayWithALong"); }, get listen() { return msg("learning.howDoTheGestureAndMusicalRole"); }, get term() { return msg("learning.anEnvelopeDescribesHowAParameterChanges"); }, check:p => !!p.instruments[0]?.ampMseg },
+  { get title() { return msg("learning.filterAndEQ"); }, get goal() { return msg("learning.makeRoomForAnotherVoice"); }, get action() { return msg("learning.addATrackEQCompareABroad"); }, get listen() { return msg("learning.isTheSoundClearerOrJustLouder"); }, get term() { return msg("learning.eqChangesTheFrequencyBalanceBandwidthDetermines"); }, check:p => p.tracks.some(t => t.effects?.some(e => e.type === 'eq')) },
+  { get title() { return msg("learning.fmAndMovement"); }, get goal() { return msg("learning.createAnElasticBassOrAnInharmonic"); }, get action() { return msg("learning.switchToOperatorsAndAddAFrequency"); }, get listen() { return msg("learning.whenDoesTheToneBecomeMetallicReduce"); }, get term() { return msg("learning.fmVariesOneOscillatorSInstantaneousFrequency"); }, check:p => !!p.instruments[0]?.wave?.partials.some(x => x.mod !== undefined) },
+  { get title() { return msg("learning.wavetableAndPWM"); }, get goal() { return msg("learning.letTheTimbreMoveWithinALong"); }, get action() { return msg("learning.chooseWavetableAndEnableThePositionLFO"); }, get listen() { return msg("learning.howAreTheMovementsSimilarAndHow"); }, get term() { return msg("learning.wavetableSynthesisBlendsFramesPWMVariesThe"); }, check:p => p.instruments.some(i => !!i.wave?.wavetable?.positionLfo || !!i.wave?.va?.pwmDepth) },
+  { get title() { return msg("learning.layersAndRanges"); }, get goal() { return msg("learning.aStrongerNoteBringsInAnExtra"); }, get action() { return msg("learning.addALayerInProcessingAndRange"); }, get listen() { return msg("learning.doesTheMainCharacterSurviveWhenThe"); }, get term() { return msg("learning.aVelocityRangeControlsWhetherAVoice"); }, check:p => p.instruments.some(i => i.layers?.some(l => !!l.sound.voiceRange)) },
+  { get title() { return msg("learning.macrosAndSharing"); }, get goal() { return msg("learning.turnAnExperimentIntoAPlayableInstrument"); }, get action() { return msg("learning.assignABrightnessMacroSaveTheInstrument"); }, get listen() { return msg("learning.doesTheMacroSRangeMakeSense"); }, get term() { return msg("learning.aMacroLinksSeveralParametersToOne"); }, check:p => p.instruments.some(i => !!i.macros?.length) },
 ];
 
 export function learningProject(sound = false): Patch {
-  const roles = sound ? ['Лаборатория'] : ['Бочка','Щелчок','Осколки','Бас','Мотив','Воздух'];
+  const roles = sound ? [msg("learning.lab")] : [msg("learning.kick"),msg("learning.click"),msg("learning.shards"),msg("learning.bass"),msg("learning.motif"),msg("learning.air")];
   const made = roles.map((name, i) => {
     const length = sound ? 8 : [16,16,7,8,5,16][i], rate = sound ? 1 : [1,1,1,2,2,4][i];
     const mask = sound ? [0] : [[0,4,8,11],[4,12],[0,2,5],[1,4,7],[0,2,4],[0]][i];
@@ -35,14 +57,15 @@ export function learningProject(sound = false): Patch {
     return makeTrackWithInstrument(partial);
   });
   const tracks = made.map(m => m.track);
-  const names = sound ? ['Опыт'] : ['Зерно','Опора','Диалог','Напряжение','Пустота','Вспышка','Возвращение','Кода'];
+  const names = sound ? [msg("learning.experiment")] : [msg("learning.seed"),msg("learning.foundation"),msg("learning.dialogue"),msg("learning.tension"),msg("learning.space"),msg("learning.burst"),msg("learning.return"),msg("learning.coda")];
   const scenes = names.map((name,i) => {
     const scene = makeScene(name,tracks,t => t.patterns[i === 3 || i === 5 ? 1 : 0].id);
+    scene.id = `learn-scene-${i}`;
     const active = [[4,5],[0,3,4],[0,1,2,3,4],[0,1,2,3,4,5],[5],[0,1,2,3,4,5],[0,3,4],[4,5]][i];
     if (!sound) tracks.forEach((t,n) => { if (!active.includes(n)) scene.slots[t.id].muted = true; });
     return scene;
   });
-  return normalizePatch({version:PATCH_VERSION,title:sound ? 'Лаборатория тембра' : 'Осколки орбиты · учебная копия',bpm:120,masterVolume:.7,performanceSeed:42,followChain:!sound,sceneSpace:{sizeSec:2.5,level:.22},tracks,instruments:made.map(m=>m.instrument),scenes,chain:scenes.map((s,i)=>({sceneId:s.id,bars:sound ? 8 : [8,8,8,8,4,12,8,8][i]}))});
+  return normalizePatch({version:PATCH_VERSION,title:sound ? msg("learning.timbreLab") : msg("learning.orbitalShardsLearningCopy"),bpm:120,masterVolume:.7,performanceSeed:42,followChain:!sound,sceneSpace:{sizeSec:2.5,level:.22},tracks,instruments:made.map(m=>m.instrument),scenes,chain:scenes.map((s,i)=>({sceneId:s.id,bars:sound ? 8 : [8,8,8,8,4,12,8,8][i]}))});
 }
 
 const RETURN_KEY = 'barlow.learning.return', WORK_KEY = 'barlow.learning.work';

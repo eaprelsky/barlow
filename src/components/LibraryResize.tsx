@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 
 const KEY = 'barlow.library-width.v1';
@@ -17,7 +18,7 @@ export function useLibraryWidth(onError: (message: string) => void) {
   const change = (n: number) => { value.current = n; setPreferred(n); };
   const save = () => {
     try { localStorage.setItem(KEY, String(value.current)); }
-    catch { onError('Не удалось сохранить ширину панели'); }
+    catch { onError(msg("libraryResize.couldNotSaveThePanelWidth")); }
   };
   useEffect(() => {
     const resize = () => setMaximum(limit());
@@ -26,9 +27,9 @@ export function useLibraryWidth(onError: (message: string) => void) {
   }, []);
   const width = Math.min(preferred, maximum);
   const separator = <div className="library-resize" role="separator" tabIndex={0}
-    aria-label="Ширина панели инструментов" aria-orientation="vertical"
+    aria-label={msg("libraryResize.instrumentPanelWidth")} aria-orientation="vertical"
     aria-valuemin={240} aria-valuemax={maximum} aria-valuenow={width}
-    data-help="library-width" title="Потяни для изменения ширины; двойной клик — сброс"
+    data-help="library-width" title={msg("libraryResize.dragToResizeDoubleClickToReset")}
     onDoubleClick={() => { change(clamp(DEFAULT)); save(); }}
     onPointerDown={e => {
       if (e.button !== 0) return;

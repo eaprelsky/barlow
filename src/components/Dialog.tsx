@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 import { HelpToggle } from '../onboarding/HelpToggle';
 // Хост глобальных диалогов в эстетике приложения — рендерится один раз
 // в App. Логика очереди живёт в dialog.ts (там же confirmDialog/alertDialog).
@@ -12,6 +13,7 @@ import {
 } from './dialogs';
 
 export function DialogHost() {
+  useLocale();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const textId = useId();
@@ -65,12 +67,12 @@ export function DialogHost() {
           />
         )}
         <div className="modal-btns">
-          {!req.onlyOk && <button data-help="dialog-cancel" onClick={() => closeDialog(first, false)}>{req.cancelLabel ?? 'отмена'}</button>}
+          {!req.onlyOk && <button data-help="dialog-cancel" onClick={() => closeDialog(first, false)}>{req.cancelLabel ?? msg("dialog.cancel")}</button>}
           <button
             data-help="dialog-confirm" className={req.danger ? 'danger' : ''}
             onClick={() => closeDialog(first, true)}
           >
-            {req.okLabel ?? 'ок'}
+            {req.okLabel ?? msg("dialog.ok")}
           </button>
         </div>
     </dialog>

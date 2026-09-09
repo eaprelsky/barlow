@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Интерактивный онбординг: подсветка элемента + карточка «что делать».
 // Шаг-действие (expect): гид ждёт клик по подсвеченному, клики мимо
 // перехватывает (карточка встряхивается) — newbie физически не может
@@ -100,6 +101,7 @@ export function Onboarding({
   /** Раскрыть панель, спрятанную за кнопкой шапки (шаг.open). */
   onOpenPanel?: (what: string) => void;
 }) {
+  useLocale();
   const guide = guideById(run.guideId);
   const step = guide?.steps[Math.min(run.step, guide.steps.length - 1)];
   const [hole, setHole] = useState<Rect | null>(null);
@@ -309,7 +311,7 @@ export function Onboarding({
       >
         <div className="ob-cap">
           <b>{guide.title}</b>
-          <button className="ob-x" title="Закончить гид (Esc)" onClick={onDone}>
+          <button className="ob-x" title={msg("onboarding.endGuideEsc")} onClick={onDone}>
             ✕
           </button>
         </div>
@@ -318,28 +320,27 @@ export function Onboarding({
         {missing && (
           <p className="ob-missing">
             {step.expect
-              ? 'Панель этого шага скрыта — открой её, и подсветка появится. Или «пропустить».'
-              : 'Панель этого шага сейчас скрыта — раскрой её и жми «далее».'}
+              ? msg("onboarding.thisStepSPanelIsHiddenOpen")
+              : msg("onboarding.thisStepSPanelIsHiddenOpen2")}
           </p>
         )}
         <div className="ob-foot">
           {step.expect ? (
             <>
-              <span className="ob-wait">▸ жми подсвеченное</span>
+              <span className="ob-wait">{msg("onboarding.clickTheHighlight")}</span>
               <span className="spacer" />
               <button className="ob-skip" onClick={onDone}>
-                пропустить
-              </button>
+                {msg("onboarding.skip")}</button>
             </>
           ) : (
             <>
-              <span className="ob-esc">Esc — выйти</span>
+              <span className="ob-esc">{msg("onboarding.escToExit")}</span>
               <span className="spacer" />
               <button disabled={run.step === 0} onClick={() => onStep(-1)}>
                 ←
               </button>
               <button className="ob-next" onClick={() => (last ? onDone() : onStep(1))}>
-                {step.nextLabel ?? (last ? 'готово' : 'далее →')}
+                {step.nextLabel ?? (last ? msg("onboarding.done") : msg("onboarding.next"))}
               </button>
             </>
           )}
@@ -362,13 +363,14 @@ export function HelpHint({
   scope?: string;
   label?: string;
 }) {
+  useLocale();
   const active = useSyncExternalStore(subscribePointHelp, pointHelpSnapshot);
   return (
     <button
       className="ob-hint"
-      title="Что это? Выбери элемент, чтобы открыть объяснение (F1)"
+      title={msg("onboarding.whatSThisSelectAnElementTo")}
       data-help="point-help" data-help-toggle aria-pressed={active} data-guide-id={guide} data-guide-step={step} data-guide-scope={scope} data-guide-label={label}
-      aria-label="гид"
+      aria-label={msg("onboarding.guide")}
       onClick={(e) => {
         e.stopPropagation();
         requestPointHelp();
@@ -391,6 +393,7 @@ export function HelpMenu({
   onPointHelp: () => void;
   pointHelpOn: boolean;
 }) {
+  useLocale();
   useEffect(() => {
     markInvited();
     const onKey = (e: KeyboardEvent) => {
@@ -423,14 +426,14 @@ export function HelpMenu({
       <div className="hm-backdrop" onMouseDown={onClose} />
       <div className="menu-list help-menu">
         <button className="gm-item gm-main" onClick={() => { launchGuide('main'); onClose(); }}>
-          <span className="gm-title">▶ вводный: собери первый бит</span>
-          <span className="gm-goal">покажет за минуту — просто жми на подсвеченное</span>
+          <span className="gm-title">{msg("onboarding.introductionBuildYourFirstBeat")}</span>
+          <span className="gm-goal">{msg("onboarding.aQuickWalkthroughClickTheHighlightedControls")}</span>
         </button>
         <span className="hm-sep" />
-        <span className="hm-cap">путь трека: от первого звука до сведения</span>
+        <span className="hm-cap">{msg("onboarding.fromTheFirstSoundToAFinished")}</span>
         {GUIDES.filter((g) => g.section === 'path').map(item)}
         <span className="hm-sep" />
-        <span className="hm-cap">отдельные умения</span>
+        <span className="hm-cap">{msg("onboarding.individualSkills")}</span>
         {GUIDES.filter((g) => g.section === 'more').map(item)}
         <span className="hm-sep" />
         <button
@@ -440,8 +443,8 @@ export function HelpMenu({
             onClose();
           }}
         >
-          <span className="gm-title">{pointHelpOn ? '■ выключить «что это?»' : '? что это?'}</span>
-          <span className="gm-goal">тыкни в любой контрол — карточка расскажет, что он делает (F1)</span>
+          <span className="gm-title">{pointHelpOn ? msg("onboarding.turnOffWhatSThis") : msg("onboarding.whatSThis")}</span>
+          <span className="gm-goal">{msg("onboarding.selectAControlToLearnWhatIt")}</span>
         </button>
         <button
           className="gm-item"
@@ -450,8 +453,8 @@ export function HelpMenu({
             onClose();
           }}
         >
-          <span className="gm-title">· шпаргалка</span>
-          <span className="gm-goal">жесты стана, горячие клавиши, словарь терминов</span>
+          <span className="gm-title">{msg("onboarding.quickReference")}</span>
+          <span className="gm-goal">{msg("onboarding.noteGridGesturesKeyboardShortcutsAndGlossary")}</span>
         </button>
       </div>
     </>

@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Модалка выбора сэмпла в слот трека: список хранилища с прослушиванием,
 // плюс загрузка файла с диска прямо отсюда (загрузил — сразу лёг в слот).
 
@@ -15,11 +16,12 @@ interface Props {
 }
 
 function fmtSize(bytes: number): string {
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-  return `${Math.round(bytes / 1024)} КБ`;
+  if (bytes > 1024 * 1024) return msg("samplePicker.mib", {p0: (bytes / 1024 / 1024).toFixed(1)});
+  return msg("samplePicker.kib", {p0: Math.round(bytes / 1024)});
 }
 
 export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Props) {
+  useLocale();
   const [samples, setSamples] = useState<SampleMeta[] | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [err, setErr] = useState('');
@@ -57,35 +59,35 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
       audio.onended = () => setPlayingId(null);
       setPlayingId(meta.id);
       await audio.play();
-    })().catch(() => { if (request === previewRequest.current) { setPlayingId(null); setErr('Не удалось прослушать сэмпл'); } });
+    })().catch(() => { if (request === previewRequest.current) { setPlayingId(null); setErr(msg("samplePicker.couldNotAuditionTheSample")); } });
   }
 
   const loadFile = (f: File) => {
     setErr('');
     putSample(f, f.name)
       .then((meta) => onPick(meta))
-      .catch(() => setErr('Не удалось сохранить сэмпл в хранилище'));
+      .catch(() => setErr(msg("samplePicker.couldNotSaveTheSampleToStorage")));
   };
 
   return (
-    <Modal label="сэмпл в слот" className="picker" onClose={onClose}>
-        <h3>сэмпл в слот</h3>
+    <Modal label={msg("samplePicker.chooseSample")} className="picker" onClose={onClose}>
+        <h3>{msg("samplePicker.chooseSample")}</h3>
         {samples === null ? (
-          <p className="empty">загружаю сэмплы…</p>
+          <p className="empty">{msg("samplePicker.loadingSamples")}</p>
         ) : samples.length === 0 ? (
-          <p className="empty">Сэмплов нет — загрузи файл с диска.</p>
+          <p className="empty">{msg("samplePicker.noSamplesYetImportAnAudioFile")}</p>
         ) : (
           <div className="picker-list">
             {samples.map((meta) => (
               <div
                 key={meta.id}
                 className={'picker-item' + (meta.id === currentId ? ' current' : '')}
-                title="Клик — положить этот сэмпл в слот трека"
+                title={msg("samplePicker.assignThisSampleToTheTrack")}
                 onClick={() => onPick(meta)}
               >
                 <button
                   className="picker-play"
-                  title={playingId === meta.id ? 'Стоп' : 'Прослушать'}
+                  title={playingId === meta.id ? msg("samplePicker.stop") : msg("samplePicker.audition")}
                   onClick={(e) => {
                     e.stopPropagation();
                     togglePlay(meta);
@@ -100,26 +102,24 @@ export function SamplePicker({ currentId, onPick, onClose, onOpenLibrary }: Prop
                 <span className="mini-info">
                   {new Date(meta.createdAt).toLocaleDateString()}
                 </span>
-                {meta.id === currentId && <span className="lib-used">в слоте</span>}
+                {meta.id === currentId && <span className="lib-used">{msg("samplePicker.assigned")}</span>}
               </div>
             ))}
           </div>
         )}
         {err && <p className="empty">{err}</p>}
         <div className="modal-btns">
-          <button onClick={() => fileRef.current?.click()} title="Файл сохранится в хранилище сэмплов и ляжет в слот">
-            загрузить файл…
-          </button>
+          <button onClick={() => fileRef.current?.click()} title={msg("samplePicker.saveThisFileToTheSampleLibrary")}>
+            {msg("samplePicker.importFile")}</button>
           {onOpenLibrary && (
             <button
-              title="Панель инструментов, вкладка сэмплов: прослушать, скачать, удалить"
+              title={msg("samplePicker.openTheInstrumentBrowserSSamplesTab")}
               onClick={onOpenLibrary}
             >
-              все сэмплы…
-            </button>
+              {msg("samplePicker.allSamples")}</button>
           )}
           <span className="spacer" />
-          <button onClick={onClose}>закрыть</button>
+          <button onClick={onClose}>{msg("samplePicker.close")}</button>
           <input
             ref={fileRef} type="file" accept="audio/*" hidden
             onChange={(e) => {

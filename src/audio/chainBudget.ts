@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import type { SoundingTrack } from '../types';
 
 export interface ChainResources { chains: number; nodes: number; bufferBytes: number }
@@ -29,7 +30,7 @@ export function resourcesFit(value: ChainResources, limit: ChainResources): bool
   return Object.entries(value).every(([key, n]) => Number.isFinite(n) && n >= 0 && n <= limit[key as keyof ChainResources]);
 }
 export class ChainBudgetError extends Error {
-  constructor() { super('Превышен бюджет цепочек эффектов. Уменьши число или длину ревербераций, шумовых модуляторов либо экспортируй проект частями.'); this.name = 'ChainBudgetError'; }
+  constructor() { super(msg("chainBudget.effectChainBudgetExceededReduceTheNumber")); this.name = 'ChainBudgetError'; }
 }
 export class ChainBudget {
   private entries = new Map<object, ChainResources>();

@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Режим «что это?»: курсор-справочник по интерфейсу. Наведение
 // подсвечивает ближайший контрол с карточкой (реестр cards.ts), клик
 // показывает карточку — сами контролы НЕ нажимаются: изучение не
@@ -29,6 +30,7 @@ function rectOf(el: Element): Rect {
 }
 
 export function PointHelp({ onExit }: { onExit: () => void }) {
+  const locale = useLocale();
   const [hover, setHover] = useState<{ key: string; rect: Rect; element: Element; card: HelpCard } | null>(null);
   const [sel, setSel] = useState<{ key: string; rect: Rect; element: Element; card: HelpCard } | null>(null);
   const [host, setHost] = useState<Element>(document.querySelector('dialog[open]') ?? document.body);
@@ -40,6 +42,14 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
     return () => { observer.disconnect(); document.documentElement.classList.remove('point-help-active'); if (previous?.isConnected) previous.focus(); };
   }, []);
+  useLayoutEffect(() => {
+    const refresh = (previous: typeof sel) => {
+      if (!previous?.element.isConnected) return null;
+      const match = resolveHelp(previous.element);
+      return match ? {...match, rect: rectOf(match.element)} : null;
+    };
+    setSel(refresh); setHover(refresh);
+  }, [locale]);
   const selectMatch = useCallback((match: HelpMatch) => setSel({ ...match, rect: rectOf(match.element) }), []);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [cardSize, setCardSize] = useState<Rect>({ left: 0, top: 0, width: 360, height: 140 });
@@ -161,30 +171,28 @@ export function PointHelp({ onExit }: { onExit: () => void }) {
           style={{ left: hover.rect.left - 3, top: hover.rect.top - 3, width: hover.rect.width + 6, height: hover.rect.height + 6 }}
         />
       )}
-      <div className="ph-badge"><span>Что это? Выбери элемент · Esc — выйти</span><button onClick={onExit} aria-label="Выйти из справки">✕</button></div>
+      <div className="ph-badge"><span>{msg("pointHelp.whatSThisSelectAnElementEsc")}</span><button onClick={onExit} aria-label={msg("pointHelp.exitContextualHelp")}>✕</button></div>
       {sel && card && pos && (
         <div className="ob-card ph-card" role="dialog" aria-label={card.title} tabIndex={-1} ref={cardRef} style={{ left: pos.left, top: pos.top }}>
           <div className="ob-cap">
             <b>{card.title}</b>
-            <button className="ob-x" title="Закрыть карточку (режим живёт)" onClick={() => setSel(null)}>
+            <button className="ob-x" title={msg("pointHelp.closeThisCardAndKeepHelpMode")} onClick={() => setSel(null)}>
               ✕
             </button>
           </div>
           <p className="ob-say">{card.text}</p>
           {card.how && <p>{card.how}</p>}
-          {card.example && <p className="ph-example"><b>Попробуй: </b>{card.example}</p>}
+          {card.example && <p className="ph-example"><b>{msg("pointHelp.try")}</b>{card.example}</p>}
           <div className="ob-foot">
             {card.guide && host === document.body ? (
               <button className="ob-next" onClick={() => showGuide(card)}>
-                показать в гиде ▸
-              </button>
+                {msg("pointHelp.showInGuide")}</button>
             ) : (
-              <span className="ob-esc">Esc — закрыть</span>
+              <span className="ob-esc">{msg("pointHelp.escToClose")}</span>
             )}
             <span className="spacer" />
             <button className="ob-skip" onClick={onExit}>
-              выйти из режима
-            </button>
+              {msg("pointHelp.exitHelpMode")}</button>
           </div>
         </div>
       )}

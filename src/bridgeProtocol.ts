@@ -1,3 +1,4 @@
+import { t as msg } from './i18n/runtime.ts';
 /** Mutual session authentication. Neither peer transmits the pairing secret. */
 export const BRIDGE_PROTOCOL = 1;
 export const BRIDGE_MAX_BYTES = 8 * 1024 * 1024;
@@ -16,11 +17,11 @@ function payload(role: 'client' | 'server', challenge: string, nonce: string, ca
   return new TextEncoder().encode(`barlow-bridge/v1/${role}/${challenge}/${nonce}/${capabilities(caps).join(',')}`);
 }
 async function key(secret: string) {
-  if (!validSecret(secret)) throw new Error('Код подключения должен содержать 32 шестнадцатеричных символа.');
+  if (!validSecret(secret)) throw new Error(msg("bridgeProtocol.thePairingCodeMustContain32Hexadecimal"));
   return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 export async function authProof(secret: string, role: 'client' | 'server', challenge: string, nonce: string, caps: BridgeCapability[]): Promise<string> {
-  if (!validSecret(challenge) || !validSecret(nonce)) throw new Error('Неверный handshake моста.');
+  if (!validSecret(challenge) || !validSecret(nonce)) throw new Error(msg("bridgeProtocol.invalidBridgeHandshake"));
   const proof = await crypto.subtle.sign('HMAC', await key(secret), payload(role, challenge, nonce, caps));
   return [...new Uint8Array(proof)].map(v => v.toString(16).padStart(2, '0')).join('');
 }

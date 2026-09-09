@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // Проект = переносимый архив: patch.json + все использованные сэмплы.
 // SHA-256-ссылочная модель делает импорт тривиальным: файлы укладываются
 // в библиотеку как есть, putSample считает тот же хеш — ссылки патча
@@ -42,7 +43,7 @@ export async function exportProject(patch: Patch): Promise<Blob> {
     if (!inst.sampleId || seen.has(inst.sampleId)) continue;
     seen.add(inst.sampleId);
     const blob = await getSampleBlob(inst.sampleId);
-    if (!blob) throw new Error(`Не найден сэмпл «${inst.sampleName ?? inst.sampleId}»: проект не сохранён`);
+    if (!blob) throw new Error(msg("project.sampleWasNotFoundTheProjectWas", {p0: inst.sampleName ?? inst.sampleId}));
     const file = `${inst.sampleId}.${extOf(blob)}`;
     files[`samples/${file}`] = new Uint8Array(await blob.arrayBuffer());
     manifest.samples.push({ id: inst.sampleId, name: inst.sampleName ?? names.get(inst.sampleId) ?? inst.sampleId, file });
@@ -55,7 +56,7 @@ export async function exportProject(patch: Patch): Promise<Blob> {
 /** Распаковать zip-проект: сэмплы — в библиотеку, патч — наружу.
  *  Возвращает null, если файл не проект barlow. */
 export async function importProject(file: File): Promise<Patch | null> {
-  if (file.size > 128 * MiB) throw new Error('Архив больше 128 МиБ');
+  if (file.size > 128 * MiB) throw new Error(msg("project.theArchiveExceeds128MiB"));
   let entries: Record<string, Uint8Array>;
   let total = 0, count = 0;
   const paths = new Set<string>();
@@ -63,16 +64,16 @@ export async function importProject(file: File): Promise<Patch | null> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     entries = await new Promise((resolve, reject) => unzip(bytes, { filter: entry => {
       const path = entry.name;
-      if (++count > 512 || paths.has(path)) throw new Error('Слишком много файлов или повтор имени');
+      if (++count > 512 || paths.has(path)) throw new Error(msg("project.tooManyFilesOrDuplicateFilenames"));
       paths.add(path);
       const limit = path === 'patch.json' ? 8 * MiB : path === 'manifest.json' ? MiB : SAMPLE_PATH.test(path) ? 64 * MiB : 0;
       total += entry.originalSize;
       if (!limit || entry.originalSize > limit || entry.size > limit + MiB || total > 256 * MiB
-        || (entry.compression === 0 && entry.size !== entry.originalSize)) throw new Error('Недопустимый путь или размер файла в архиве');
+        || (entry.compression === 0 && entry.size !== entry.originalSize)) throw new Error(msg("project.invalidArchivePathOrFileSize"));
       return true;
     } }, (err, files) => err ? reject(err) : resolve(files)));
   } catch (e) {
-    throw new Error(`Не удалось безопасно распаковать проект: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(msg("project.couldNotSafelyUnpackTheProject", {p0: e instanceof Error ? e.message : String(e)}));
   }
   const patchRaw = entries['patch.json'];
   if (!patchRaw) return null;
@@ -82,15 +83,15 @@ export async function importProject(file: File): Promise<Patch | null> {
   } catch {
     return null;
   }
-  if (!isPatch(parsed)) throw new Error('Некорректная версия, структура или ссылки патча');
+  if (!isPatch(parsed)) throw new Error(msg("project.invalidPatchVersionStructureOrReferences"));
   const patch = normalizePatch(parsed);
   const names = new Map<string, string>();
   if (entries['manifest.json']) {
     const manifest = JSON.parse(strFromU8(entries['manifest.json'])) as ProjectManifest;
-    if (manifest.barlow !== 1 || !Array.isArray(manifest.samples)) throw new Error('Некорректный манифест');
+    if (manifest.barlow !== 1 || !Array.isArray(manifest.samples)) throw new Error(msg("project.invalidManifest"));
     for (const s of manifest.samples) {
       if (!s || typeof s.file !== 'string' || typeof s.name !== 'string' || s.name.length > 1024
-        || SAMPLE_PATH.exec(`samples/${s.file}`)?.[1] !== s.id || names.has(s.file) || !entries[`samples/${s.file}`]) throw new Error('Некорректная ссылка сэмпла в манифесте');
+        || SAMPLE_PATH.exec(`samples/${s.file}`)?.[1] !== s.id || names.has(s.file) || !entries[`samples/${s.file}`]) throw new Error(msg("project.invalidSampleReferenceInTheManifest"));
       names.set(s.file, s.name);
     }
   }
@@ -101,15 +102,15 @@ export async function importProject(file: File): Promise<Patch | null> {
     if (!match) continue;
     const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(data));
     const id = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-    if (id !== match[1] || ids.has(id)) throw new Error('Содержимое сэмпла не соответствует SHA-256 или повторяется');
+    if (id !== match[1] || ids.has(id)) throw new Error(msg("project.sampleContentsDoNotMatchTheSHA"));
     ids.add(id);
     const base = path.slice('samples/'.length);
     const type = Object.entries(EXT_BY_MIME).find(([, ext]) => ext === match[2])?.[0] ?? 'application/octet-stream';
-    if (entries['manifest.json'] && !names.has(base)) throw new Error('Сэмпл отсутствует в манифесте');
+    if (entries['manifest.json'] && !names.has(base)) throw new Error(msg("project.aSampleIsMissingFromTheManifest"));
     staged.push({ blob: new Blob([new Uint8Array(data)], { type }), name: names.get(base) ?? base });
   }
     for (const inst of patch.instruments.flatMap(sampleAssets)) {
-    if (inst.sampleId && !ids.has(inst.sampleId)) throw new Error(`Архив не содержит сэмпл «${inst.sampleName ?? inst.sampleId}»`);
+    if (inst.sampleId && !ids.has(inst.sampleId)) throw new Error(msg("project.theArchiveDoesNotContainSample", {p0: inst.sampleName ?? inst.sampleId}));
   }
   await putSamples(staged);
   return patch;

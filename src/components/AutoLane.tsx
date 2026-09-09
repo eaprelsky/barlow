@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Дорожка автоматизации партии: кривая громкости/фильтра/панорамы прямо
 // на сетке шагов стана — вертикали совпадают с границами столбцов, точки
 // прилипают к границам шагов (Shift — свободно). Клик — точка, тяни —
@@ -21,19 +22,19 @@ const V_PAD = 6; // поля по вертикали под кривую
 const HIT_PX = 10;
 const MAXPTS = 33;
 
-const Y_LABELS: Record<AutoTarget, [string, string]> = {
+const yLabels = (): Record<AutoTarget, [string, string]> => ({
   volume: ['100%', '0'],
-  filterFreq: ['12k Гц', '60 Гц'],
+  filterFreq: [msg("autoLane.12kHz"), msg("autoLane.60Hz")],
   pan: ['L', 'R'],
-  fxMix: ['мокро', 'сухо'],
-  fxTime: ['2 с', '10 мс'],
+  fxMix: [msg("autoLane.wet"), msg("autoLane.dry")],
+  fxTime: [msg("autoLane.2S"), msg("autoLane.10Ms")],
   fxFeedback: ['90%', '0'],
-};
+});
 
 const MOD_SOURCE_TITLE: Record<string, string> = {
   lfo: 'LFO',
-  sah: 'ступени S&H',
-  perlin: 'перлин',
+  get sah() { return msg("autoLane.sampleHold"); },
+  get perlin() { return msg("autoLane.perlinNoise"); },
 };
 
 export function AutoLane({
@@ -73,6 +74,7 @@ export function AutoLane({
   onCurves: (curves: AutoCurve[]) => void;
   onFade: (which: 'in' | 'out', sec: number) => void;
 }) {
+  useLocale();
   const W = length * PITCH - 3;
   const drag = useRef<number | null>(null);
   const gesture = useEditGesture();
@@ -133,7 +135,7 @@ export function AutoLane({
     const hi = i < points.length - 1 ? points[i + 1].t - (free ? 0.005 : 0.5 / length) : 1;
     const t = Math.min(hi, Math.max(lo, snapT(x / W, free)));
     const v = yToV(y);
-    setDragLabel({ x: t * W, y: vToY(v), text: `шаг ${(t * length).toFixed(1)}` });
+    setDragLabel({ x: t * W, y: vToY(v), text: msg("autoLane.step", {p0: (t * length).toFixed(1)}) });
     setPoints(points.map((pt, j) => (j === i ? { t, v } : pt)));
   };
 
@@ -176,7 +178,7 @@ export function AutoLane({
     const p = { t: snapT(x / W, e.shiftKey), v: yToV(y) };
     let at = points.findIndex((pt) => pt.t > p.t);
     if (at < 0) at = points.length;
-    setDragLabel({ x: p.t * W, y: vToY(p.v), text: `шаг ${(p.t * length).toFixed(1)}` });
+    setDragLabel({ x: p.t * W, y: vToY(p.v), text: msg("autoLane.step", {p0: (p.t * length).toFixed(1)}) });
     setPoints([...points.slice(0, at), p, ...points.slice(at)]);
     drag.current = at;
   };
@@ -216,8 +218,8 @@ export function AutoLane({
     setPoints(points.filter((_, j) => j !== i));
   };
 
-  const yTop = Y_LABELS[target][0];
-  const yBot = Y_LABELS[target][1];
+  const yTop = yLabels()[target][0];
+  const yBot = yLabels()[target][1];
   const line = points.map((p) => `${(p.t * W).toFixed(1)},${vToY(p.v).toFixed(1)}`).join(' ');
 
   // Вклад модуляций на эту цель: штриховые полилинии (по одной на
@@ -245,7 +247,7 @@ export function AutoLane({
           vectorEffect="non-scaling-stroke"
         >
           <title>
-            {`Вклад модуляции (${MOD_SOURCE_TITLE[m.source ?? 'lfo']}, ${m.rate.toFixed(2)} Гц, глубина ${Math.round(m.depth * 100)}%) — живой генератор идёт своим ходом, показана форма качания. «→ в кривую» в списке модуляций запечёт её точками`}
+            {msg("autoLane.modulationHzDepthTheGeneratorRunsIndependently", {p0: MOD_SOURCE_TITLE[m.source ?? 'lfo'], p1: m.rate.toFixed(2), p2: Math.round(m.depth * 100)})}
           </title>
         </polyline>
       );
@@ -259,7 +261,7 @@ export function AutoLane({
       height={H}
       tabIndex={0}
       role="group"
-      aria-label={`Кривая: ${AUTO_TARGET_LABELS[target]}. Enter — добавить ровную кривую; Tab — точки, стрелки — редактировать.`}
+      aria-label={msg("autoLane.curveEnterAddsAFlatCurveTab", {p0: AUTO_TARGET_LABELS[target]})}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         if (e.key === 'Enter' && e.target === e.currentTarget && points.length < 2) {
@@ -286,7 +288,7 @@ export function AutoLane({
       }}
     >
       <title>
-        {`Кривая «${AUTO_TARGET_LABELS[target]}» по шагам: клик — точка на границе шага (Shift — свободно), тяни — двигай, правый клик — убрать`}
+        {msg("autoLane.curveClickToAddAPointAt", {p0: AUTO_TARGET_LABELS[target]})}
       </title>
       {/* сетка — границы шагов, те же, что столбцы стана */}
       {Array.from({ length: length - 1 }, (_, k) => k + 1).map((k) => (
@@ -309,7 +311,7 @@ export function AutoLane({
       )}
       {points.length < 2 && (
         <text x={W / 2} y={(V_PAD + yb) / 2 + 3} textAnchor="middle" className="env-text dim">
-          {points.length === 0 ? 'Нет точек' : 'Одна точка'}
+          {points.length === 0 ? msg("autoLane.noPoints") : msg("autoLane.onePoint")}
         </text>
       )}
       {points.length >= 2 && <polyline points={line} className="env-amp" />}
@@ -317,8 +319,7 @@ export function AutoLane({
       {modLines}
       {modLines.length > 0 && (
         <text x={W - 4} y={V_PAD + 8} textAnchor="end" className="env-text dim">
-          – – модуляции
-        </text>
+          {msg("autoLane.modulation")}</text>
       )}
       {/* рампы входа/выхода сцены — только на громкости: во время рампы
           кривая молчит (движок отдаёт gain плану перехода) */}
@@ -327,24 +328,23 @@ export function AutoLane({
           <polygon points={`0,${yb} ${axIn},${V_PAD} ${axIn},${yb}`} className="lane-fade" />
           <line x1={0} y1={yb} x2={axIn} y2={V_PAD} className="lane-fade-edge" />
           <circle cx={axIn} cy={V_PAD} r={4} className="lane-fade-handle" data-ob="fade-in">
-            <title>Вход в сцену: потяни вершину — длительность ({Math.round(fadeIn * 1000)} мс)</title>
+            <title>{msg("autoLane.sceneFadeInDragThePeakTo")}{Math.round(fadeIn * 1000)} {msg("autoLane.ms")}</title>
           </circle>
-          <text x={axIn + 5} y={V_PAD + 3} className="env-text dim">{Math.round(fadeIn * 1000)} мс</text>
+          <text x={axIn + 5} y={V_PAD + 3} className="env-text dim">{Math.round(fadeIn * 1000)} {msg("autoLane.ms18")}</text>
           <polygon points={`${W},${yb} ${axOut},${V_PAD} ${axOut},${yb}`} className="lane-fade" />
           <line x1={W} y1={yb} x2={axOut} y2={V_PAD} className="lane-fade-edge" />
           <circle cx={axOut} cy={V_PAD} r={4} className="lane-fade-handle" data-ob="fade-out">
-            <title>Выход из сцены: потяни вершину — длительность ({Math.round(fadeOut * 1000)} мс)</title>
+            <title>{msg("autoLane.sceneFadeOutDragThePeakTo")}{Math.round(fadeOut * 1000)} {msg("autoLane.ms")}</title>
           </circle>
           <text x={axOut - 5} y={V_PAD + 3} textAnchor="end" className="env-text dim">
-            {Math.round(fadeOut * 1000)} мс
-          </text>
+            {Math.round(fadeOut * 1000)} {msg("autoLane.ms21")}</text>
         </>
       )}
       {points.map((p, i) => (
         <circle key={i} cx={p.t * W} cy={vToY(p.v)} r={5} className="env-handle" tabIndex={0}
-          role="slider" aria-label={`Точка ${i + 1}: вверх/вниз — уровень, влево/вправо — время, Delete — удалить`}
+          role="slider" aria-label={msg("autoLane.pointUpDownChangesLevelLeftRight", {p0: i + 1})}
           aria-valuemin={0} aria-valuemax={1} aria-valuenow={p.v} aria-orientation="vertical"
-          aria-valuetext={`шаг ${(p.t * length).toFixed(2)}, ${(p.v * 100).toFixed(1)}%`}
+          aria-valuetext={msg("autoLane.step23", {p0: (p.t * length).toFixed(2), p1: (p.v * 100).toFixed(1)})}
           onKeyDown={e => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); gesture.cancel(); setPending(null); return; }
             if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Delete', 'Backspace'].includes(e.key)) return;

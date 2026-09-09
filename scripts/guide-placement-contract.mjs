@@ -13,6 +13,7 @@ try{
  browser=await chromium.launch({executablePath:process.env.BARLOW_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(`http://127.0.0.1:${port}/tmp/guide-placement.html`);
+ if(process.env.BARLOW_TEST_LOCALE==='en')await page.evaluate(()=>{document.documentElement.lang='en';localStorage.setItem('barlow.locale.v1','en');});
  const guides=await page.evaluate(async()=>{const {defaultPatch}=await import('/src/music/defaultPatch.ts');const {GUIDES}=await import('/src/onboarding/guides.ts');localStorage.setItem('barlow.patch.v12',JSON.stringify(defaultPatch()));localStorage.setItem('barlow.onboarding.v1',JSON.stringify({invited:true,seen:{main:true}}));return GUIDES;});
  const files=readdirSync(root+'/src',{recursive:true}).filter(f=>/\.tsx$/.test(f));const source=files.map(f=>readFileSync(root+'/src/'+f,'utf8')).join('\n');
  const absent=[...new Set(guides.flatMap(g=>g.steps.flatMap(s=>[...(s.target??'').matchAll(/data-ob="([^"]+)"/g)].map(m=>m[1]))))].filter(key=>!source.includes('data-ob="'+key+'"') && !source.includes("'"+key+"'"));
@@ -40,7 +41,7 @@ try{
    await page.setViewportSize({width,height:900});await launch('sound-design',2);await delay(500);
    const geom=await page.evaluate(scope=>{const t=document.querySelector(scope+' [data-ob="tab-snd"]').getBoundingClientRect(),h=document.querySelector('.ob-hole').getBoundingClientRect(),bar=document.querySelector('.topbar').getBoundingClientRect();return {t:t.top,h:h.top,bar:bar.bottom};},scope);
    assert.ok(geom.t>=geom.bar,JSON.stringify(geom));assert.ok(Math.abs(geom.h-(geom.t-4))<1);
-   await page.screenshot({path:root+`/tmp/guide-placement-${width}.png`});
+   await page.screenshot({path:root+`/tmp/guide-placement-${process.env.BARLOW_TEST_LOCALE??'ru'}-${width}.png`});
  }
  await page.keyboard.press('Escape');
  // A missing scoped target cannot jump to another track, including after removal.

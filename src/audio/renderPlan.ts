@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { instrumentVoices } from '../music/layers';
 import { selectChokeEvents } from './chokeEvents';
 import type { Patch, Pattern, SoundingTrack, Track, WavRenderOptions } from '../types';
@@ -34,23 +35,23 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     const bpm = item.bpm ?? patch.bpm;
     const seconds = item.bars * BAR_TICKS * tickDuration(bpm);
     if (!Number.isFinite(seconds) || seconds <= 0 || start + seconds > RENDER_LIMITS.seconds + 0.05)
-      throw new Error('WAV: длина должна быть от одного такта до 10 минут. Сократи цепочку для экспорта.');
+      throw new Error(msg("renderPlan.wavDurationMustBeBetweenOneBar"));
     const end = start + seconds;
     const scene = patch.scenes.find(s => s.id === item.sceneId) ?? patch.scenes[0];
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
       if (!pattern) continue;
-      if (parts.length >= RENDER_LIMITS.chains) throw new Error('WAV: больше 512 партий в цепочке. Экспортируй её частями.');
+      if (parts.length >= RENDER_LIMITS.chains) throw new Error(msg("renderPlan.wavTheChainContainsMoreThan512"));
       const instrument = patch.instruments.find(i => i.id === track.instrumentId);
       const st = resolveMacros({ ...track, ...instrument } as SoundingTrack);
       const part: RenderPart = { key: `${itemIndex}:${track.id}`, itemIndex, start, end, bpm, track, st, pattern, steps: [] };
       parts.push(part);
       const audible = track.enabled !== false && !slotMuted(scene, track.id) && (!scene?.soloTrackId || scene.soloTrackId === track.id);
       const stepDur = stepDuration(track, bpm, pattern);
-      if (!Number.isFinite(stepDur) || stepDur <= 0) throw new Error('WAV: недопустимая длительность шага.');
+      if (!Number.isFinite(stepDur) || stepDur <= 0) throw new Error(msg("renderPlan.wavInvalidStepDuration"));
       let index = startStepIndex(track, pattern), ordinal = 0;
       for (let at = start; at < end - 0.001; at += stepDur) {
-        if (++steps > RENDER_LIMITS.steps) throw new Error('WAV: больше 200 000 шагов. Уменьши плотность или длину цепочки.');
+        if (++steps > RENDER_LIMITS.steps) throw new Error(msg("renderPlan.wavMoreThan200000StepsReduce"));
         part.steps.push({ at, index });
         if (audible) {
           const planned = planStepEvents(pattern.steps[index % pattern.steps.length], st, stepDur,
@@ -59,7 +60,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
             const time = Math.max(start, at + event.dt * stepDur + (event.offsetSec ?? 0));
             if (time >= end) continue;
             if (events.length >= RENDER_LIMITS.events)
-              throw new Error('WAV: превышен бюджет синтеза (20 000 событий / 100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
+              throw new Error(msg("renderPlan.wavSynthesisBudgetExceeded20000Events"));
             events.push({ ...event, at: time, part, stepDur, ordinal, eventIndex });
           }
         }
@@ -72,7 +73,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
   events = selectChokeEvents(events, ev => ({ trackId: ev.part.track.id, group: ev.part.track.chokeGroup,
     priority: ev.part.track.chokePriority, order: patch.tracks.indexOf(ev.part.track) }));
   nodes = events.reduce((total, ev) => total + estimateVoiceNodes(ev.part.st, ev.notes), 0);
-  if (nodes > RENDER_LIMITS.estimatedNodes) throw new Error('WAV: превышен бюджет синтеза (100 000 условных узлов). Сократи унисон, арпеджио или цепочку.');
+  if (nodes > RENDER_LIMITS.estimatedNodes) throw new Error(msg("renderPlan.wavSynthesisBudgetExceeded100000Estimated"));
   const sounding = new Set(events.map(ev => ev.part.key));
   const activeParts = parts.filter(part => sounding.has(part.key));
   let chainResources = activeParts.reduce((total, part) => addResources(total,
@@ -95,7 +96,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     duration = Math.max(duration, start + 2);
     if (patch.sceneSpace) duration += patch.sceneSpace.sizeSec;
     if (!Number.isFinite(duration) || duration - start > RENDER_LIMITS.tailSeconds)
-      throw new Error('WAV: расчётный хвост больше 120 секунд. Уменьши длину нот, время/повторы эха или выбери точную границу.');
+      throw new Error(msg("renderPlan.wavTheEstimatedTailExceeds120Seconds"));
   }
   if(patch.sceneSpace) chainResources.bufferBytes += Math.ceil(patch.sceneSpace.sizeSec*44100)*2*4*4;
   if (!resourcesFit(chainResources, OFFLINE_CHAIN_LIMITS)) throw new ChainBudgetError();

@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { euclid } from './euclid';
 import { SCALE_PRESETS } from './scales';
 import { PATCH_VERSION, makeNote, makePattern, makeScene, makeStep, makeTrackWithInstrument, uid } from '../types';
@@ -6,7 +7,7 @@ import type { Instrument as Inst } from '../types';
 import { recipe } from './waveRecipes';
 
 const scale = (name: string): number[] =>
-  SCALE_PRESETS.find((p) => p.name === name)?.ratios ?? [1];
+  SCALE_PRESETS.find((p) => p.sourceName === name)?.ratios ?? [1];
 
 function stepsFromMask(mask: boolean[]): Step[] {
   return mask.map((on) => makeStep(on));
@@ -99,7 +100,7 @@ export function defaultPatch(): Patch {
       patterns: [makePattern('A', 5, withMelody(stepsFromMask(euclid(5, 2)), [[0], [1], [0, 1]]), 8)],
     }),
   ];
-  const scene = makeScene('основа', tracks, (t) => t.patterns[0].id);
+  const scene = makeScene(msg("defaultPatch.foundation"), tracks, (t) => t.patterns[0].id);
   return {
     version: PATCH_VERSION,
     bpm: 118,

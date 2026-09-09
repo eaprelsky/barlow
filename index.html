@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>barlow</title>
     <script>
+      try { document.documentElement.lang = localStorage.getItem('barlow.locale.v1') === 'en' ? 'en' : 'ru'; } catch { document.documentElement.lang = 'ru'; }
       // Apply the saved palette before the stylesheet and React paint the UI.
       try { document.documentElement.dataset.theme = localStorage.getItem('barlow.theme.v1') === 'light' ? 'light' : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
     </script>

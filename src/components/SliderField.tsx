@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { NumField } from './NumField';
 
@@ -49,6 +50,7 @@ export function SliderField({
   disabled,
   onChange,
 }: Props) {
+  useLocale();
   const [field, setField] = useState(false);
   const rangeRef = useRef<HTMLInputElement>(null);
   const returnFocus = useRef(false);
@@ -58,7 +60,7 @@ export function SliderField({
     <NumField
       value={value} min={min} max={max} step={step} narrow={narrow}
       disabled={disabled} onChange={onChange}
-      ariaLabel={label ?? title ?? 'значение'} autoFocus
+      ariaLabel={label ?? title ?? msg("sliderField.value")} autoFocus
       onBlur={() => setField(false)}
       onFocus={e => e.currentTarget.select()}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') returnFocus.current = true; }}
@@ -67,7 +69,7 @@ export function SliderField({
   const range = (
     <input
       ref={rangeRef}
-      aria-label={label ?? title ?? 'значение'}
+      aria-label={label ?? title ?? msg("sliderField.value")}
       type="range" min={min} max={max} step={step} value={value} disabled={disabled}
       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setField(true); } }}
       onChange={(e) => onChange(Number(e.target.value))}
@@ -79,14 +81,14 @@ export function SliderField({
     return (
       <span className="mr" title={title}>
         {field ? num(true) : range}
-        <i onDoubleClick={toggle} title="Двойной клик — точное число">{trailing}</i>
+        <i onDoubleClick={toggle} title={msg("sliderField.doubleClickForNumericEntry")}>{trailing}</i>
       </span>
     );
   }
   if (variant === 'mix') {
     return (
       <label className="mix-ctl" title={title}>
-        <span className="mc-cap" onDoubleClick={toggle} title="Двойной клик — точное число">
+        <span className="mc-cap" onDoubleClick={toggle} title={msg("sliderField.doubleClickForNumericEntry")}>
           {label}
           <i>{trailing}</i>
         </span>

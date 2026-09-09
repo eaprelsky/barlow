@@ -1,8 +1,11 @@
+import { t as msg, getLocale } from './i18n/runtime.ts';
 // Платформенные операции файлов: браузер — загрузки и file input,
 // десктоп (Tauri) — нативные диалоги через Rust-команды (src-tauri).
 // Единственное место, где фронт знает, где работает.
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke, type InvokeArgs } from '@tauri-apps/api/core';
+import { nativeError } from './i18n/nativeError';
+const invoke = <T,>(command: string, args?: InvokeArgs): Promise<T> => tauriInvoke<T>(command, args).catch(error => { throw nativeError(error); });
 import { BINARY_LIMITS, decodeBinaryFile, encodeBinaryFile } from './binaryFile';
 
 // TAURI_ENV выставляет Tauri CLI (нужен envPrefix в vite.config);
@@ -24,7 +27,7 @@ export async function saveBlob(blob: Blob, defaultName: string): Promise<string 
     URL.revokeObjectURL(a.href);
     return null;
   }
-  if (blob.size > BINARY_LIMITS.save) throw new Error('Файл больше 256 МиБ. Сохрани проект частями.');
+  if (blob.size > BINARY_LIMITS.save) throw new Error(msg("platform.theFileExceeds256MiBSaveThe"));
   const data = encodeBinaryFile(defaultName, new Uint8Array(await blob.arrayBuffer()), BINARY_LIMITS.save);
   return invoke<string | null>('save_project', data);
 }
@@ -33,7 +36,7 @@ export async function saveBlob(blob: Blob, defaultName: string): Promise<string 
  *  null (вызывающий открывает свой input). */
 export async function pickProjectFile(): Promise<File | null> {
   if (!isDesktop) return null;
-  const res = decodeBinaryFile(await invoke<ArrayBuffer>('open_project'), BINARY_LIMITS.project);
+  const res = decodeBinaryFile(await invoke<ArrayBuffer>('open_project', { locale: getLocale() }), BINARY_LIMITS.project);
   if (!res) return null;
   return new File([res.data], res.name);
 }
@@ -49,7 +52,7 @@ export const nativeSamples = isDesktop ? {
   write: (name: string, data: ArrayBuffer) => invoke<void>('sample_write', encodeBinaryFile(name, new Uint8Array(data), BINARY_LIMITS.sample)),
   read: async (name: string): Promise<Uint8Array<ArrayBuffer> | null> => {
     const result = decodeBinaryFile(await invoke<ArrayBuffer>('sample_read', { name }), BINARY_LIMITS.sample);
-    if (result && result.name !== name) throw new Error('Нативная библиотека вернула другую запись.');
+    if (result && result.name !== name) throw new Error(msg("platform.theNativeLibraryReturnedADifferentSample"));
     return result?.data ?? null;
   },
 } : null;
@@ -64,6 +67,6 @@ export async function pickInstrumentFile(openBrowserPicker: () => void): Promise
 /** Audio import uses the same bounded native binary transport as projects. */
 export async function pickAudioFile(openBrowserPicker: () => void): Promise<File | null> {
   if (!isDesktop) { openBrowserPicker(); return null; }
-  const res = decodeBinaryFile(await invoke<ArrayBuffer>('open_project', { audio: true }), BINARY_LIMITS.project);
+  const res = decodeBinaryFile(await invoke<ArrayBuffer>('open_project', { audio: true, locale: getLocale() }), BINARY_LIMITS.project);
   return res ? new File([res.data], res.name) : null;
 }

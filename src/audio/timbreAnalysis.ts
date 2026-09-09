@@ -1,7 +1,8 @@
+import { t as msg } from '../i18n/workerLocale.ts';
 import type { Instrument } from '../types';
 /** Bounded harmonic model for a predominantly monophonic fragment. */
 export function analyzeTimbre(samples: Float32Array, sampleRate: number, rootHz: number): Partial<Instrument> {
-  if (!Number.isFinite(rootHz) || rootHz < 30 || rootHz > 2000 || samples.length < sampleRate * .03 || samples.length > sampleRate * 30) throw Error('Нужен фрагмент 0,03–30 с и основная частота 30–2000 Гц.');
+  if (!Number.isFinite(rootHz) || rootHz < 30 || rootHz > 2000 || samples.length < sampleRate * .03 || samples.length > sampleRate * 30) throw Error(msg("timbreAnalysis.useAnExcerptOf00330"));
   const frames: number[][] = [], levels: number[] = [];
   const windowSize = Math.min(samples.length, Math.round(sampleRate / rootHz * 16));
   for (let frame = 0; frame < 8; frame++) {
@@ -17,7 +18,7 @@ export function analyzeTimbre(samples: Float32Array, sampleRate: number, rootHz:
     const sum = amps.reduce((a,b) => a+b,0);
     frames.push(Array.from({length:128},(_,n) => { let x=0; for(let k=1;k<64;k++)x+=amps[k]*Math.sin(2*Math.PI*k*n/128); return sum > 1e-8 ? x/sum : 0; }));
   }
-  const peak = Math.max(...levels); if(peak<1e-6)throw Error('Фрагмент слишком тихий.');
+  const peak = Math.max(...levels); if(peak<1e-6)throw Error(msg("timbreAnalysis.theExcerptIsTooQuiet"));
   return {waveform:'wave',wave:{partials:[],wavetable:{frames,position:0,sweep:1}},recommendedHz:rootHz,attack:.003,decay:.2,sustain:0,
     ampMseg:{seconds:Math.min(16,samples.length/sampleRate),points:[{t:0,v:0},...levels.map((v,i)=>({t:.02+i*.96/7,v:v/peak})),{t:1,v:0}]}};
 }

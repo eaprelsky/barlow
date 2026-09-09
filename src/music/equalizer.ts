@@ -1,6 +1,7 @@
+import { t as msg } from '../i18n/runtime.ts';
 export type EqShape = 'peaking' | 'lowshelf' | 'highshelf' | 'highpass' | 'lowpass';
 export interface EqBand { type: EqShape; frequency: number; gain: number; q: number; enabled: boolean }
-export const EQ_LABELS: Record<EqShape,string> = {peaking:'колокол', lowshelf:'низкая полка', highshelf:'высокая полка', highpass:'срез низких', lowpass:'срез высоких'};
+export const EQ_LABELS: Record<EqShape,string> = {get peaking() { return msg("equalizer.bell"); }, get lowshelf() { return msg("equalizer.lowShelf"); }, get highshelf() { return msg("equalizer.highShelf"); }, get highpass() { return msg("equalizer.lowCut"); }, get lowpass() { return msg("equalizer.highCut"); }};
 export const newEqBand = (): EqBand => ({type:'peaking',frequency:1000,gain:0,q:1,enabled:true});
 const finite = (v: unknown, min: number, max: number, fallback: number) => typeof v === 'number' && Number.isFinite(v) ? Math.max(min,Math.min(max,v)) : fallback;
 export function normalizeEqBands(raw: unknown): EqBand[] {

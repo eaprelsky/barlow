@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // Шкалы трека: произвольные наборы отношений частот (ratios) к тонике.
 // Никакой обязательной привязки к 12 полутонам: от чистого строя и равной
 // темперации до гамелана, шрути и неоктавных строев. Выбор — в модалке
@@ -5,6 +6,7 @@
 
 export interface ScalePreset {
   name: string;
+  sourceName: string;
   ratios: number[];
   group: string;
   hint?: string;
@@ -60,64 +62,64 @@ const PARTCH_43 = [
 
 export const SCALE_PRESETS: ScalePreset[] = [
   // — запад —
-  { name: 'одна высота', ratios: [1], group: 'запад', hint: 'драм-линия без высот' },
-  { name: 'пентатоника, минор', ratios: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2], group: 'запад' },
-  { name: 'пентатоника, мажор', ratios: [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2], group: 'запад' },
-  { name: 'мажор (just intonation)', ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
-  { name: 'минор (just intonation)', ratios: [1, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 9 / 5, 2], group: 'запад' },
+  { sourceName: "одна высота", get name() { return msg("scales.singlePitch"); }, ratios: [1], group: 'запад', get hint() { return msg("scales.oneRowForDrumsOrASingle"); } },
+  { sourceName: "пентатоника, минор", get name() { return msg("scales.minorPentatonic"); }, ratios: [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5, 2], group: 'запад' },
+  { sourceName: "пентатоника, мажор", get name() { return msg("scales.majorPentatonic"); }, ratios: [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2], group: 'запад' },
+  { sourceName: "мажор (just intonation)", get name() { return msg("scales.majorJustIntonation"); }, ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
+  { sourceName: "минор (just intonation)", get name() { return msg("scales.minorJustIntonation"); }, ratios: [1, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 9 / 5, 2], group: 'запад' },
   // Семь ладов в чистом строе: сексты 5/3 (мажорные) и 8/5 (минорные),
   // септимы 15/8 и 16/9, увеличенная кварта 45/32 у лидийского/локрийского.
-  { name: 'лад: ионийский', ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
-  { name: 'лад: дорийский', ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 5 / 3, 16 / 9, 2], group: 'запад' },
-  { name: 'лад: фригийский', ratios: [1, 16 / 15, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
-  { name: 'лад: лидийский', ratios: [1, 9 / 8, 5 / 4, 45 / 32, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
-  { name: 'лад: миксолидийский', ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 16 / 9, 2], group: 'запад' },
-  { name: 'лад: эолийский', ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
-  { name: 'лад: локрийский', ratios: [1, 16 / 15, 6 / 5, 45 / 32, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
-  { name: '12 равных полутонов', ratios: edo(12, 12), group: 'запад', hint: 'обычная темперация' },
-  { name: '24 четвертитона', ratios: edo(24, 24), group: 'запад' },
+  { sourceName: "лад: ионийский", get name() { return msg("scales.modeIonian"); }, ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
+  { sourceName: "лад: дорийский", get name() { return msg("scales.modeDorian"); }, ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 5 / 3, 16 / 9, 2], group: 'запад' },
+  { sourceName: "лад: фригийский", get name() { return msg("scales.modePhrygian"); }, ratios: [1, 16 / 15, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
+  { sourceName: "лад: лидийский", get name() { return msg("scales.modeLydian"); }, ratios: [1, 9 / 8, 5 / 4, 45 / 32, 3 / 2, 5 / 3, 15 / 8, 2], group: 'запад' },
+  { sourceName: "лад: миксолидийский", get name() { return msg("scales.modeMixolydian"); }, ratios: [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 16 / 9, 2], group: 'запад' },
+  { sourceName: "лад: эолийский", get name() { return msg("scales.modeAeolian"); }, ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
+  { sourceName: "лад: локрийский", get name() { return msg("scales.modeLocrian"); }, ratios: [1, 16 / 15, 6 / 5, 45 / 32, 3 / 2, 8 / 5, 16 / 9, 2], group: 'запад' },
+  { sourceName: "12 равных полутонов", get name() { return msg("scales.12ToneEqualTemperament"); }, ratios: edo(12, 12), group: 'запад', get hint() { return msg("scales.equalSemitones"); } },
+  { sourceName: "24 четвертитона", get name() { return msg("scales.24QuarterTones"); }, ratios: edo(24, 24), group: 'запад' },
   {
-    name: 'пифагоров строй',
+    sourceName: "пифагоров строй", get name() { return msg("scales.pythagoreanTuning"); },
     ratios: [
       1, 2187 / 2048, 9 / 8, 19683 / 16384, 81 / 64, 4 / 3, 729 / 512, 3 / 2,
       6561 / 4096, 27 / 16, 59049 / 32768, 243 / 128, 2,
     ],
     group: 'запад',
-    hint: '12 звуков по цепи чистых квинт; средневековая Европа и китайские люй',
+    get hint() { return msg("scales.12PitchesFromAChainOfPure"); },
   },
   {
-    name: 'среднетоновый ¼-коммы',
+    sourceName: "среднетоновый ¼-коммы", get name() { return msg("scales.quarterCommaMeantone"); },
     ratios: cents(MEANTONE_QUARTER),
     group: 'запад',
-    hint: 'чистые большие терции; ренессанс и раннее барокко',
+    get hint() { return msg("scales.pureMajorThirdsAssociatedWithRenaissanceAnd"); },
   },
   {
-    name: 'Веркмайстер III',
+    sourceName: "Веркмайстер III", get name() { return msg("scales.werckmeisterIII"); },
     ratios: cents(WERCKMEISTER_III),
     group: 'запад',
-    hint: 'иррегулярная темперация, под которую писал «Хорошо темперированный клавир»',
+    get hint() { return msg("scales.aHistoricalUnequalTemperamentWithDifferentKey"); },
   },
   {
-    name: 'блюз (7-лимит)',
+    sourceName: "блюз (7-лимит)", get name() { return msg("scales.blues7Limit"); },
     ratios: [1, 6 / 5, 4 / 3, 7 / 4, 9 / 5, 2],
     group: 'запад',
-    hint: 'блю-нота — седьмая гармоника 7/4 вместо темперированной',
+    get hint() { return msg("scales.usesTheSeventhHarmonic74As"); },
   },
 
   // — индия —
   {
-    name: '22 шрути',
+    sourceName: "22 шрути", get name() { return msg("scales.22Shruti"); },
     ratios: SHRUTI_22,
     group: 'индия',
-    hint: 'полный ряд индийской классики; раги — его подмножества',
+    get hint() { return msg("scales.oneTheoreticalSetOf22ShrutiNot"); },
   },
 
   // — ближний восток —
   {
-    name: 'макам Раст (24-EDO)',
+    sourceName: "макам Раст (24-EDO)", get name() { return msg("scales.maqamRast24EDO"); },
     ratios: [0, 4, 7, 10, 14, 17, 20, 24].map((k) => +(2 ** (k / 24)).toFixed(6)),
     group: 'ближний восток',
-    hint: 'нейтральная терция — между минорной и мажорной; турецкая версия живёт в 53-ET',
+    get hint() { return msg("scales.a24EDOApproximationWithANeutral"); },
   },
 
   // — восточная и юго-восточная азия —
@@ -125,79 +127,79 @@ export const SCALE_PRESETS: ScalePreset[] = [
   // настроен по-своему; слендро обычно близок к 5 равным ступеням, пелог —
   // к подмножеству 9 равных (степени 0,1,2,4,5,7,8).
   {
-    name: 'слендро (≈5 равных)',
+    sourceName: "слендро (≈5 равных)", get name() { return msg("scales.slendroApprox5EqualSteps"); },
     ratios: edo(5, 5),
     group: 'восточная и юго-восточная азия',
-    hint: 'гамелан, Ява/Бали',
+    get hint() { return msg("scales.anExperimentalApproximationActualGamelanTuningsVary"); },
   },
   {
-    name: 'пелог (≈из 9 равных)',
+    sourceName: "пелог (≈из 9 равных)", get name() { return msg("scales.pelogApprox9EDOSubset"); },
     ratios: [0, 1, 2, 4, 5, 7, 8].map((k) => +(2 ** (k / 9)).toFixed(6)).concat(2),
     group: 'восточная и юго-восточная азия',
-    hint: 'гамелан, Ява/Бали',
+    get hint() { return msg("scales.anExperimentalApproximationActualGamelanTuningsVary"); },
   },
   {
-    name: 'тайский (7 равных)',
+    sourceName: "тайский (7 равных)", get name() { return msg("scales.thaiInspired7EqualSteps"); },
     ratios: edo(7, 7),
     group: 'восточная и юго-восточная азия',
-    hint: 'оркестры пипхат настроены почти в 7-EDO',
+    get hint() { return msg("scales.anEqualStepApproximationNotAMeasured"); },
   },
   {
-    name: 'хирадзёси',
+    sourceName: "хирадзёси", get name() { return msg("scales.hirajoshi"); },
     ratios: [1, 16 / 15, 6 / 5, 3 / 2, 8 / 5, 2],
     group: 'восточная и юго-восточная азия',
-    hint: 'строй кото, полутоновая пентатоника',
+    get hint() { return msg("scales.aJapanesePentatonicScaleContainingSemitoneIntervals"); },
   },
   {
-    name: 'инсэн',
+    sourceName: "инсэн", get name() { return msg("scales.insen"); },
     ratios: [1, 16 / 15, 4 / 3, 3 / 2, 16 / 9, 2],
     group: 'восточная и юго-восточная азия',
-    hint: 'строй кото, сумрачная',
+    get hint() { return msg("scales.aJapanesePentatonicScale"); },
   },
   {
-    name: 'ивато',
+    sourceName: "ивато", get name() { return msg("scales.iwato"); },
     ratios: [1, 16 / 15, 4 / 3, 45 / 32, 16 / 9, 2],
     group: 'восточная и юго-восточная азия',
-    hint: 'строй кото, с тритоном',
+    get hint() { return msg("scales.aJapanesePentatonicScaleContainingATritone"); },
   },
 
   // — экспериментальные —
   {
-    name: 'Болен-Пирс',
+    sourceName: "Болен-Пирс", get name() { return msg("scales.bohlenPierce"); },
     ratios: equalDivisions(3, 13),
     group: 'экспериментальные',
-    hint: '13 равных ступеней в тритаве 3:1, без октавы',
+    get hint() { return msg("scales.13EqualDivisionsOfThe31"); },
   },
   {
-    name: 'Партч (43 ступени)',
+    sourceName: "Партч (43 ступени)", get name() { return msg("scales.partch43Steps"); },
     ratios: PARTCH_43,
     group: 'экспериментальные',
-    hint: '11-лимит чистого строя, Genesis of a Music',
+    get hint() { return msg("scales.11LimitJustIntonationGenesisOfA"); },
   },
   {
-    name: 'Карлос альфа',
+    sourceName: "Карлос альфа", get name() { return msg("scales.carlosAlphaApprox"); },
     ratios: carlos(15.396),
     group: 'экспериментальные',
-    hint: 'девять равных долей квинты, октава не замыкается',
+    get hint() { return msg("scales.approximationNineEqualDivisionsOfAPure"); },
   },
   {
-    name: 'Карлос бета',
+    sourceName: "Карлос бета", get name() { return msg("scales.carlosBetaApprox"); },
     ratios: carlos(18.809),
     group: 'экспериментальные',
-    hint: 'одиннадцать равных долей квинты',
+    get hint() { return msg("scales.approximationElevenEqualDivisionsOfAPure"); },
   },
   {
-    name: 'Карлос гамма',
+    sourceName: "Карлос гамма", get name() { return msg("scales.carlosGammaApprox"); },
     ratios: carlos(34.188),
     group: 'экспериментальные',
-    hint: 'двадцать равных долей квинты',
+    get hint() { return msg("scales.approximationTwentyEqualDivisionsOfAPure"); },
   },
-  { name: 'гармоники 1–8', ratios: [1, 2, 3, 4, 5, 6, 7, 8], group: 'экспериментальные' },
+  { sourceName: "гармоники 1–8", get name() { return msg("scales.harmonics18"); }, ratios: [1, 2, 3, 4, 5, 6, 7, 8], group: 'экспериментальные' },
   {
-    name: 'гармоники 8–16',
+    sourceName: "гармоники 8–16", get name() { return msg("scales.harmonics816"); },
     ratios: [8, 9, 10, 11, 12, 13, 14, 15, 16],
     group: 'экспериментальные',
-    hint: 'спектральный кластер одной струны',
+    get hint() { return msg("scales.aClusterFromTheHarmonicSeries"); },
   },
 ];
 
@@ -209,7 +211,7 @@ export function presetName(ratios: number[]): string {
   for (const p of SCALE_PRESETS) {
     if (sameRatios(p.ratios, ratios)) return p.name;
   }
-  return 'своя';
+  return msg("scales.custom");
 }
 
 /** Парсер своей шкалы: числа и дроби через запятую/пробел, до 48 значений
@@ -234,4 +236,15 @@ export function parseRatios(text: string): number[] | null {
   out.push(1); // тоника — всегда
   const uniq = [...new Set(out.map((v) => +v.toFixed(6)))].sort((a, b) => a - b);
   return uniq.length > 48 ? null : uniq;
+}
+
+export function scaleGroupName(group: string): string {
+  switch(group) {
+    case "запад": return msg("scales.groupWest");
+    case "индия": return msg("scales.groupIndia");
+    case "ближний восток": return msg("scales.groupMiddleEast");
+    case "восточная и юго-восточная азия": return msg("scales.groupAsia");
+    case "экспериментальные": return msg("scales.groupExperimental");
+    default: return group;
+  }
 }

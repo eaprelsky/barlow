@@ -1,3 +1,4 @@
+import { t as msg, useLocale } from '../i18n';
 // Крутилка-регулятор: дуга значения + круговые риски, вертикальный драг
 // (Shift — мелкий шаг), колесо, двойной клик — точное число (тот же
 // NumField под капотом: прикол с численной установкой сохраняется).
@@ -57,6 +58,7 @@ export function Knob({
   size = 34,
   onChange,
 }: Props) {
+  useLocale();
   const [editing, setEditing] = useState(false);
   const gesture = useEditGesture();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -132,7 +134,7 @@ export function Knob({
           min={min}
           max={max}
           step={step}
-          ariaLabel={label ?? title ?? 'значение'}
+          ariaLabel={label ?? title ?? msg("knob.value")}
           w={54}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
@@ -154,7 +156,7 @@ export function Knob({
         className="knob"
         role="slider"
         tabIndex={0}
-        aria-label={label ?? title ?? 'значение'}
+        aria-label={label ?? title ?? msg("knob.value")}
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}

@@ -1,3 +1,4 @@
+import { t as msg, useLocale, pluralCategory } from '../i18n';
 // Форма ноты одним графиком: громкость (атака-плато-спад) и падение тона
 // на общей оси времени. Ширина графика = длина ноты — она подписана
 // размерной линией со стрелками, как на чертеже. Математика та же, что
@@ -37,15 +38,8 @@ const DIM_Y = 124; // размерная линия длины ноты
 /** «1 шаг», «2 шага», «5 шагов», дробное — «1.5 шага». */
 function stepsLabel(n: number): string {
   const rounded = Math.round(n * 10) / 10;
-  if (Number.isInteger(rounded)) {
-    const mod100 = Math.abs(rounded) % 100;
-    const mod10 = mod100 % 10;
-    if (mod100 >= 11 && mod100 <= 14) return `${rounded} шагов`;
-    if (mod10 === 1) return `${rounded} шаг`;
-    if (mod10 >= 2 && mod10 <= 4) return `${rounded} шага`;
-    return `${rounded} шагов`;
-  }
-  return `${rounded} шага`;
+  const category = pluralCategory(rounded);
+  return msg(category === 'one' ? 'envGraph.step' : category === 'few' ? 'envGraph.steps2' : category === 'many' ? 'envGraph.steps' : 'envGraph.steps4', {p0: rounded});
 }
 
 const DROPS = [2, 4, 8, 16];
@@ -64,6 +58,7 @@ export function NoteGraph({
   onPitch,
   decayEditable,
 }: NoteGraphProps) {
+  useLocale();
   const ref = useRef<SVGSVGElement | null>(null);
   const drag = useRef<'a' | 's' | 'd' | 'pitch' | null>(null);
   const attackClamped = Math.max(attack, 0.0005);
@@ -115,8 +110,8 @@ export function NoteGraph({
   // Подпись размерной линии — как на чертеже: длина ноты целиком.
   const dimLabel =
     steps !== null
-      ? `${stepsLabel(steps)} ≈ ${voiceLen.toFixed(2)} с`
-      : `нота ≈ ${voiceLen.toFixed(2)} с`;
+      ? msg("envGraph.s", {p0: stepsLabel(steps), p1: voiceLen.toFixed(2)})
+      : msg("envGraph.noteS", {p0: voiceLen.toFixed(2)});
 
   // ---- Драг: ручки по горизонтали, тон — по двум осям ----
   const xToT = (clientX: number): number => {
@@ -218,9 +213,7 @@ export function NoteGraph({
       onPointerCancel={up}
     >
       <title>
-        {`Нота: атака ${(attackClamped * 1000).toFixed(0)} мс, плато ${Math.round(sus * 100)}%, спад ${decay.toFixed(2)} с${
-          hasPitch ? `, падение тона ×${pitchDrop} за ${(pitchTime * 1000).toFixed(0)} мс` : ''
-        }. Ручки тянутся горизонтально, кривая тона — по двум осям`}
+        {msg("envGraph.noteAttackMsHoldDecaySDrag", {p0: (attackClamped * 1000).toFixed(0), p1: Math.round(sus * 100), p2: decay.toFixed(2), p3: hasPitch ? msg("envGraph.pitchDropOverMs", {p0: pitchDrop, p1: (pitchTime * 1000).toFixed(0)}) : ''})}
       </title>
       {lines.map((t, i) => (
         <line key={i} x1={x(t)} y1={PLOT_TOP - 8} x2={x(t)} y2={PLOT_BOTTOM} className="env-grid" />
@@ -250,7 +243,7 @@ export function NoteGraph({
             y={Math.max(yPitch(pitchDrop) - 6, 12)}
             className="env-text strong"
           >
-            {`×${pitchDrop} · ${(pitchTime * 1000).toFixed(0)} мс`}
+            {msg("envGraph.ms", {p0: pitchDrop, p1: (pitchTime * 1000).toFixed(0)})}
           </text>
         </>
       )}
@@ -260,19 +253,18 @@ export function NoteGraph({
       />
       {!hasPitch && (
         <text x={W / 2} y={yPitch(1) - 26} textAnchor="middle" className="env-text dim">
-          падение тона выключено — потяни пунктир вверх
-        </text>
+          {msg("envGraph.pitchDropOffDragTheDashedLine")}</text>
       )}
       {/* громкость поверх тона: сплошная кривая и ручки изломов */}
       <polyline points={ampPts.join(' ')} className="env-amp" />
       <line x1={x(voiceLen)} y1={PLOT_TOP - 8} x2={x(voiceLen)} y2={PLOT_BOTTOM} className="env-note-end" />
       {/* сегменты прямо на кривой: атака / плато / спад со значениями */}
       <text x={18} y={12} className="env-text">
-        {`A ${(attackClamped * 1000).toFixed(0)} мс`}
+        {msg("envGraph.aMs", {p0: (attackClamped * 1000).toFixed(0)})}
       </text>
       {sus > 0.005 && wS > 26 && (
         <text x={(wA + wA + wS) / 2} y={12} textAnchor="middle" className="env-text">
-          {`плато ${Math.round(sus * 100)}%`}
+          {msg("envGraph.hold", {p0: Math.round(sus * 100)})}
         </text>
       )}
       {wD > 56 && (
@@ -282,7 +274,7 @@ export function NoteGraph({
           textAnchor="middle"
           className="env-text"
         >
-          {`спад ${decay.toFixed(2)} с`}
+          {msg("envGraph.decayS", {p0: decay.toFixed(2)})}
         </text>
       )}
       {onEdit && (

@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 import { makeSceneSpace, sendToSpace } from './sceneSpace';
 import { updateEq } from './equalizer';
 import { sampleTime } from './sampleTime';
@@ -178,11 +179,11 @@ export class AudioEngine implements AudioBackend {
     }
   }
   private loadSample(id: string, name = id): Promise<AudioBuffer> {
-    if (!/^[a-f0-9]{64}$/.test(id)) return Promise.reject(new Error('Некорректный SHA-256 сэмпла.'));
+    if (!/^[a-f0-9]{64}$/.test(id)) return Promise.reject(new Error(msg("engine.invalidSampleSHA256Hash")));
     return this.sampleCache.load(id, async () => {
       const blob = await getSampleBlob(id);
-      if (!blob) throw new Error(`Нет записи «${name}» в библиотеке`);
-      if (blob.size > 64 * 1048576) throw new Error('Файл сэмпла больше 64 МиБ.');
+      if (!blob) throw new Error(msg("engine.sampleIsMissingFromTheLibrary", {p0: name}));
+      if (blob.size > 64 * 1048576) throw new Error(msg("engine.theSampleFileExceeds64MiB"));
       const buf = await this.ensureCtx().decodeAudioData(await blob.arrayBuffer());
       const bytes = buf.length * buf.numberOfChannels * 4;
       if (bytes <= this.sampleCache.limits.assetBytes) normalizeBuffer(buf);
@@ -680,7 +681,7 @@ export class AudioEngine implements AudioBackend {
       off.setValueAtTime(0, ctx.currentTime);
       node.connect(dest);
       this.scratchNode = node;
-    })().catch(e => { if (request === this.scratchRequest) this.warnSink?.(`Скрэтч: ${String(e)}`); });
+    })().catch(e => { if (request === this.scratchRequest) this.warnSink?.(msg("engine.scratch", {p0: String(e)})); });
   }
 
   /** Игла едет за мышью. */
@@ -701,7 +702,7 @@ export class AudioEngine implements AudioBackend {
     const request = ++this.previewRequest;
     this.previewCleanup?.(); this.previewCleanup = null;
     const patch = this.patch;
-    if (!patch) return 'патч ещё не загружен';
+    if (!patch) return msg("engine.theProjectHasNotLoadedYet");
     // Контекст и resume — синхронно, в стеке клика: после первого await
     // выйдем из пользовательского жеста, и resume подвисшего контекста
     // может не пройти (autoplay-политика).
@@ -711,15 +712,15 @@ export class AudioEngine implements AudioBackend {
     const st = stOf(patch, track);
     let sample: AudioBuffer | null;
     try { sample = await this.loadMainSample(st, true); }
-    catch (e) { return request === this.previewRequest ? `Сэмпл не загрузился: ${String(e)}` : null; }
+    catch (e) { return request === this.previewRequest ? msg("engine.couldNotLoadTheSample", {p0: String(e)}) : null; }
     if (request !== this.previewRequest) return null;
-    if (!sample) return 'в слоте дорожки нет сэмпла';
+    if (!sample) return msg("engine.noSampleIsAssignedToTheTrack");
     const chain = this.chains.get(track.id);
-    if (!chain && !this.master) return 'звуковой граф не поднят';
+    if (!chain && !this.master) return msg("engine.theAudioGraphIsNotReady");
     // Игла ходит по обрезанному куску сэмпла; пустая обрезка — тишина.
     const rs = Math.max(0, Math.min(st.sampleStart ?? 0, sample.duration - 0.001));
     const re = Math.max(rs + 0.001, Math.min(st.sampleEnd ?? sample.duration, sample.duration));
-    if (re - rs < 0.01) return 'обрезка сэмпла почти пустая — расширь кусок в редакторе волны';
+    if (re - rs < 0.01) return msg("engine.theSampleSelectionIsAlmostEmptyExpand");
     try {
       const dest: AudioNode = chain ? chain.hp : this.master!.input;
       const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
@@ -765,7 +766,7 @@ export class AudioEngine implements AudioBackend {
       this.previewCleanup = cleanup;
       return null;
     } catch (e) {
-      return `ошибка звука: ${e instanceof Error ? e.message : String(e)}`;
+      return msg("engine.audioError", {p0: e instanceof Error ? e.message : String(e)});
     }
   }
 
@@ -787,16 +788,16 @@ export class AudioEngine implements AudioBackend {
    *  библиотеки — не надо настраивать скрэтч заново. */
   async renderScratchWav(track: Track): Promise<Blob> {
     const patch = this.patch;
-    if (!patch) throw new Error('патч не загружен');
+    if (!patch) throw new Error(msg("engine.theProjectIsNotLoaded"));
     const st = stOf(patch, track);
     const stepSec = stepDuration(track, patch.bpm, patternInScene(track, this.scene()));
     const len = st.noteSteps && st.noteSteps > 0 ? st.noteSteps * stepSec : st.attack + st.decay;
-    if (!Number.isFinite(len) || len <= 0 || len > RENDER_LIMITS.seconds) throw new Error('WAV: жест должен быть не длиннее 10 минут.');
+    if (!Number.isFinite(len) || len <= 0 || len > RENDER_LIMITS.seconds) throw new Error(msg("engine.wavTheGestureMustNotExceed10"));
     const bytes = renderMemoryBytes(len + .2, 1);
     const memory = renderMemoryBudget.reserve(bytes);
     try {
       const sample = await this.loadMainSample(st);
-      if (!sample) throw new Error('в слоте нет сэмпла');
+      if (!sample) throw new Error(msg("engine.noSampleIsAssigned"));
       memory.resize(bytes + sample.length * sample.numberOfChannels * 8);
       return await this.renderPreparedScratch(st, sample, len);
     } finally { memory.release(); }
@@ -917,7 +918,7 @@ export class AudioEngine implements AudioBackend {
       };
       this.regionCleanup = cleanup;
       src.onended = release;
-    })().catch(e => { if (request === this.regionRequest) this.warnSink?.(`Прослушивание сэмпла: ${String(e)}`); });
+    })().catch(e => { if (request === this.regionRequest) this.warnSink?.(msg("engine.samplePreview", {p0: String(e)})); });
   }
 
   /** Прослушать одну ноту слитого трека (SoundingTrack). Так браузер
@@ -946,7 +947,7 @@ export class AudioEngine implements AudioBackend {
         try {
           await this.loadSoundSample(st);
         } catch (e) {
-          if (request === this.previewRequest) this.warnSink?.(`Сэмпл не загрузился: ${String(e)}`);
+          if (request === this.previewRequest) this.warnSink?.(msg("engine.couldNotLoadTheSample", {p0: String(e)}));
           return;
         }
         const ctx = this.ensureCtx();
@@ -955,7 +956,7 @@ export class AudioEngine implements AudioBackend {
         // Сэмпловый тембр без буфера (слот пуст или не загрузился) — тишина
         // без объяснений; говорим.
         if (instrumentVoices(st).filter(v => v.gain > 0).every(v => v.sound.waveform === 'sample') && !soundingSampleAssets(st).some(a => this.sampleCache.has(a.sampleId))) {
-          this.warnSink?.('В слоте дорожки нет сэмпла — «▶ нота» молчит');
+          this.warnSink?.(msg("engine.noSampleIsAssignedToTheTrack15"));
           return;
         }
         let failedChain: TrackChain | undefined;
@@ -968,7 +969,7 @@ export class AudioEngine implements AudioBackend {
           const stepSec = stepDuration(st, patch.bpm, pattern);
           const notes = [makeNote(noteRow, 0.9, 1)];
           this.voiceBudget.prune(ctx.currentTime);
-          if (!this.voiceBudget.allows(st, notes)) throw new Error('Превышен бюджет голосов. Уменьши унисон/число операторов или останови транспорт для прослушивания.');
+          if (!this.voiceBudget.allows(st, notes)) throw new Error(msg("engine.voiceBudgetExceededReduceUnisonOrThe"));
           const voice = triggerVoice(
             ctx,
             pseudo,
@@ -1013,7 +1014,7 @@ export class AudioEngine implements AudioBackend {
         } catch (e) {
           if (failedChain) disposeChain(failedChain);
           this.warnSink?.(
-            `Нота не прозвучала: ${e instanceof Error ? e.message : String(e)}`,
+            msg("engine.theNoteDidNotPlay", {p0: e instanceof Error ? e.message : String(e)}),
           );
         }
       } finally { if (!assetsOwnedByPreview) releaseAssets(); }
@@ -1359,7 +1360,7 @@ export class AudioEngine implements AudioBackend {
         const { track, st, itemIndex } = ev.part;
         voiceBudget.prune(ev.at);
         if (!voiceBudget.allows(st, ev.notes))
-          throw new Error('WAV: превышена полифония (128 нот / 8192 условных узла). Уменьши длину нот, унисон или плотность арпеджио.');
+          throw new Error(msg("engine.wavPolyphonyLimitExceeded128Notes8"));
         const chain = chainsByKey.get(ev.part.key)!;
         const voice = triggerVoice(ctx, chain, noise, this.sampleCache.get(st.sampleId ?? '') ?? null,
           st, ev.notes, ev.at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
@@ -1385,13 +1386,13 @@ export class AudioEngine implements AudioBackend {
         for (let c = 0; c < rendered.numberOfChannels; c++) {
           const data = rendered.getChannelData(c);
           for (let i = data.length - 1; i >= to; i--) {
-            if (!Number.isFinite(data[i])) throw new Error('WAV: некорректный сигнал при рендере хвоста.');
+            if (!Number.isFinite(data[i])) throw new Error(msg("engine.wavInvalidSignalWhileRenderingTheTail"));
             if (Math.abs(data[i]) > 1 / 32768) { last = Math.max(last, i); break; }
           }
         }
         const silence = Math.ceil(.05 * sampleRate);
         if (last >= rendered.length - silence)
-          throw new Error('WAV: звук не успел затихнуть в расчётное время. Файл не обрезан и не сохранён. Уменьши feedback или выбери точную границу.');
+          throw new Error(msg("engine.wavTheSoundDidNotDecayWithin"));
         if (last >= to) to = Math.min(rendered.length, last + 1 + silence);
       }
       return audioBufferToWav(rendered, { from, to, fadeFrames: Math.round(.005 * sampleRate) });

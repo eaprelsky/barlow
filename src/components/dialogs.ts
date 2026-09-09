@@ -1,3 +1,4 @@
+import { t as msg } from '../i18n/runtime.ts';
 // Очередь глобальных диалогов (данные без компонентов — см. Dialog.tsx).
 // Прежний confirm жил внутри setPatch-updater'а, и StrictMode в dev
 // прогонял апдейтеры дважды — переспрашивал по два раза. Теперь вопрос
@@ -62,8 +63,8 @@ export function confirmDialog(req: DialogReq): Promise<boolean> {
 }
 
 /** Сообщение (замена alert). Закрывается «ок», Escape или кликом по фону. */
-export function alertDialog(text: string, title = 'внимание'): Promise<void> {
-  return confirmDialog({ title, text, okLabel: 'ок', onlyOk: true }).then(
+export function alertDialog(text: string, title = msg("dialogs.notice")): Promise<void> {
+  return confirmDialog({ title, text, okLabel: msg("dialogs.ok"), onlyOk: true }).then(
     () => undefined,
   );
 }

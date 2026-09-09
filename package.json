@@ -57,7 +57,8 @@
     "test:portamento": "node scripts/portamento-contract.mjs",
     "test:slices": "node scripts/slices-contract.mjs",
     "smoke": "node scripts/smoke-collapse.mjs",
-    "smoke-bridge": "node scripts/smoke-bridge.mjs"
+    "smoke-bridge": "node scripts/smoke-bridge.mjs",
+    "test:localization": "node scripts/localization-catalog-contract.mjs && node scripts/localization-core-contract.mjs && node scripts/localization-synth-contract.mjs && node scripts/localization-library-contract.mjs && node scripts/localization-help-learning-contract.mjs && node scripts/localization-services-contract.mjs && node scripts/localization-layout-contract.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

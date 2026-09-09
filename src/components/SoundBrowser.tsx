@@ -1,3 +1,5 @@
+import { categoryLabel } from '../music/presetPresentation';
+import { t as msg, useLocale } from '../i18n';
 import { useLibraryWidth } from './LibraryResize';
 import { prepareInstrument, installInstrument } from '../audio/instrumentFile';
 // Левая док-панель «инструменты»: дерево пресетов (категории
@@ -20,7 +22,7 @@ import {
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import {
   CATEGORY_ORDER,
-  INSTRUMENT_PRESETS, loadFactoryPresets, renamePreset, PRESET_NAMES_KEY,
+  loadFactoryPresets, renamePreset, resetFactoryName, hasFactoryNameOverride, PRESET_NAMES_KEY,
   USER_CATEGORY,
   USER_PRESETS_EVENT,
   deleteUserPreset,
@@ -60,8 +62,8 @@ interface Props {
 }
 
 function fmtSize(bytes: number): string {
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-  return `${Math.round(bytes / 1024)} КБ`;
+  if (bytes > 1024 * 1024) return msg("soundBrowser.mib", {p0: (bytes / 1024 / 1024).toFixed(1)});
+  return msg("soundBrowser.kib", {p0: Math.round(bytes / 1024)});
 }
 
 export function SoundBrowser({
@@ -80,6 +82,7 @@ export function SoundBrowser({
   onAddTrack,
   onClose,
 }: Props) {
+  const locale = useLocale();
   const [transfer, setTransfer] = useState<'reading'|'installing'|null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const importGeneration = useRef(0);
@@ -89,14 +92,14 @@ export function SoundBrowser({
     try {
       const prepared=await prepareInstrument(file);
       if(request!==importGeneration.current) return;
-      const name=await promptDialog({title:'добавить инструмент из файла',
-        text:`${prepared.preset.name} · записей: ${prepared.samples.length}. Появится в «Мои инструменты». Текущая партия не изменится.`,
-        input:{value:prepared.preset.name,placeholder:'Имя инструмента'},okLabel:'добавить'});
+      const name=await promptDialog({title:msg("soundBrowser.importInstrument"),
+        text:msg("soundBrowser.samplesAddedToMyInstrumentsTheCurrent", {p0: prepared.preset.name, p1: prepared.samples.length}),
+        input:{value:prepared.preset.name,placeholder:msg("soundBrowser.instrumentName")},okLabel:msg("soundBrowser.add")});
       if(name===null || request!==importGeneration.current) return;
       setTransfer('installing');const saved=await installInstrument(prepared,name);
       setQuery(saved);setPack('user');setFavoritesOnly(false);onTab('inst');
       setClosed(prev=>{const next=new Set(prev);next.delete(USER_CATEGORY);return next;});
-    } catch(error) { if(request===importGeneration.current) await alertDialog(String(error),'не удалось импортировать инструмент'); }
+    } catch(error) { if(request===importGeneration.current) await alertDialog(String(error),msg("soundBrowser.couldNotImportInstrument")); }
     finally { if(request===importGeneration.current) setTransfer(null); }
   };
   const [query, setQuery] = useState('');
@@ -128,7 +131,7 @@ export function SoundBrowser({
   const refreshSamples = useCallback(() => {
     const request = ++libraryRequest.current;
     void listSamples().then(s => { if (request === libraryRequest.current) { setSamples(s); setLibraryError(''); } })
-      .catch(e => { if (request === libraryRequest.current) setLibraryError(`Не удалось прочитать библиотеку: ${String(e)}`); });
+      .catch(e => { if (request === libraryRequest.current) setLibraryError(msg("soundBrowser.couldNotReadTheLibrary", {p0: String(e)})); });
   }, []);
 
   useEffect(() => {
@@ -150,8 +153,8 @@ export function SoundBrowser({
     if (next.has(id)) next.delete(id); else next.add(id);
     try { saveSoundFavorites(next); } catch (e) { setFavoriteState(s => ({ ...s, error: String(e) })); }
   };
-  const star = (id: string, name: string) => <button className="sb-favorite" data-help="favorite" aria-label={`Избранное: ${name}`}
-    aria-pressed={favorites.has(id)} title={favorites.has(id) ? 'Убрать из избранного' : 'Добавить в избранное'}
+  const star = (id: string, name: string) => <button className="sb-favorite" data-help="favorite" aria-label={msg("soundBrowser.favorite", {p0: name})}
+    aria-pressed={favorites.has(id)} title={favorites.has(id) ? msg("soundBrowser.removeFromFavorites") : msg("soundBrowser.addToFavorites")}
     onClick={() => toggleFavorite(id)}>{favorites.has(id) ? '★' : '☆'}</button>;
 
   // Свои пресеты меняются мимо React (сохранение из редактора инструмента
@@ -185,7 +188,7 @@ export function SoundBrowser({
   const all = useMemo(
     () => [...loadUserPresets(), ...loadFactoryPresets()],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [listVersion],
+    [listVersion, locale],
   );
 
   const q = query.trim().toLowerCase();
@@ -223,16 +226,16 @@ export function SoundBrowser({
 
   const removeUser = async (name: string) => {
     const ok = await confirmDialog({
-      title: 'удалить пресет?',
-      text: `«${name}» исчезнет из категории «мои». Дорожки, где он уже применён, не изменятся.`,
-      okLabel: 'удалить',
+      title: msg("soundBrowser.deletePreset"),
+      text: msg("soundBrowser.willBeRemovedFromMyInstrumentsTracks", {p0: name}),
+      okLabel: msg("soundBrowser.delete"),
       danger: true,
     });
     if (!ok) return;
     try {
       deleteUserPreset(name);
       setListVersion((v) => v + 1);
-    } catch (error) { await alertDialog(String(error), 'не удалось удалить пресет'); }
+    } catch (error) { await alertDialog(String(error), msg("soundBrowser.couldNotDeletePreset")); }
   };
 
   const playSample = async (meta: SampleMeta) => {
@@ -246,24 +249,24 @@ export function SoundBrowser({
     try {
       const blob = await getSampleBlob(meta.id);
       if (request !== previewRequest.current) return;
-      if (!blob) throw new Error('Запись отсутствует в библиотеке.');
+      if (!blob) throw new Error(msg("soundBrowser.theSampleIsMissingFromTheLibrary"));
       const url = URL.createObjectURL(blob), audio = new Audio(url);
       audioRef.current = audio; urlRef.current = url;
       audio.onended = () => { if (request === previewRequest.current) setPlayingId(null); };
       await audio.play();
     } catch (e) {
-      if (request === previewRequest.current) { setPlayingId(null); setLibraryError(`Прослушивание: ${String(e)}`); }
+      if (request === previewRequest.current) { setPlayingId(null); setLibraryError(msg("soundBrowser.audition", {p0: String(e)})); }
     }
   };
 
   const downloadSample = async (meta: SampleMeta) => {
     try {
       const blob = await getSampleBlob(meta.id);
-      if (!blob) throw new Error('Запись отсутствует в библиотеке.');
+      if (!blob) throw new Error(msg("soundBrowser.theSampleIsMissingFromTheLibrary"));
       const ext = ({ 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/flac': 'flac', 'audio/webm': 'weba' } as Record<string, string>)[blob.type] ?? 'bin';
       const name = meta.name.replace(/[\\/:*?"<>|]/g, '_').replace(/\.(wav|mp3|m4a|ogg|flac|weba|webm|bin)$/i, '');
       await saveBlob(blob, `${name}.${ext}`);
-    } catch (e) { setLibraryError(`Сохранение: ${String(e)}`); }
+    } catch (e) { setLibraryError(msg("soundBrowser.save", {p0: String(e)})); }
   };
 
   const toggleCat = (cat: string) =>
@@ -282,11 +285,11 @@ export function SoundBrowser({
     p.track.waveform === 'sample' ? WAVEFORM_LABELS.sample : '';
 
   const rename = async (p: InstrumentPreset, reset = false) => {
-    const original = INSTRUMENT_PRESETS.find(item => item.id === p.id);
-    const name = reset ? original?.name : await promptDialog({title:'переименовать инструмент',input:{value:p.name,placeholder:'Название инструмента'},okLabel:'сохранить'});
-    if (name == null || !p.id) return;
-    try { renamePreset(p.id, name); if (query.trim()) setQuery(name.trim()); }
-    catch (error) { await alertDialog(String(error), 'не удалось переименовать'); }
+    if (!p.id) return;
+    const name = reset ? '' : await promptDialog({title:msg('soundBrowser.renameInstrument'),input:{value:p.name,placeholder:msg('soundBrowser.instrumentName20')},okLabel:msg('soundBrowser.save21')});
+    if (name == null) return;
+    try { if (reset) resetFactoryName(p.id); else renamePreset(p.id, name); if (query.trim()) setQuery(reset ? '' : name.trim()); }
+    catch (error) { await alertDialog(String(error), msg("soundBrowser.couldNotRename")); }
   };
   const presetRow = (p: InstrumentPreset) => {
     const user = p.category === USER_CATEGORY;
@@ -303,7 +306,7 @@ export function SoundBrowser({
         }}>
         <span className="inst-name">{p.name}</span>
         {current && (
-          <span className="sb-current" title="Текущий инструмент целевой дорожки">
+          <span className="sb-current" title={msg("soundBrowser.currentInstrumentOnTheTargetTrack")}>
             •
           </span>
         )}
@@ -312,11 +315,11 @@ export function SoundBrowser({
         <button
           className="sb-audition"
           data-ob="preset-audition"
-          aria-label={`прослушать ${p.name}`}
+          aria-label={msg("soundBrowser.audition24", {p0: p.name})}
           title={
             needsSample
-              ? 'Слушать нечего: сэмпл ещё не выбран — примени пресет и выбери сэмпл на вкладке «сэмплы»'
-              : `Послушать тембр: ${recommendedHz(p.track)} Гц — без изменения дорожки`
+              ? msg("soundBrowser.noSampleSelectedApplyThePresetAnd")
+              : msg("soundBrowser.auditionAtHzWithoutChangingTheTrack", {p0: recommendedHz(p.track)})
           }
           onClick={(e) => {
             e.stopPropagation();
@@ -328,15 +331,15 @@ export function SoundBrowser({
         </button>
         {star(presetFavoriteId(p), p.name)}
         <span className="sb-item-actions">
-        <button className="sb-rename" data-help="preset-rename" aria-label={`Переименовать ${p.name}`} title="Переименовать инструмент" onClick={() => void rename(p)}>
+        <button className="sb-rename" data-help="preset-rename" aria-label={msg("soundBrowser.rename", {p0: p.name})} title={msg("soundBrowser.renameInstrument28")} onClick={() => void rename(p)}>
           <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 12 9-9 4 4-9 9-5 1 1-5Zm7-7 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
         </button>
-        {!user && INSTRUMENT_PRESETS.some(item => item.id === p.id && item.name !== p.name) && <button className="sb-rename" data-help="preset-rename" aria-label={`Вернуть исходное название: ${p.name}`} title="Вернуть исходное название" onClick={() => void rename(p, true)}><svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9h7a5 5 0 0 1 0 10M4 9l4-4M4 9l4 4" transform="translate(0 -2)" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
+        {!user && !!p.id && hasFactoryNameOverride(p.id) && <button className="sb-rename" data-help="preset-rename" aria-label={msg("soundBrowser.restoreOriginalName", {p0: p.name})} title={msg("soundBrowser.restoreOriginalName30")} onClick={() => void rename(p, true)}><svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9h7a5 5 0 0 1 0 10M4 9l4-4M4 9l4 4" transform="translate(0 -2)" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
         {user ? (
           <button
             className="inst-del" data-help="preset-delete"
-            aria-label={`удалить пресет ${p.name}`}
-            title="Удалить пресет"
+            aria-label={msg("soundBrowser.deletePreset31", {p0: p.name})}
+            title={msg("soundBrowser.deletePreset32")}
             onClick={(e) => {
               e.stopPropagation();
               void removeUser(p.name);
@@ -354,7 +357,7 @@ export function SoundBrowser({
         className={'inst-card' + (user ? ' user' : '') + (current ? ' current' : '')}
         role="group"
         aria-label={p.name}
-        title={p.hint ?? `волна: ${waveOf(p)}`}
+        title={p.hint ?? msg("soundBrowser.waveform", {p0: waveOf(p)})}
       >
         {card}
       </div>
@@ -364,18 +367,18 @@ export function SoundBrowser({
   return (
     <div className="library-dock" style={{flexBasis:width,width}}><aside className="dock" data-ob="library-panel">
       <div className="sb-head">
-        <span className="scenes-label">инструменты</span>
-        <HelpHint guide="browser" step={1} label="Гид: найти и выбрать звук" />
+        <span className="scenes-label">{msg("soundBrowser.instruments")}</span>
+        <HelpHint guide="browser" step={1} label={msg("soundBrowser.tourFindAndChooseASound")} />
         <span className="spacer" />
       {tab === 'inst' && <div className="sb-transfer" data-help="instrument-import">
         <input ref={importInput} type="file" hidden accept=".zip,.barlow-instrument.zip" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void readInstrument(file);}} />
-        <button title="Добавить инструмент из файла" aria-label="Импорт инструмента" disabled={!!transfer} onClick={async()=>{try { const file=await pickInstrumentFile(()=>importInput.current?.click());if(file) await readInstrument(file); }
-          catch(error) { await alertDialog(String(error),'не удалось открыть файл'); }}}><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 6V4h6l2 2h8v11H2V6Zm8 2v6m-3-3 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg></button>
+        <button title={msg("soundBrowser.importAnInstrumentFromAFile")} aria-label={msg("soundBrowser.importInstrument37")} disabled={!!transfer} onClick={async()=>{try { const file=await pickInstrumentFile(()=>importInput.current?.click());if(file) await readInstrument(file); }
+          catch(error) { await alertDialog(String(error),msg("soundBrowser.couldNotOpenFile")); }}}><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 6V4h6l2 2h8v11H2V6Zm8 2v6m-3-3 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg></button>
       </div>}
-        <button data-help="panel-close" onClick={onClose} title="Скрыть панель" aria-label="Скрыть инструменты">×</button>
+        <button data-help="panel-close" onClick={onClose} title={msg("soundBrowser.hidePanel")} aria-label={msg("soundBrowser.hideInstruments")}>×</button>
       </div>
-      {transfer && <div className="sb-transfer" data-help="instrument-import"><span role="status">{transfer==='reading'?'проверяем…':'добавляем…'}</span>
-        {transfer==='reading' && <button data-help="instrument-import-cancel" onClick={()=>{importGeneration.current++;setTransfer(null);}}>отмена</button>}
+      {transfer && <div className="sb-transfer" data-help="instrument-import"><span role="status">{transfer==='reading'?msg("soundBrowser.checking"):msg("soundBrowser.adding")}</span>
+        {transfer==='reading' && <button data-help="instrument-import-cancel" onClick={()=>{importGeneration.current++;setTransfer(null);}}>{msg("soundBrowser.cancel")}</button>}
       </div>}
       {/* Вкладки: пресеты и сэмплы — явные, не теряются. Сэмпл-пресет
           без сэмпла сам перебрасывает сюда на «сэмплы». Вкладка
@@ -385,25 +388,24 @@ export function SoundBrowser({
           className={tab === 'inst' ? 'on' : ''}
           data-ob="sb-tab-instruments"
           onClick={() => onTab('inst')}
-          title="Пресеты-инструменты по категориям: клик применяет к дорожке из селектора ниже"
+          title={msg("soundBrowser.instrumentPresetsByCategoryClickToApply")}
         >
-          пресеты
-        </button>
+          {msg("soundBrowser.presets")}</button>
         <button
           className={tab === 'smp' ? 'on' : ''}
           data-ob="sb-tab-samples"
           onClick={() => onTab('smp')}
-          title="Все сэмплы: клик по имени сажает сэмпл в дорожку"
+          title={msg("soundBrowser.allSamplesClickANameToAssign")}
         >
-          сэмплы ({samples.length})
+          {msg("soundBrowser.samples")}{samples.length})
         </button>
       </div>
       <div className="browser-search-wrap">
         <input
           className="browser-search"
-          aria-label="поиск звука"
+          aria-label={msg("soundBrowser.searchSounds")}
           data-ob="inst-search"
-          placeholder={tab === 'inst' ? 'поиск: имя, тембр, категория…' : 'поиск по имени сэмпла…'}
+          placeholder={tab === 'inst' ? msg("soundBrowser.searchNameSoundCategory") : msg("soundBrowser.searchSampleNames")}
           value={query}
           maxLength={256}
           onChange={(e) => setQuery(e.target.value)}
@@ -411,8 +413,8 @@ export function SoundBrowser({
         {query !== '' && (
           <button
             className="search-clear" data-help="search-clear"
-            title="Очистить поиск"
-            aria-label="очистить поиск"
+            title={msg("soundBrowser.clearSearch")}
+            aria-label={msg("soundBrowser.clearSearch52")}
             onClick={() => setQuery('')}
           >
             ✕
@@ -420,32 +422,32 @@ export function SoundBrowser({
         )}
       </div>
       <div className="sb-filters">
-        {tab === 'inst' && <label className="sb-pack">подборка <select title={SOUND_COLLECTIONS.find(p=>p.id===pack)?.description ?? 'Подборки по музыкальной задаче; один звук может входить в несколько'} data-help="library-pack" aria-label="Подборка звуков" value={pack} onChange={e => setPack(e.target.value)}>
-          <option value="">все инструменты</option>
+        {tab === 'inst' && <label className="sb-pack">{msg("soundBrowser.collection")}<select title={SOUND_COLLECTIONS.find(p=>p.id===pack)?.description ?? msg("soundBrowser.collectionsByMusicalPurposeASoundCan")} data-help="library-pack" aria-label={msg("soundBrowser.soundCollection")} value={pack} onChange={e => setPack(e.target.value)}>
+          <option value="">{msg("soundBrowser.allInstruments")}</option>
           {SOUND_COLLECTIONS.map(p => <option key={p.id} value={p.id}>{p.name} ({all.filter(s => presetInCollection(s, p.id)).length})</option>)}
           {[...new Map(all.filter(p=>p.packName&&p.packId).map(p=>[p.packId!,p])).values()].map(p=><option key={p.packId} value={`pack:${p.packId}`}>{p.packName}</option>)}
         </select></label>}
-        <label><input data-help="favorites-only" type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> только избранное</label>
-        <span role="status">найдено: {tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>
-        {(pack || favoritesOnly || query) && <button data-help="filters-reset" onClick={() => { setPack(''); setFavoritesOnly(false); setQuery(''); }}>сбросить фильтры</button>}
+        <label><input data-help="favorites-only" type="checkbox" checked={favoritesOnly} onChange={e => setFavoritesOnly(e.target.checked)} /> {msg("soundBrowser.favoritesOnly")}</label>
+        <span role="status">{msg("soundBrowser.found")}{tab === 'inst' ? groups.reduce((n, g) => n + g.items.length, 0) : samplesShown.length}</span>
+        {(pack || favoritesOnly || query) && <button data-help="filters-reset" onClick={() => { setPack(''); setFavoritesOnly(false); setQuery(''); }}>{msg("soundBrowser.resetFilters")}</button>}
       </div>
       {favoriteState.error && <p className="error" role="alert">{favoriteState.error}</p>}
-      {libraryError && <p className="error" role="alert">{libraryError} <button onClick={refreshSamples}>обновить список</button></p>}
+      {libraryError && <p className="error" role="alert">{libraryError} <button onClick={refreshSamples}>{msg("soundBrowser.refreshList")}</button></p>}
       {/* Куда применяется клик: пресет меняет тембр этой дорожки. */}
       <div className="sb-target">
-        <span className="rt-label">в дорожку</span>
+        <span className="rt-label">{msg("soundBrowser.targetTrack")}</span>
         {tracks.length > 0 ? (
           <select
             value={targetId ?? ''}
             onChange={(e) => onTarget(e.target.value)}
-            title="Клик по пресету или сэмплу применит его к этой дорожке: сменится тембр (пустому треку — ещё и регистр), а шкала, ноты и ритм останутся твоими"
+            title={msg("soundBrowser.applyThisPresetOrSampleToThe")}
           >
             {tracks.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
         ) : (
-          <button onClick={onAddTrack} title="Пресету нужна дорожка">+ трек</button>
+          <button onClick={onAddTrack} title={msg("soundBrowser.aPresetNeedsATrack")}>{msg("soundBrowser.track")}</button>
         )}
       </div>
 
@@ -453,7 +455,7 @@ export function SoundBrowser({
         <>
           <div className="sb-list" data-ob="inst-cards" ref={listRef}>
             {groups.map((g) => (
-              <div className="sb-cat" key={g.cat}>
+              <div className="sb-cat" key={categoryLabel(g.cat)}>
                 <div
                   className="sb-cat-label" data-help="library-category"
                   role={q ? 'heading' : 'button'}
@@ -466,7 +468,7 @@ export function SoundBrowser({
                   }}
                 >
                   <span className={'sb-caret' + (q || !closed.has(g.cat) ? ' open' : '')}>▸</span>
-                  {g.cat}
+                  {categoryLabel(g.cat)}
                   <span className="sb-count">{g.items.length}</span>
                 </div>
                 {(q || !closed.has(g.cat)) && <div className="sb-cards">{g.items.map(presetRow)}</div>}
@@ -475,8 +477,8 @@ export function SoundBrowser({
             {groups.length === 0 && (
               <p className="empty">
                 {q && samplesShown.length > 0
-                  ? `Здесь нет, но в сэмплах есть совпадения (${samplesShown.length}) — вкладка «сэмплы»`
-                  : 'Ничего не нашлось'}
+                  ? msg("soundBrowser.noMatchesHereButTheSamplesTab", {p0: samplesShown.length})
+                  : msg("soundBrowser.noMatches")}
               </p>
             )}
           </div>
@@ -486,21 +488,19 @@ export function SoundBrowser({
       {tab === 'smp' && (
         <div className="sb-samples" data-ob="library">
           <div className="sb-cat-label static">
-            сэмплы
-            <span className="spacer" />
+            {msg("soundBrowser.samples67")}<span className="spacer" />
             {dirLabel && (
               <button
                 className="sb-mini"
-                title="Открыть папку сэмплов в проводнике"
+                title={msg("soundBrowser.openTheSampleFolderInFileExplorer")}
                 onClick={() => void revealSamplesDir()}
               >
-                папка
-              </button>
+                {msg("soundBrowser.folder")}</button>
             )}
             {isDesktop && (
               <button
                 className="sb-mini"
-                title="Выбрать другую папку: сэмплы переедут туда. Если в новой папке уже лежит библиотека (index.json) — будет использована она"
+                title={msg("soundBrowser.chooseAnotherFolderAndMoveTheSamples")}
                 onClick={() => {
                   void samplesDirPick().then((p) => {
                     if (p) {
@@ -510,17 +510,14 @@ export function SoundBrowser({
                   }).catch(e => setLibraryError(String(e)));
                 }}
               >
-                сменить…
-              </button>
+                {msg("soundBrowser.change")}</button>
             )}
           </div>
           {dirLabel && <p className="sb-dir">{dirLabel}</p>}
           <div className="sb-sample-list">
             {samples.length === 0 && (
               <p className="empty">
-                Пусто: загрузи файл («загрузить» в настройке инструмента дорожки)
-                или сгенерируй по описанию.
-              </p>
+                {msg("soundBrowser.noSamplesYetLoadAFileIn")}</p>
             )}
             {samplesShown.map((meta) => {
               const used = reservedSamples.has(meta.id);
@@ -529,7 +526,7 @@ export function SoundBrowser({
                   <button
                     className="lib-name"
                     disabled={!applyTo}
-                    title={`Сажает сэмпл в инструмент дорожки${applyTo ? ` «${targetTrack?.name ?? ''}»` : ''}: волна станет «сэмпл», строй — скоростями воспроизведения`}
+                    title={msg("soundBrowser.assignThisSampleToTheTrackS", {p0: applyTo ? ` «${targetTrack?.name ?? ''}»` : ''})}
                     onClick={() => applyTo && onAssignSample(applyTo, meta)}
                   >
                     {meta.name}
@@ -537,20 +534,19 @@ export function SoundBrowser({
                   <span className="mini-info">{fmtSize(meta.size)}</span>
                   {star(sampleFavoriteId(meta.id), meta.name)}
                   {used && (
-                    <span className="lib-used" title="Используется проектом или сохранённым пресетом — удалить нельзя">
-                      используется
-                    </span>
+                    <span className="lib-used" title={msg("soundBrowser.usedByTheProjectOrASaved")}>
+                      {msg("soundBrowser.inUse")}</span>
                   )}
                   <button
-                    title={playingId === meta.id ? 'Остановить прослушивание / загрузку' : 'Прослушать'}
-                    aria-label={`${playingId === meta.id ? 'Остановить' : 'Прослушать'} сэмпл ${meta.name}`}
+                    title={playingId === meta.id ? msg("soundBrowser.stopAuditionLoading") : msg("soundBrowser.audition77")}
+                    aria-label={msg("soundBrowser.sample", {p0: playingId === meta.id ? msg('app.stop') : msg("soundBrowser.auditionLabel"), p1: meta.name})}
                     onClick={() => void playSample(meta)}
                   >
                     {playingId === meta.id ? '■' : '▶'}
                   </button>
                   <button
-                    title="Скачать файлом"
-                    aria-label={`Скачать сэмпл ${meta.name}`}
+                    title={msg("soundBrowser.downloadFile")}
+                    aria-label={msg("soundBrowser.downloadSample", {p0: meta.name})}
                     onClick={() => void downloadSample(meta)}
                   >
                     ⭳
@@ -558,12 +554,12 @@ export function SoundBrowser({
                   <button
                     className="remove"
                     disabled={used}
-                    title={used ? 'Используется треком — сначала отвяжи его' : 'Удалить сэмпл из хранилища'}
+                    title={used ? msg("soundBrowser.usedByATrackUnassignItFirst") : msg("soundBrowser.deleteSampleFromStorage")}
                     onClick={() => {
                       void deleteSample(meta.id).then(() => {
                         setListVersion((v) => v + 1);
                         refreshSamples();
-                      }).catch(e => setLibraryError(`Удаление: ${String(e)}`));
+                      }).catch(e => setLibraryError(msg("soundBrowser.delete83", {p0: String(e)})));
                     }}
                   >
                     ×
@@ -572,7 +568,7 @@ export function SoundBrowser({
               );
             })}
             {samples.length > 0 && samplesShown.length === 0 && (
-              <p className="empty">Ничего не нашлось</p>
+              <p className="empty">{msg("soundBrowser.noMatches")}</p>
             )}
           </div>
         </div>

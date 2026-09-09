@@ -12,19 +12,19 @@ static SERIAL: AtomicU64 = AtomicU64::new(0);
 
 pub fn unpack(bytes: &[u8], limit: usize) -> Result<(&str, &[u8]), String> {
     if bytes.len() < 8 || &bytes[..4] != b"BRL1" || bytes.len() > limit + NAME_LIMIT + 8 {
-        return Err("Некорректный бинарный пакет или превышен лимит файла".into());
+        return Err("BARLOW_PACKET_INVALID".into());
     }
     let len = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
     if len == 0 || len > NAME_LIMIT || bytes.len() < 8 + len || bytes.len() - 8 - len > limit {
-        return Err("Некорректная длина бинарного пакета".into());
+        return Err("BARLOW_PACKET_LENGTH".into());
     }
-    let name = std::str::from_utf8(&bytes[8..8 + len]).map_err(|_| "Имя файла должно быть UTF-8")?;
-    if name.contains('\0') { return Err("Недопустимое имя файла".into()); }
+    let name = std::str::from_utf8(&bytes[8..8 + len]).map_err(|_| "BARLOW_FILENAME_UTF8")?;
+    if name.contains('\0') { return Err("BARLOW_FILENAME_INVALID".into()); }
     Ok((name, &bytes[8 + len..]))
 }
 pub fn pack(name: &str, data: Vec<u8>, limit: usize) -> Result<Vec<u8>, String> {
     if name.is_empty() || name.len() > NAME_LIMIT || name.contains('\0') || data.len() > limit {
-        return Err("Недопустимое имя или превышен лимит файла".into());
+        return Err("BARLOW_FILE_LIMIT".into());
     }
     let mut out = Vec::with_capacity(8 + name.len() + data.len());
     out.extend_from_slice(b"BRL1"); out.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -34,16 +34,16 @@ pub fn pack(name: &str, data: Vec<u8>, limit: usize) -> Result<Vec<u8>, String> 
 pub fn read_limited(path: &Path, limit: usize) -> std::io::Result<Vec<u8>> {
     let file = std::fs::File::open(path)?;
     if file.metadata()?.len() > limit as u64 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Файл превышает лимит чтения"));
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "BARLOW_READ_LIMIT"));
     }
     let mut data = Vec::new();
     // The file can grow after metadata: the reader also has a hard bound.
     file.take(limit as u64 + 1).read_to_end(&mut data)?;
-    if data.len() > limit { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Файл превышает лимит чтения")); }
+    if data.len() > limit { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "BARLOW_READ_LIMIT")); }
     Ok(data)
 }
 pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Нет папки назначения"))?;
+    let parent = path.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "BARLOW_DESTINATION_MISSING"))?;
     let tmp = parent.join(format!(".barlow-{}-{}.tmp", std::process::id(), SERIAL.fetch_add(1, Ordering::Relaxed)));
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
     let result = (|| {
