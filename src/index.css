@@ -3855,3 +3855,13 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .learning-studio footer.mseg-toolbar {justify-content:flex-start;}
 .sound-workshop input:not([type=file]):not([type=number]) {width:220px;}
 .sound-workshop .mseg-toolbar label {display:inline-flex;align-items:center;gap:8px;}
+
+/* Resizable library: the handle stays beside the scrollable panel. */
+.library-dock { position:sticky; top:100px; flex-shrink:0; min-width:240px; }
+.app-shell .library-dock .dock { position:relative; top:0; width:100%; }
+.library-resize { position:absolute; right:-7px; top:0; bottom:0; width:12px; cursor:col-resize; touch-action:none; z-index:5; }
+.library-resize::after { content:''; position:absolute; top:calc(50% - 24px); left:5px; height:48px; width:3px; border-radius:3px; background:var(--text-dim); opacity:.55; }
+.library-resize:hover::after, .library-resize:focus-visible::after { background:var(--accent); opacity:1; }
+.sb-item-actions { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.dock .sb-rename { display:flex; align-items:center; justify-content:center; width:20px; min-height:22px; padding:0; border-color:transparent; background:transparent; color:var(--text-dim); }
+.dock .sb-rename:hover { color:var(--accent); border-color:var(--border); }

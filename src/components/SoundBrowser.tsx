@@ -1,3 +1,4 @@
+import { useLibraryWidth } from './LibraryResize';
 import { prepareInstrument, installInstrument } from '../audio/instrumentFile';
 // Левая док-панель «инструменты»: дерево пресетов (категории
 // схлопываются, свои пресеты, поиск) + сэмплы. Клик по пресету применяет
@@ -19,7 +20,7 @@ import {
 import type { InstrumentPreset } from '../music/instrumentPresets';
 import {
   CATEGORY_ORDER,
-  INSTRUMENT_PRESETS,
+  INSTRUMENT_PRESETS, loadFactoryPresets, renamePreset, PRESET_NAMES_KEY,
   USER_CATEGORY,
   USER_PRESETS_EVENT,
   deleteUserPreset,
@@ -110,6 +111,7 @@ export function SoundBrowser({
   });
   const favorites = favoriteState.ids;
   const [libraryError, setLibraryError] = useState('');
+  const {width, separator} = useLibraryWidth(setLibraryError);
   const libraryRequest = useRef(0);
   // Схлопнутые категории инструментов (по умолчанию все раскрыты).
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -158,7 +160,7 @@ export function SoundBrowser({
   useEffect(() => {
     const bump = () => setListVersion((v) => v + 1);
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'barlow.instruments.v1') bump();
+      if (e.key === 'barlow.instruments.v1' || e.key === PRESET_NAMES_KEY) bump();
     };
     window.addEventListener(USER_PRESETS_EVENT, bump);
     window.addEventListener('storage', onStorage);
@@ -181,7 +183,7 @@ export function SoundBrowser({
   }, [tab]);
 
   const all = useMemo(
-    () => [...loadUserPresets(), ...INSTRUMENT_PRESETS],
+    () => [...loadUserPresets(), ...loadFactoryPresets()],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [listVersion],
   );
@@ -279,6 +281,13 @@ export function SoundBrowser({
   const waveOf = (p: InstrumentPreset) =>
     p.track.waveform === 'sample' ? WAVEFORM_LABELS.sample : '';
 
+  const rename = async (p: InstrumentPreset, reset = false) => {
+    const original = INSTRUMENT_PRESETS.find(item => item.id === p.id);
+    const name = reset ? original?.name : await promptDialog({title:'переименовать инструмент',input:{value:p.name,placeholder:'Название инструмента'},okLabel:'сохранить'});
+    if (name == null || !p.id) return;
+    try { renamePreset(p.id, name); if (query.trim()) setQuery(name.trim()); }
+    catch (error) { await alertDialog(String(error), 'не удалось переименовать'); }
+  };
   const presetRow = (p: InstrumentPreset) => {
     const user = p.category === USER_CATEGORY;
     // Сэмпл-пресет без сэмпла не звучит: ▶ неактуален, а применение
@@ -318,6 +327,11 @@ export function SoundBrowser({
           ▶
         </button>
         {star(presetFavoriteId(p), p.name)}
+        <span className="sb-item-actions">
+        <button className="sb-rename" data-help="preset-rename" aria-label={`Переименовать ${p.name}`} title="Переименовать инструмент" onClick={() => void rename(p)}>
+          <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 12 9-9 4 4-9 9-5 1 1-5Zm7-7 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+        </button>
+        {!user && INSTRUMENT_PRESETS.some(item => item.id === p.id && item.name !== p.name) && <button className="sb-rename" data-help="preset-rename" aria-label={`Вернуть исходное название: ${p.name}`} title="Вернуть исходное название" onClick={() => void rename(p, true)}><svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9h7a5 5 0 0 1 0 10M4 9l4-4M4 9l4 4" transform="translate(0 -2)" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
         {user ? (
           <button
             className="inst-del" data-help="preset-delete"
@@ -330,7 +344,8 @@ export function SoundBrowser({
           >
             ✕
           </button>
-        ) : <span className="sb-delete-space" aria-hidden="true" />}
+         ) : null}
+        </span>
       </>
     );
     return (
@@ -347,7 +362,7 @@ export function SoundBrowser({
   };
 
   return (
-    <aside className="dock" data-ob="library-panel">
+    <div className="library-dock" style={{flexBasis:width,width}}><aside className="dock" data-ob="library-panel">
       <div className="sb-head">
         <span className="scenes-label">инструменты</span>
         <HelpHint guide="browser" step={1} label="Гид: найти и выбрать звук" />
@@ -562,6 +577,6 @@ export function SoundBrowser({
           </div>
         </div>
       )}
-    </aside>
+    </aside>{separator}</div>
   );
 }

@@ -54,6 +54,7 @@ import { isDesktop, pickProjectFile, saveBlob } from './platform';
 import { createBridge, setByPointer } from './bridge';
 import { sampleAssets } from './music/sampleZones';
 import { slugify } from './utils/slug';
+import { usePresetRevision } from './components/usePresetRevision';
 import { SoundBrowser } from './components/SoundBrowser';
 import { HelpHint, HelpMenu, Onboarding } from './onboarding/Onboarding';
 import { HelpSearch } from './onboarding/HelpSearch';
@@ -169,6 +170,7 @@ const nextPatternName = (track: Track): string => {
 };
 
 export default function App() {
+  const presetRevision = usePresetRevision();
   const [showPacks,setShowPacks]=useState(false);
   const [showLearning,setShowLearning]=useState(false);
   const [showWorkshop,setShowWorkshop]=useState(false);
@@ -1479,7 +1481,7 @@ export default function App() {
     const t = patch.tracks.find((x) => x.id === libTargetId);
     return t ? instrumentNameOf({ ...t, ...instOf(patch, t) }) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patch, libTargetId, instOf]);
+  }, [patch, libTargetId, instOf, presetRevision]);
 
   return (
     <EditGestureContext.Provider value={history}>

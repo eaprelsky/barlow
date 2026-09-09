@@ -60,7 +60,7 @@ const sameValue = (a: unknown, b: unknown): boolean => {
 /** Имя пресета, которому соответствуют параметры трека; иначе «своя». */
 export function instrumentNameOf(track: Partial<Track> & Partial<Instrument>): string {
   // Свои — первыми: перезаписанный юзером пресет важнее встроенного тёзки.
-  for (const p of [...loadUserPresets(), ...INSTRUMENT_PRESETS]) {
+  for (const p of [...loadUserPresets(), ...loadFactoryPresets()]) {
     const preset: Partial<Track & Instrument> = p.track;
     if (MATCH_FIELDS.every((f) => f === 'portamentoSec'
       ? sameValue(preset[f] ?? 0, track[f] ?? 0)
@@ -916,4 +916,33 @@ export function appendUserPack(presets: InstrumentPreset[], packName: string, pa
  const added=presets.map(p=>{const base=p.name;let name=base;for(let n=2;names.has(name);n++)name=`${base.slice(0,150)} (${n})`;names.add(name);
   return {...p,name,id:`user:${crypto.randomUUID()}`,category:USER_CATEGORY,packId,packName,packDescription,track:presetFields(p.track)};});
  localStorage.setItem(USER_KEY,JSON.stringify([...existing,...added]));window.dispatchEvent(new Event(USER_PRESETS_EVENT));return added.map(p=>p.name);
+}
+
+/** Local factory names are keyed by stable IDs; factory recipes never mutate. */
+export const PRESET_NAMES_KEY = 'barlow.instrument-names.v1';
+function factoryNames(): Record<string, string> {
+  const raw = JSON.parse(localStorage.getItem(PRESET_NAMES_KEY) ?? '{}');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Не удалось прочитать названия инструментов');
+  return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string,string] => typeof entry[1] === 'string' && !!entry[1].trim()));
+}
+export function loadFactoryPresets(): InstrumentPreset[] {
+  let names: Record<string,string>;
+  try { names = factoryNames(); } catch { return INSTRUMENT_PRESETS; }
+  return INSTRUMENT_PRESETS.map(p => p.id && names[p.id] ? {...p,name:names[p.id],tags:[...(p.tags??[]),p.name]} : p);
+}
+export function renamePreset(id: string, value: string): void {
+  const name = value.trim();
+  if (!name || name.length > 160) throw new Error('Название должно содержать от 1 до 160 символов');
+  const users = loadUserPresets(), factory = INSTRUMENT_PRESETS.find(p => p.id === id);
+  if ([...users,...loadFactoryPresets()].some(p => p.id !== id && p.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
+    throw new Error('Инструмент с таким названием уже есть');
+  if (factory) {
+    const names = factoryNames();
+    if (name === factory.name) delete names[id]; else names[id] = name;
+    localStorage.setItem(PRESET_NAMES_KEY, JSON.stringify(names));
+  } else {
+    if (!users.some(p => p.id === id)) throw new Error('Инструмент больше не существует');
+    localStorage.setItem(USER_KEY, JSON.stringify(users.map(p => p.id === id ? {...p,name} : p)));
+  }
+  window.dispatchEvent(new Event(USER_PRESETS_EVENT));
 }

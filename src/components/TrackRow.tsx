@@ -1,3 +1,4 @@
+import { usePresetRevision } from './usePresetRevision';
 import { AutomationRecorder } from './AutomationRecorder';
 import { EqEditor } from './EqEditor';
 import { newEqBand } from '../music/equalizer';
@@ -243,6 +244,7 @@ export const TrackRow = memo(function TrackRow({
   onPreviewNote,
   onOpenBrowser,
 }: Props) {
+  usePresetRevision();
   // Панель заполнения (пульсы, оси мутации, уровень) живёт в RollTools.
   const readLevel = useCallback(() => getLevel(track.id), [getLevel, track.id]);
 

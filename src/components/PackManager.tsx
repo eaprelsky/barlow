@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
-import { INSTRUMENT_PRESETS, loadUserPresets } from '../music/instrumentPresets';
+import { loadFactoryPresets, loadUserPresets } from '../music/instrumentPresets';
 import { presetMatches } from '../music/soundSearch';
 import { exportPack, preparePack, installPack, type PreparedPack } from '../audio/instrumentPack';
 import { pickInstrumentFile, saveBlob } from '../platform';
 
 export function PackManager({onClose}:{onClose:()=>void}) {
-  const [presets]=useState(()=>[...loadUserPresets(),...INSTRUMENT_PRESETS]);
+  const [presets]=useState(()=>[...loadUserPresets(),...loadFactoryPresets()]);
   const [query,setQuery]=useState(''),[name,setName]=useState('Мой пак'),[description,setDescription]=useState('');
   const [prepared,setPrepared]=useState<PreparedPack|null>(null),[selected,setSelected]=useState<Set<number>>(new Set());
   const [busy,setBusy]=useState(''),[progress,setProgress]=useState(0),[message,setMessage]=useState('');
