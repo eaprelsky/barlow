@@ -1,7 +1,12 @@
-import { t as msg, useLocale } from '../i18n';
+import { t as msg, useLocale, pluralCategory } from '../i18n';
 import { DEFAULT_MACROS, type InstrumentParameterId, type SoundMacro } from '../music/macros';
 import { PARAMETERS } from '../parameters';
 import { Knob } from './Knob';
+const assignmentCount = (n: number) => {
+  const form = pluralCategory(n);
+  const key = form === 'one' ? 'macroEditor.count.one' : form === 'few' ? 'macroEditor.count.few' : form === 'many' ? 'macroEditor.count.many' : 'macroEditor.count.other';
+  return msg(key, {p0: n});
+};
 const targets = Object.entries(PARAMETERS).filter(([id]) => id.startsWith('instrument.'));
 const depthScale = (id: InstrumentParameterId) => PARAMETERS[id].scale !== 'log' && PARAMETERS[id].unit === '%' ? 100 : 1;
 const depthLimit = (id: InstrumentParameterId) => PARAMETERS[id].scale === 'log' ? 16 : PARAMETERS[id].max - PARAMETERS[id].min;
@@ -13,7 +18,7 @@ export function MacroEditor({ macros, onChange }: { macros?: SoundMacro[]; onCha
     <summary>{msg("macroEditor.macros")}{list.length > 0 ? `(${list.length})` : ''}</summary>
     <div className="macro-grid">{list.map((m, index) => <section key={m.id} className="macro-item" data-help="macro-tile">
       <div className="macro-head"><Knob help="macro-value" label={m.name} value={m.value * 100} min={0} max={100} step={1} onChange={value => update(index, { value: value / 100 })} />
-        <div><span className="sub-cap">{m.bindings.length} {msg("macroEditor.assignments")}</span><button data-help="macro-center" onClick={() => update(index, { value: 0.5 })}>{msg("macroEditor.center")}</button></div>
+        <div><span className="sub-cap">{assignmentCount(m.bindings.length)}</span><button data-help="macro-center" onClick={() => update(index, { value: 0.5 })}>{msg("macroEditor.center")}</button></div>
       </div>
       <details data-help="macro-bindings"><summary>{msg("macroEditor.assignments3")}</summary>
         <input data-help="macro-name" aria-label={msg("macroEditor.macroName")} maxLength={48} value={m.name} onChange={e => update(index, { name: e.target.value })} />

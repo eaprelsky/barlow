@@ -62,5 +62,21 @@ export const macroEditor = {
   "macroEditor.units": {
     "ru": "ед.",
     "en": "units"
+  },
+  "macroEditor.count.one": {
+    "ru": "{p0} назначение",
+    "en": "{p0} assignment"
+  },
+  "macroEditor.count.few": {
+    "ru": "{p0} назначения",
+    "en": "{p0} assignments"
+  },
+  "macroEditor.count.many": {
+    "ru": "{p0} назначений",
+    "en": "{p0} assignments"
+  },
+  "macroEditor.count.other": {
+    "ru": "{p0} назначения",
+    "en": "{p0} assignments"
   }
 } as const;

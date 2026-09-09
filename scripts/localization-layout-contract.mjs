@@ -7,7 +7,7 @@ try{
  const capture=async(name)=>{for(const theme of ['dark','light']){await page.evaluate(async theme=>(await import('/src/theme.ts')).setTheme(theme),theme);for(const width of [1024,1440]){await page.setViewportSize({width,height:1000});await page.screenshot({path:root+`/tmp/locale-${name}-${theme}-${width}.png`});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),name);assert.ok(!/\{p\d+\}/.test(await page.locator('body').innerText()),'unresolved placeholder: '+name);}}};
  await page.getByRole('button',{name:'mixer',exact:true}).click();await capture('mixer');await page.getByRole('button',{name:'mixer',exact:true}).click();
  await page.locator('[data-ob="mode-inst"]').first().click();await page.locator('.macro-editor > summary').click();
- await page.locator('[data-help="macro-defaults"]').click();await capture('source');
+ await page.locator('[data-help="macro-defaults"]').click();assert.deepEqual(await page.locator('.macro-head .sub-cap').allTextContents(),['1 assignment','1 assignment','2 assignments']);await capture('source');
  await page.keyboard.press('Escape');await page.getByRole('menuitem',{name:'File',exact:true}).click();await page.getByRole('menuitem',{name:'Sound workshop…',exact:true}).click();await capture('workshop');await page.keyboard.press('Escape');
  await page.getByRole('menuitem',{name:'Settings',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Audio and connections',exact:true}).click();await capture('settings');
  assert.deepEqual(errors,[]);console.log('PASS English layouts: mixer, source/macros, workshop, settings; dark/light; 1024/1440; no unresolved placeholders');
