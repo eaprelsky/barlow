@@ -589,8 +589,12 @@ export interface ChainItem {
 export type MasterNoise = 'off' | 'white' | 'pink';
 
 /** Export choice, not a change to the musical patch. Omission at the backend
- * boundary retains the historical padded export for API/golden compatibility. */
-export interface WavRenderOptions { tail: 'natural' | 'trim' }
+ * boundary retains the historical padded export for API/golden compatibility.
+ * onProgress — доля отрендеренного звука 0…1, живёт только в вызове (не сериализуется). */
+export interface WavRenderOptions {
+  tail: 'natural' | 'trim';
+  onProgress?: (fraction: number) => void;
+}
 
 export interface Patch {
   /** Explicit deterministic performance; undefined preserves legacy randomness. */

@@ -137,8 +137,11 @@ function errText(e: unknown): string {
 
 function uniqueName(base: string, used: string[]): string {
   if (!used.includes(base)) return base;
-  for (let i = 2; ; i++) {
-    const candidate = `${base} ${i}`;
+  // Как папки в проводнике: «имя (1)», «имя (2)»… — первый свободный
+  // номер, счётчик ведётся от имени без уже висящего суффикса.
+  const stem = base.replace(/\s+\(\d+\)$/, '') || base;
+  for (let i = 1; ; i++) {
+    const candidate = `${stem} (${i})`;
     if (!used.includes(candidate)) return candidate;
   }
 }
@@ -963,9 +966,11 @@ export default function App() {
           },
         };
       });
+      // Дубль встаёт сразу над оригиналом: вариацию правишь рядом с базой.
+      const at = p.tracks.findIndex((t) => t.id === id);
       return {
         ...p,
-        tracks: [...p.tracks, copy],
+        tracks: [...p.tracks.slice(0, at), copy, ...p.tracks.slice(at)],
         instruments: [...p.instruments, instrument],
         scenes,
       };
@@ -1569,6 +1574,16 @@ export default function App() {
           unit="%"
           onChange={(v) => setPatch((p) => ({ ...p, masterVolume: v / 100 }))}
         />
+        {/* Длины циклов дорожек сцены одним взглядом: видна полиритмическая
+            структура (16 · 7 · 5). Вернуто из dcdea99 — у референсных DAW нет
+            независимых циклов, поэтому их «чистые» шапки здесь не аргумент. */}
+        <span
+          className="cycle-info"
+          data-help="pattern.length"
+          title={msg("app.cycleLengthsOfTheTracksIn")}
+        >
+          {msg("app.cycles")} {patch.tracks.map((t) => patternInScene(t, currentScene)?.length ?? 0).join(' · ') || '—'}
+        </span>
         <span className="spacer" />
         <input
           className="title-input"

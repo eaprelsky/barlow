@@ -1377,7 +1377,26 @@ export class AudioEngine implements AudioBackend {
           if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, ev.at, sc);
         }
       }
-      const rendered = await ctx.startRendering();
+      // Прогресс рендера: оффлайн-контекст останавливаем на равных отрезках
+      // (suspend/resume ~раз в секунду звука) — UI получает шанс показать,
+      // что рендер идёт, а не завис. suspend в прошлом или упавший рендер
+      // просто прекращают отметки; итог ждём из самого startRendering.
+      const done = ctx.startRendering();
+      if (options?.onProgress) {
+        const finished = done.then(() => 'done' as const, () => 'done' as const);
+        const marks = Math.min(100, Math.max(4, Math.round(duration)));
+        for (let i = 1; i <= marks; i++) {
+          const at = (duration * i) / (marks + 1);
+          const winner = await Promise.race([
+            ctx.suspend(at).then(() => 'mark' as const, () => 'stop' as const),
+            finished,
+          ]);
+          if (winner !== 'mark') break;
+          options.onProgress(i / (marks + 1));
+          ctx.resume();
+        }
+      }
+      const rendered = await done;
       if (!options) return audioBufferToWav(rendered);
       const from = Math.round(plan.musicalStart * sampleRate);
       let to = Math.round(plan.musicalEnd * sampleRate);

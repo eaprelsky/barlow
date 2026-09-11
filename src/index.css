@@ -1877,6 +1877,11 @@ button.danger:hover {
   color: var(--accent-2);
 }
 
+/* Счётчик сцен у мьют-чипа — красный, как сама буква M */
+.chip.mute .scene-cnt {
+  color: var(--danger);
+}
+
 /* Мьют слота — живое состояние сцены (как соло): чипы эскизов остаются
    кликабельными — выбор партии снимает тишину, блокировать нечего */
 
@@ -3659,6 +3664,9 @@ svg.auto-lane {
 .wav-export .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .wav-export .primary:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .wav-export .error { color: var(--error); }
+.wav-export .render-progress { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.wav-export .render-progress progress { flex: 1; width: auto; height: 10px; accent-color: var(--accent); }
+.wav-export .render-progress span { min-width: 4ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .sb-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 8px 0; font-size: 11px; }
 .sb-filters label { display: flex; align-items: center; gap: 6px; }
 .sb-filters select { max-width: 190px; }
@@ -3828,7 +3836,8 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .topbar { top:88px; }
 .view-shortcuts { display:flex; align-items:center; gap:8px; padding:4px 0 10px; }
 .view-shortcuts button { height:32px; padding:5px 10px; }
-.view-shortcuts button[aria-pressed="true"] { background:rgba(var(--orange-rgb),.12); box-shadow:inset 0 -2px var(--accent); }
+/* Включённая панель: тёплая заливка + равномерная обводка по всему периметру */
+.view-shortcuts button[aria-pressed="true"] { background:rgba(var(--orange-rgb),.12); box-shadow:inset 0 0 0 1px var(--accent); }
 .guide-menu-host { position:absolute; right:16px; top:36px; }
 .guide-menu-host .help-menu { max-height:calc(100vh - 100px); overflow:auto; }
 

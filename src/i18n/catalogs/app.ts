@@ -291,6 +291,14 @@ export const app = {
     "ru": "общая громкость",
     "en": "master volume"
   },
+  "app.cycles": {
+    "ru": "циклы:",
+    "en": "cycles:"
+  },
+  "app.cycleLengthsOfTheTracksIn": {
+    "ru": "Длины циклов дорожек в этой сцене, в шагах. Разные длины = полиритмия: узоры сдвигаются друг относительно друга и не повторяются",
+    "en": "Cycle lengths of the tracks in this scene, in steps. Different lengths make a polyrhythm: the patterns drift against each other instead of repeating."
+  },
   "app.masterVolumeAbove100TheLimiterGently": {
     "ru": "Общая громкость. Выше 100% — лимитер мягко пережимает пики: звук плотнее и жирнее, без треска. Двойной клик по подписи — точное число",
     "en": "Master volume. Above 100%, the limiter gently compresses peaks. Double-click the label for numeric entry."
