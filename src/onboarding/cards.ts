@@ -126,8 +126,6 @@ export const CARDS: Record<string, HelpCard> = {
   },
   'scale-rows': { get title() { return msg("cards.noteGridRows"); }, get text() { return msg("cards.ratiosToTheRootFrequency15"); } },
   octaves: { get title() { return msg("cards.octaves"); }, get text() { return msg("cards.theOctaveButtonsAddOrRemoveRows"); } },
-  'roll-height': { get title() { return msg("cards.staffHeight"); }, get text() { return msg("cards.visibleRowsOfTheGridHowManyRows"); } },
-  'roll-step': { get title() { return msg("cards.scrollingStep"); }, get text() { return msg("cards.howManyRowsTheUpDownArrows"); } },
   'roll-tools': { get title() { return msg("cards.noteGridToolbar"); }, get text() { return msg("cards.tuningAndRootFrequencyNoteDurationAnd"); } },
   'scale-btn': { get title() { return msg("cards.pitchScale"); }, get text() { return msg("cards.chooseATuningFromTheSearchableList"); }, guide: { id: 'scales' } },
   'roll-tonic': { get title() { return msg("cards.rootFrequency"); }, get text() { return msg("cards.frequencyInHertzFromWhichTheTuning"); }, guide: { id: 'scales' } },

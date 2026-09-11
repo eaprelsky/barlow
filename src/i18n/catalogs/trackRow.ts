@@ -391,65 +391,49 @@ export const trackRow = {
     "ru": "скрэтч",
     "en": "scratch"
   },
-  "trackRow.addAnOctaveAbove": {
-    "ru": "Добавить октаву вверх",
-    "en": "Add an octave above"
+  "trackRow.addRowToTheTop": {
+    "ru": "Добавить строку сверху: стан на одну строку выше, ноты не меняются. За краем диапазона строки нет — диапазон дорастает октавой",
+    "en": "Add a row to the top: the grid grows by one row, notes stay. Past the range's edge, the range grows by an octave."
   },
-  "trackRow.oct": {
-    "ru": "+окт",
-    "en": "+oct"
+  "trackRow.addRowToTheBottom": {
+    "ru": "Добавить строку снизу: стан на одну строку выше, ноты не меняются. За краем диапазона строки нет — диапазон дорастает октавой",
+    "en": "Add a row to the bottom: the grid grows by one row, notes stay. Past the range's edge, the range grows by an octave."
   },
-  "trackRow.scrollTheStaffUpByRows": {
-    "ru": "Листать стан вверх на {p0} стр.: ноты и диапазон не меняются — ушедшие вниз строки прячутся за окно, но играют. Шаг — поле «лист» в тулбаре стана",
-    "en": "Scroll the grid up by {p0} rows: notes and the pitch range stay put — rows leaving the window keep playing. The step is the 'scroll' field in the grid toolbar."
+  "trackRow.cannotGrowTopOctaveLimit": {
+    "ru": "Выше — предел диапазона: четыре октавы сверху",
+    "en": "Top limit reached: four octaves above"
   },
-  "trackRow.scrollTheStaffDownByRows": {
-    "ru": "Листать стан вниз на {p0} стр.: ноты и диапазон не меняются — ушедшие вверх строки прячутся за окно, но играют. Шаг — поле «лист» в тулбаре стана",
-    "en": "Scroll the grid down by {p0} rows: notes and the pitch range stay put — rows leaving the window keep playing. The step is the 'scroll' field in the grid toolbar."
+  "trackRow.cannotGrowBottomOctaveLimit": {
+    "ru": "Ниже — предел диапазона: четыре октавы снизу",
+    "en": "Bottom limit reached: four octaves below"
   },
-  "trackRow.nowhereToScrollAddAnOctave": {
-    "ru": "Листать некуда: за краем диапазона строк нет. Добавь октаву «+окт» — и листай дальше",
-    "en": "Nothing to scroll: the pitch range ends here. Add an octave with +oct to scroll further."
+  "trackRow.scrollTheStaffUpOneRow": {
+    "ru": "Листать стан на одну строку вверх: ноты и диапазон не меняются — ушедшая вниз строка прячется за окно, но играет",
+    "en": "Scroll the grid up one row: notes and the range stay put — the row leaving the bottom keeps playing."
   },
-  "trackRow.cannotTrimTheTopTheScaleIs": {
-    "ru": "Верх срезать нечего: шкала уже в одну октаву",
-    "en": "Cannot trim the top: the scale is already one octave wide"
+  "trackRow.scrollTheStaffDownOneRow": {
+    "ru": "Листать стан на одну строку вниз: ноты и диапазон не меняются — ушедшая вверх строка прячется за окно, но играет",
+    "en": "Scroll the grid down one row: notes and the range stay put — the row leaving the top keeps playing."
   },
-  "trackRow.removeNotesFromTheUpperOctaveFirst": {
-    "ru": "В верхней октаве есть ноты — сначала убери их",
-    "en": "Remove notes from the upper octave first"
+  "trackRow.nowhereToScrollWholeRange": {
+    "ru": "Листать некуда: виден весь диапазон. Добавь строку «+» — станет что листать",
+    "en": "Nothing to scroll: the whole range is visible. Add a row with + to scroll further."
   },
-  "trackRow.removeTheAddedUpperOctave": {
-    "ru": "Убрать верхнюю октаву (вернуть добавленную)",
-    "en": "Remove the added upper octave"
+  "trackRow.removeTheTopRow": {
+    "ru": "Убрать верхнюю строку стана: ноты не меняются — строка прячется за край, но играет",
+    "en": "Remove the top row: notes stay — the row hides beyond the edge but keeps playing."
   },
-  "trackRow.trimTheScaleSUpperOctaveReducing": {
-    "ru": "Срезать верхнюю октаву самой шкалы — диапазон стана ужмётся к низу",
-    "en": "Trim the scale’s upper octave, reducing the grid’s range from the top"
+  "trackRow.removeTheBottomRow": {
+    "ru": "Убрать нижнюю строку стана: ноты не меняются — строка прячется за край, но играет",
+    "en": "Remove the bottom row: notes stay — the row hides beyond the edge but keeps playing."
+  },
+  "trackRow.oneRowLeftCannotRemove": {
+    "ru": "В стане одна строка — меньше нельзя",
+    "en": "The grid is down to one row — cannot remove more"
   },
   "trackRow.ratioToTheRootFrequency": {
     "ru": "отношение {p0} к основной частоте",
     "en": "ratio {p0} to the root frequency"
-  },
-  "trackRow.addAnOctaveBelow": {
-    "ru": "Добавить октаву вниз",
-    "en": "Add an octave below"
-  },
-  "trackRow.cannotTrimTheBottomTheScaleIs": {
-    "ru": "Низ срезать нечего: шкала уже в одну октаву",
-    "en": "Cannot trim the bottom: the scale is already one octave wide"
-  },
-  "trackRow.removeNotesFromTheLowerOctaveFirst": {
-    "ru": "В нижней октаве есть ноты — сначала убери их",
-    "en": "Remove notes from the lower octave first"
-  },
-  "trackRow.removeTheAddedLowerOctave": {
-    "ru": "Убрать нижнюю октаву (вернуть добавленную)",
-    "en": "Remove the added lower octave"
-  },
-  "trackRow.trimTheScaleSLowerOctaveReducing": {
-    "ru": "Срезать нижнюю октаву самой шкалы — диапазон стана ужмётся к верху",
-    "en": "Trim the scale’s lower octave, reducing the grid’s range from the bottom"
   },
   "trackRow.notesOnTrack": {
     "ru": "Ноты дорожки {p0}",
