@@ -23,6 +23,7 @@ import {
   EFFECT_LABELS,
   makeNote,
   makeStep,
+  octaveRows,
   scaleOf,
   uid,
 } from '../types';
@@ -49,6 +50,7 @@ import { putSample } from '../audio/library';
 import { tickDuration, stepDuration } from '../audio/timing';
 import { clip } from '../music/clip';
 import { copySelection, moveSelection, pasteNotes } from '../music/noteEdits';
+import { useRollViewPrefs } from '../rollView';
 import { HelpHint } from '../onboarding/Onboarding';
 
 const LFO_SHAPES: Mod['shape'][] = ['sine', 'triangle', 'square', 'sawtooth'];
@@ -312,13 +314,15 @@ export const TrackRow = memo(function TrackRow({
   const rollRef = useRef<HTMLDivElement>(null);
 
   // Диапазон стана (мир): базовая шкала + добавленные октавы. Окно — какие
-  // строки мира видны; по умолчанию (null) — весь диапазон. Листалка ▲/▼
-  // сдвигает окно на октаву: строк столько же, ноты не меняются — ушедшие
-  // за край строки играют, но не видны. UI-состояние, а не патч:
-  // перезагрузка снова показывает весь диапазон, музыка не зависит.
+  // строки мира видны; null — весь диапазон. Высота окна и шаг листания —
+  // общая настройка вида (rollView.ts, localStorage): высота не прыгает
+  // при дорастании диапазона и переживает перезагрузку. Окно —
+  // UI-состояние, а не патч: музыка от него не зависит, ушедшие за край
+  // строки играют, но не видны.
   const scaleRows = scaleOf(track);
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
+  const viewPrefs = useRollViewPrefs();
   const [rollView, setRollView] = useState<{ lo: number; rows: number } | null>(null);
   const rollWin = rollView ?? { lo: 0, rows: scaleRows.length };
   const viewLo = Math.max(0, Math.min(rollWin.lo, scaleRows.length - 1));
@@ -327,16 +331,20 @@ export const TrackRow = memo(function TrackRow({
   const focusedRow = rows.some(r => r.i === focusCell.row) ? focusCell.row : rows[rows.length - 1]?.i;
   const focusedCol = Math.min(focusCell.col, pattern.length - 1);
 
-  // Мир сжался (undo, правки снаружи) — окно могло выйти за диапазон.
+  // Окно следует настройке высоты и размеру мира (дорастание/undo/правки
+  // снаружи): высота держится заданной, низ окна не выходит за диапазон;
+  // настройка «весь диапазон» (null) держит окно раскрытым целиком.
   useEffect(() => {
     setRollView((v) => {
-      if (!v) return v;
       const l = scaleRows.length;
-      const lo = Math.min(v.lo, Math.max(0, l - v.rows));
-      const n = Math.min(v.rows, l - lo);
-      return lo === v.lo && n === v.rows ? v : { lo, rows: n };
+      const h = viewPrefs.rows;
+      if (h == null) return v ? null : v;
+      const rowsN = Math.max(1, Math.min(h, l));
+      const lo = v ? Math.min(v.lo, Math.max(0, l - rowsN)) : 0;
+      const n = Math.min(rowsN, l - lo);
+      return v && lo === v.lo && n === v.rows ? v : { lo, rows: n };
     });
-  }, [scaleRows.length]);
+  }, [scaleRows.length, viewPrefs.rows]);
 
   const change = (patch: Partial<Track>) => onChange(track.id, { ...track, ...patch });
   const changeInst = (patch: Partial<Instrument>, command?: boolean) =>
@@ -383,7 +391,9 @@ export const TrackRow = memo(function TrackRow({
   /** Применить шкалу (пресет, N-ET или своя): сбрасывает октавные сдвиги
    *  и клампит ноты всех эскизов под новую длину стана. */
   const applyScale = (scale: number[]) => {
-    setRollView(null); // мир другой формы — окно на весь диапазон
+    // Мир другой формы — окно от тоники: до заданной высоты или весь.
+    const world = scaleOf({ ...track, scale, scaleOctUp: 0, scaleOctDown: 0 }).length;
+    setRollView(viewPrefs.rows == null ? null : { lo: 0, rows: Math.min(viewPrefs.rows, world) });
     onTrackCommand(track.id, {
       ...track,
       scale,
@@ -413,17 +423,16 @@ export const TrackRow = memo(function TrackRow({
           }))
         : track.patterns;
     onTrackCommand(track.id, { ...track, [key]: now, patterns } as Track);
-    // Окно: «+окт» обязан показать новую октаву. Окно у края диапазона
-    // (или весь диапазон) — прирастает новой октавой; листанное окно —
-    // прижимается к новому краю, высота окна не меняется.
-    setRollView((v) => {
-      if (!v) return null;
-      if (dir === 'up')
-        return v.lo + v.rows === scaleRows.length
-          ? { ...v, rows: v.rows + delta }
-          : { lo: scaleRows.length + delta - v.rows, rows: v.rows };
-      return v.lo === 0 ? { ...v, rows: v.rows + delta } : { lo: 0, rows: v.rows };
-    });
+    // Окно: «+окт» обязан показать новую октаву — прижимаем окно той же
+    // высоты к новому краю (высота — настройка вида, её не трогаем).
+    // Раскрытый весь диапазон остаётся всем — высота не задана.
+    setRollView((v) =>
+      v
+        ? dir === 'up'
+          ? { lo: scaleRows.length + delta - v.rows, rows: v.rows }
+          : { lo: 0, rows: v.rows }
+        : null,
+    );
   };
 
   /** Мир стана ужался с края (удаление октавы, срез из шкалы): окно едет
@@ -483,59 +492,30 @@ export const TrackRow = memo(function TrackRow({
     shrinkView(dir, cut.delta);
   };
 
-  /** Строк в крайней октаве диапазона: счётчик добавленных октав больше
-   *  нуля — сколько строк занимает крайняя, ноль — сколько добавит новая. */
-  const edgeOctRows = (dir: 'up' | 'down'): number => {
-    const key = dir === 'up' ? 'scaleOctUp' : 'scaleOctDown';
-    const cnt = dir === 'up' ? up : down;
-    return cnt > 0
-      ? scaleRows.length - scaleOf({ ...track, [key]: cnt - 1 }).length
-      : scaleOf({ ...track, [key]: 1 }).length - scaleRows.length;
+  /** Шаг листалки ▲/▼: настройка вида, по умолчанию — октава шкалы
+   *  (у каждой шкалы своё число строк в октаве). */
+  const flipStep = viewPrefs.step ?? octaveRows(track);
+
+  /** Листалка окна стана (▲/▼ между «+окт» и «−») — чистый скролл на
+   *  шаг листания: ноты и диапазон не меняются, ушедшие за край строки
+   *  прячутся, но играют. У края мира кнопка гаснет — расширить диапазон
+   *  может только «+окт», скролл патч не трогает (никакой лотереи). */
+  const flipRoll = (dir: 'up' | 'down') => {
+    if (flipStep <= 0) return;
+    setRollView((v) => {
+      if (!v) return v;
+      const lo = dir === 'up'
+        ? Math.min(v.lo + flipStep, scaleRows.length - v.rows)
+        : Math.max(0, v.lo - flipStep);
+      return lo === v.lo ? v : { ...v, lo };
+    });
   };
 
-  /** Листалка окна стана (▲/▼ между «+окт» и «−»): окно уезжает на октаву,
-   *  строк столько же, ноты не меняются — ушедшие строки прячутся за край,
-   *  но играют. Внутри диапазона — чистый сдвиг вида (истории не касается);
-   *  у края — доращивает октаву, это правка патча (один шаг undo). */
-  const flipOct = (dir: 'up' | 'down') => {
-    const d = edgeOctRows(dir);
-    if (d <= 0) return;
-    if (dir === 'up') {
-      if (scaleRows.length - (rollWin.lo + rollWin.rows) >= d) {
-        setRollView({ lo: rollWin.lo + d, rows: rollWin.rows });
-        return;
-      }
-      if (up + 1 > 4) return;
-      onTrackCommand(track.id, { ...track, scaleOctUp: up + 1 } as Track);
-      setRollView({ lo: rollWin.lo + d, rows: rollWin.rows });
-    } else {
-      if (rollWin.lo >= d) {
-        setRollView({ lo: rollWin.lo - d, rows: rollWin.rows });
-        return;
-      }
-      if (down + 1 > 4) return;
-      // Дорастить снизу — с компенсацией нот, как «+окт вниз» (частоты те
-      // же). Окно закрепляем на месте (и фиксируем его высоту, если видели
-      // весь диапазон): контент уезжает над окном, снизу входит новая октава.
-      const patterns = track.patterns.map((pt) => ({
-        ...pt,
-        steps: pt.steps.map((s) => ({
-          ...s,
-          notes: s.notes.map((nt) => ({ ...nt, n: nt.n + d })),
-        })),
-      }));
-      onTrackCommand(track.id, { ...track, scaleOctDown: down + 1, patterns } as Track);
-      setRollView({ lo: rollWin.lo, rows: rollWin.rows });
-    }
-  };
-
-  /** Листать можно, пока есть куда: скрытые строки за краем окна или
-   *  запас счётчика октав (лимит 4, как у «+окт»). */
-  const canFlip = (dir: 'up' | 'down'): boolean => {
-    const cnt = dir === 'up' ? up : down;
-    const hidden = dir === 'up' ? scaleRows.length - (rollWin.lo + rollWin.rows) : rollWin.lo;
-    return hidden > 0 || cnt < 4;
-  };
+  /** Листать можно, пока за краем окна есть скрытые строки диапазона. */
+  const canFlip = (dir: 'up' | 'down'): boolean =>
+    dir === 'up'
+      ? scaleRows.length - (rollWin.lo + rollWin.rows) > 0
+      : rollWin.lo > 0;
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
   // колонке — аккорд; когда нот не остаётся — пауза. Новая нота фиксирует
@@ -1560,11 +1540,11 @@ export const TrackRow = memo(function TrackRow({
               className={'oct-btn oct-flip' + (viewHi < scaleRows.length ? ' more' : '')}
               title={
                 canFlip('up')
-                  ? msg("trackRow.moveTheGridUpAnOctaveWithout")
-                  : msg("trackRow.cannotMoveHigherFourAddedUpperOctaves")
+                  ? msg("trackRow.scrollTheStaffUpByRows", { p0: flipStep })
+                  : msg("trackRow.nowhereToScrollAddAnOctave")
               }
               disabled={!canFlip('up')}
-              onClick={() => flipOct('up')}
+              onClick={() => flipRoll('up')}
             >▲</button>
             <button
               className="oct-btn"
@@ -1592,11 +1572,11 @@ export const TrackRow = memo(function TrackRow({
               className={'oct-btn oct-flip' + (viewLo > 0 ? ' more' : '')}
               title={
                 canFlip('down')
-                  ? msg("trackRow.moveTheGridDownAnOctaveWithout")
-                  : msg("trackRow.cannotMoveLowerFourAddedLowerOctaves")
+                  ? msg("trackRow.scrollTheStaffDownByRows", { p0: flipStep })
+                  : msg("trackRow.nowhereToScrollAddAnOctave")
               }
               disabled={!canFlip('down')}
-              onClick={() => flipOct('down')}
+              onClick={() => flipRoll('down')}
             >▼</button>
             <button
               className="oct-btn"

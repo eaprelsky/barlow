@@ -7,8 +7,10 @@ import { t as msg, useLocale } from '../i18n';
 
 import { useState } from 'react';
 import type { Pattern, SoundingTrack, Track } from '../types';
+import { octaveRows, scaleOf } from '../types';
 import type { MutateModes } from '../music/mutate';
 import { presetName } from '../music/scales';
+import { setRollViewPrefs, useRollViewPrefs } from '../rollView';
 import { NumField } from './NumField';
 import { ScalePicker } from './ScalePicker';
 import { HelpHint } from '../onboarding/Onboarding';
@@ -52,6 +54,12 @@ export function RollTools({
   const [mutTime, setMutTime] = useState(true);
   const [mutPitch, setMutPitch] = useState(true);
   const [mutEdits, setMutEdits] = useState(3);
+  // Вид стана: высота окна и шаг листания ▲/▼ — общие для дорожек и
+  // сохраняются между сессиями (настройка вида, не патч). Пока высота
+  // не задана, поле показывает весь диапазон, шаг — октаву шкалы.
+  const viewPrefs = useRollViewPrefs();
+  const worldRows = scaleOf(track).length;
+  const octRows = octaveRows(track);
 
   return (
     <div className="roll-tools" data-ob="roll-tools">
@@ -128,6 +136,34 @@ export function RollTools({
           onChange={(phase) => onTrack({ phase: Math.round(phase) })}
         />
         <span className="rt-label">{msg("rollTools.steps")}</span>
+      </label>
+      <span className="rt-sep" />
+      {/* Вид стана: высота окна в строках (пока не задана — весь диапазон)
+          и шаг листания ▲/▼ (пока не задан — октава шкалы трека). */}
+      <label
+        className="rt-rollview"
+        data-ob="roll-view"
+        title={msg("rollTools.howManyRowsOfTheStaffToFit")}
+      >
+        {msg("rollTools.height")}<NumField
+          help="roll-height"
+          narrow w={44} wheel
+          value={viewPrefs.rows ?? worldRows} min={3} max={96} step={1}
+          onChange={(rows) => setRollViewPrefs({ rows: Math.round(rows) })}
+        />
+        <span className="rt-label">{msg("rollTools.rows")}</span>
+      </label>
+      <label
+        className="rt-rollview"
+        title={msg("rollTools.howManyRowsPerArrowScroll")}
+      >
+        {msg("rollTools.scroll")}<NumField
+          help="roll-step"
+          narrow w={44} wheel
+          value={viewPrefs.step ?? octRows} min={1} max={64} step={1}
+          onChange={(step) => setRollViewPrefs({ step: Math.round(step) })}
+        />
+        <span className="rt-label">{msg("rollTools.rows")}</span>
       </label>
       <span className="rt-sep" />
       {/* Генерация стана за одной кнопкой. Оси независимы: клик по

@@ -63,6 +63,26 @@ export const rollTools = {
     "ru": "фаза",
     "en": "phase"
   },
+  "rollTools.howManyRowsOfTheStaffToFit": {
+    "ru": "Высота нотного стана в строках: сколько строк видно одновременно. Число не меньше диапазона трека — стан раскрыт целиком. Общее для дорожек, сохраняется",
+    "en": "Note grid height in rows: how many rows are visible at once. Anything beyond the track's range shows the whole grid. Shared across tracks and persisted."
+  },
+  "rollTools.height": {
+    "ru": "высота",
+    "en": "height"
+  },
+  "rollTools.howManyRowsPerArrowScroll": {
+    "ru": "Шаг листания стана: сколько строк проезжает за одно нажатие ▲/▼. По умолчанию — октава текущей шкалы. Ноты и диапазон листание не меняет",
+    "en": "Grid scroll step: how many rows the ▲/▼ arrows scroll per press. Defaults to the current scale's octave. Scrolling never changes notes or the range."
+  },
+  "rollTools.scroll": {
+    "ru": "лист",
+    "en": "scroll"
+  },
+  "rollTools.rows": {
+    "ru": "строк",
+    "en": "rows"
+  },
   "rollTools.fillTheNoteGridChangeRhythmOr": {
     "ru": "Заполнение стана: время и тон по кнопкам, мутация с уровнем, очистка",
     "en": "Fill the note grid, change rhythm or pitch, mutate, or clear notes"

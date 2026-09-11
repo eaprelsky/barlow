@@ -67,9 +67,9 @@ try {
       editor: document.querySelectorAll('.wave-editor').length,
     }));
   const clearAll = async () => {
-    await page.locator('header button', { hasText: 'файл' }).click();
+    await page.locator('.main-menu-group button', { hasText: 'файл' }).click();
     await page.waitForTimeout(150);
-    await page.locator('.menu-list button', { hasText: 'новый' }).click();
+    await page.locator('[role="menu"] button', { hasText: 'новый' }).click();
     await page.waitForTimeout(300);
   };
   const addTrack = async () => {

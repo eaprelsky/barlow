@@ -797,6 +797,15 @@ export function scaleOf(track: Track): number[] {
   return rows.sort((a, b) => a - b);
 }
 
+/** Строк в одной октаве стана этой шкалы: сколько строк добавляет
+ *  очередная верхняя октава (пересечения со шкалой схлопываются). */
+export function octaveRows(track: Track): number {
+  return (
+    scaleOf({ ...track, scaleOctUp: (track.scaleOctUp ?? 0) + 1 }).length -
+    scaleOf(track).length
+  );
+}
+
 /** Частоты всех нот шага (аккорда), Гц. Пусто — пауза. */
 export function stepFreqs(track: Track, step: Step): number[] {
   const rows = scaleOf(track);

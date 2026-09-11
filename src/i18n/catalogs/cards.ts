@@ -340,16 +340,32 @@ export const cards = {
     "en": "octaves"
   },
   "cards.theOctaveButtonsAddOrRemoveRows": {
-    "ru": "+окт/− добавляют и убирают октавы по краям стана. ▲/▼ между ними листают окно: строк столько же, диапазон уезжает на октаву, ноты не меняются.",
-    "en": "The octave buttons add or remove rows at the grid edges. The arrows between them shift the visible window by an octave without changing its row count or any notes."
+    "ru": "+окт/− добавляют и убирают октавы по краям стана — это диапазон, где живут ноты. ▲/▼ между ними просто листают окно стана: ноты и диапазон не меняются, высота окна и шаг — поля «высота» и «лист» в тулбаре стана.",
+    "en": "+oct/− add and remove octaves at the grid edges — the range where notes can live. The ▲/▼ arrows between them only scroll the window: notes and the range stay put; the window height and scroll step are the 'height' and 'scroll' fields in the grid toolbar."
+  },
+  "cards.staffHeight": {
+    "ru": "высота стана",
+    "en": "grid height"
+  },
+  "cards.visibleRowsOfTheGridHowManyRows": {
+    "ru": "Сколько строк нотного стана видно одновременно: настройка вида, а не патч — общая для дорожек, сохраняется между сессиями. Число не меньше диапазона трека раскрывает стан целиком.",
+    "en": "How many note-grid rows are visible at once: a view setting, not part of the patch — shared across tracks and persisted. A number beyond the track's range shows the whole grid."
+  },
+  "cards.scrollingStep": {
+    "ru": "шаг листания",
+    "en": "scroll step"
+  },
+  "cards.howManyRowsTheUpDownArrows": {
+    "ru": "Сколько строк стана проезжает за одно нажатие ▲/▼ у краёв стана. По умолчанию — октава текущей шкалы. Листание никогда не меняет ноты или диапазон.",
+    "en": "How many rows the ▲/▼ arrows at the grid edges scroll per press. Defaults to the current scale's octave. Scrolling never changes notes or the range."
   },
   "cards.noteGridToolbar": {
     "ru": "панель нотной сетки",
     "en": "note-grid toolbar"
   },
   "cards.tuningAndRootFrequencyNoteDurationAnd": {
-    "ru": "Строй и основная частота, длина ноты и фаза, генерация и мутация рисунка.",
-    "en": "Tuning and root frequency, note duration and phase, pattern generation and mutation."
+    "ru": "Строй и основная частота, длина ноты и фаза, высота стана и шаг листания, генерация и мутация рисунка.",
+    "en": "Tuning and root frequency, note duration and phase, grid height and scroll step, pattern generation and mutation."
   },
   "cards.pitchScale": {
     "ru": "шкала",

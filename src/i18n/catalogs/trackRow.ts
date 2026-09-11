@@ -399,13 +399,17 @@ export const trackRow = {
     "ru": "+окт",
     "en": "+oct"
   },
-  "trackRow.moveTheGridUpAnOctaveWithout": {
-    "ru": "Листать стан на октаву вверх: строк столько же, диапазон выше. Ноты не меняются — ушедшие вниз строки прячутся за окно, но играют; у края диапазона октава дорастает",
-    "en": "Move the grid up an octave without changing notes. Notes below the visible range keep playing; an octave is added at the range boundary."
+  "trackRow.scrollTheStaffUpByRows": {
+    "ru": "Листать стан вверх на {p0} стр.: ноты и диапазон не меняются — ушедшие вниз строки прячутся за окно, но играют. Шаг — поле «лист» в тулбаре стана",
+    "en": "Scroll the grid up by {p0} rows: notes and the pitch range stay put — rows leaving the window keep playing. The step is the 'scroll' field in the grid toolbar."
   },
-  "trackRow.cannotMoveHigherFourAddedUpperOctaves": {
-    "ru": "Выше листать некуда: предел добавленных октав сверху (4) — убери лишнюю «−»",
-    "en": "Cannot move higher: four added upper octaves is the limit. Remove an extra octave with −."
+  "trackRow.scrollTheStaffDownByRows": {
+    "ru": "Листать стан вниз на {p0} стр.: ноты и диапазон не меняются — ушедшие вверх строки прячутся за окно, но играют. Шаг — поле «лист» в тулбаре стана",
+    "en": "Scroll the grid down by {p0} rows: notes and the pitch range stay put — rows leaving the window keep playing. The step is the 'scroll' field in the grid toolbar."
+  },
+  "trackRow.nowhereToScrollAddAnOctave": {
+    "ru": "Листать некуда: за краем диапазона строк нет. Добавь октаву «+окт» — и листай дальше",
+    "en": "Nothing to scroll: the pitch range ends here. Add an octave with +oct to scroll further."
   },
   "trackRow.cannotTrimTheTopTheScaleIs": {
     "ru": "Верх срезать нечего: шкала уже в одну октаву",
@@ -430,14 +434,6 @@ export const trackRow = {
   "trackRow.addAnOctaveBelow": {
     "ru": "Добавить октаву вниз",
     "en": "Add an octave below"
-  },
-  "trackRow.moveTheGridDownAnOctaveWithout": {
-    "ru": "Листать стан на октаву вниз: строк столько же, диапазон ниже. Ноты не меняются — ушедшие вверх строки прячутся за окно, но играют; у края диапазона октава дорастает",
-    "en": "Move the grid down an octave without changing notes. Notes above the visible range keep playing; an octave is added at the range boundary."
-  },
-  "trackRow.cannotMoveLowerFourAddedLowerOctaves": {
-    "ru": "Ниже листать некуда: предел добавленных октав снизу (4) — убери лишнюю «−»",
-    "en": "Cannot move lower: four added lower octaves is the limit. Remove an extra octave with −."
   },
   "trackRow.cannotTrimTheBottomTheScaleIs": {
     "ru": "Низ срезать нечего: шкала уже в одну октаву",
