@@ -35,6 +35,10 @@ export const app = {
     "ru": "сцены «{p0}» нет в патче",
     "en": "Scene “{p0}” is not in the project"
   },
+  "app.trackIsNotInTheProject": {
+    "ru": "дорожки «{p0}» нет в патче",
+    "en": "Track “{p0}” is not in the project"
+  },
   "app.invalidTempo": {
     "ru": "Неверный темп",
     "en": "Invalid tempo"

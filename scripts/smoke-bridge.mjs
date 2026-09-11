@@ -90,6 +90,28 @@ try {
   if (bad.ok) fail('set_param по битому пути почему-то успешен');
   else console.log('3. set_param по битому пути отклонён: ок');
 
+  // 3.5 Соло: транспортный экшен ставит soloTrackId текущей сцены
+  // (как кнопка S) и снимается пустым trackId.
+  {
+    const trackId = bridge.state.patch.tracks[0].id;
+    const sceneId = bridge.state.patch.scenes[0].id;
+    const rSolo = await bridge.request({ type: 'transport', action: 'solo', trackId });
+    if (!rSolo.ok) fail('solo не подтверждён: ' + rSolo.error);
+    await page.waitForFunction((arg) => {
+      try { return JSON.parse(localStorage.getItem('barlow.patch.v12') ?? '{}')?.scenes?.find((s) => s.id === arg.sceneId)?.soloTrackId === arg.trackId; }
+      catch { return false; }
+    }, { sceneId, trackId }, { timeout: 3000 });
+    const rOff = await bridge.request({ type: 'transport', action: 'solo', trackId: '' });
+    if (!rOff.ok) fail('снятие соло не подтверждено: ' + rOff.error);
+    await page.waitForFunction((sid) => {
+      try {
+        const s = JSON.parse(localStorage.getItem('barlow.patch.v12') ?? '{}')?.scenes?.find((x) => x.id === sid);
+        return !!s && s.soloTrackId === undefined;
+      } catch { return false; }
+    }, sceneId, { timeout: 3000 });
+    console.log('3.5 solo on/off через транспорт: ок');
+  }
+
   // 4. Транспорт: play — поедут события нот (noteSink).
   const rPlay = await bridge.request({ type: 'transport', action: 'play' });
   if (!rPlay.ok) fail('play не подтверждён: ' + rPlay.error);

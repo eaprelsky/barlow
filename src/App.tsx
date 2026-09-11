@@ -693,6 +693,18 @@ export default function App() {
           const v = Math.max(30, Math.min(300, Math.round(cmd.value)));
           if (engine.playing) engine.setBpm(v);
           setPatch((p) => ({ ...p, bpm: v }));
+        } else if (cmd.action === 'solo') {
+          // Соло — свойство сцены (types.ts): пустой trackId снимает соло
+          // текущей сцены, как повторный клик по кнопке S.
+          const trackId = cmd.trackId ?? '';
+          if (trackId && !live.patch.tracks.some((t) => t.id === trackId)) {
+            throw new Error(msg("app.trackIsNotInTheProject", {p0: trackId}));
+          }
+          const scene = live.patch.scenes.find((s) => s.id === live.sceneId) ?? live.patch.scenes[0];
+          setPatchStep((p) => ({
+            ...p,
+            scenes: p.scenes.map((s) => (s.id === scene.id ? { ...s, soloTrackId: trackId || undefined } : s)),
+          }));
         } else throw new Error(msg("app.unknownTransportCommandOrInvalidParameter"));
       },
     }, bridgeSession);

@@ -37,8 +37,8 @@ export interface BridgeHandlers {
   onSetPatch: (patch: unknown) => void;
   /** Точечная правка JSON-указателем (RFC 6901). */
   onSetParam: (pointer: string, value: unknown) => void;
-  /** Транспорт: play | stop | scene (sceneId) | bpm (value). */
-  onTransport: (cmd: { action: string; sceneId?: string; value?: number }) => void;
+  /** Транспорт: play | stop | scene (sceneId) | bpm (value) | solo (trackId). */
+  onTransport: (cmd: { action: string; sceneId?: string; value?: number; trackId?: string }) => void;
   /** Снимки для представления хосту и переподключений. */
   getPatch: () => Patch;
   getTransport: () => BridgeTransportState;
@@ -157,6 +157,7 @@ export function createBridge(handlers: BridgeHandlers, session: BridgeSession | 
             action: String(msg.action ?? ''),
             sceneId: msg.sceneId === undefined ? undefined : String(msg.sceneId),
             value: msg.value === undefined ? undefined : Number(msg.value),
+            trackId: msg.trackId === undefined ? undefined : String(msg.trackId),
           });
           ack(reqId, true);
           break;
