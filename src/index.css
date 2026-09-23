@@ -43,27 +43,31 @@
   --border: #bbc5cf;
   --text: #263543;
   --text-dim: #526273;
-  --accent: #925000;
+  /* Терракота вместо тёмно-коричневого: тот же тёплый акцент,
+     но живее и внятнее рядом со стальным синим --accent-2. Заливки —
+     чистая терракота; --accent чуть темнее ради контраста AA ≥4.5
+     на --panel-2 (у #c2410c выходит 4.43). */
+  --accent: #b93e0b;
   --accent-2: #17629a;
   --cell-bg: #d5dde5;
   --cell-bg-tonic: #c4d1de;
-  --step-on: #a96300;
+  --step-on: #c2410c;
   --note-text: #fff;
   --danger: #ad3035;
   --danger-bright: #942329;
   --error: #ad3035;
-  --warning: #835300;
+  --warning: #9a3412;
   --canvas: #f7f9fb;
   --body-glow: #e6edf3;
   --playhead: #233e58;
   --selection: #17629a;
   --selection-bright: #073f6a;
-  --orange-rgb: 146, 80, 0;
+  --orange-rgb: 194, 65, 12;
   --blue-rgb: 23, 98, 154;
   --contrast-rgb: 35, 62, 88;
   --shadow-rgb: 67, 80, 94;
-  --canvas-wave: #925000;
-  --canvas-dim: #a89c8c;
+  --canvas-wave: #c2410c;
+  --canvas-dim: #bfa08e;
   --canvas-selection: rgba(23, 98, 154, .14);
   --canvas-edge: #17629a;
   --canvas-text: #526273;
@@ -3936,5 +3940,5 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 :root[data-theme="light"] .topbar { box-shadow:0 3px 10px rgb(67 80 94 / 12%); }
 :root[data-theme="light"] :is(.modal, .ob-card, .main-menu [role="menu"]) { box-shadow:0 8px 28px rgb(67 80 94 / 18%); }
 :root[data-theme="light"] :is(.cell.on, .note-bar) { box-shadow:none; }
-:root[data-theme="light"] .note-bar.ret { box-shadow:inset 3px 0 0 #563500; }
+:root[data-theme="light"] .note-bar.ret { box-shadow:inset 3px 0 0 #7c2d12; }
 :root[data-theme="light"] .cell.on.ph { box-shadow:0 0 0 2px var(--playhead); }
