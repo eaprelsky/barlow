@@ -21,9 +21,9 @@ export function planStepEvents(step: Step | undefined, track: SoundingTrack, ste
   const noteLength = (note: Note) => {
     const st = withNoteLocks(track, note.locks);
     const base = st.noteSteps && st.noteSteps > 0 ? st.noteSteps : (Math.max(st.attack, .0005) + st.decay) / stepSec;
-    return typeof note.len === 'number' && note.len > 0 ? Math.min(64, Math.max(.05, note.len)) : base * Math.min(4, Math.max(.1, note.gate ?? 1));
+    return typeof note.len === 'number' && note.len > 0 ? Math.min(512, Math.max(.05, note.len)) : base * Math.min(4, Math.max(.1, note.gate ?? 1));
   };
-  const length = Math.min(64, Math.max(0.05, ...notes.map(noteLength)));
+  const length = Math.min(512, Math.max(0.05, ...notes.map(noteLength)));
   const ordinary = notes.every(n => (n.ratchet ?? 1) <= 1 && !n.microTimingMs);
   if (!track.arp && ordinary) return [{ notes, dt: 0 }];
   const initial = track.arp ? arpEvents(notes.map(note => note.len ? note : { ...note, len: noteLength(note) }), track.arp, length, random)

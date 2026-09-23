@@ -1218,8 +1218,8 @@ export function normalizePatch(p: Patch): Patch {
       }
       if (scale.length === 0) scale = [1];
 
-      const octUp = Math.round(clamp((t as { scaleOctUp?: number }).scaleOctUp ?? 0, 0, 4, 0));
-      const octDown = Math.round(clamp((t as { scaleOctDown?: number }).scaleOctDown ?? 0, 0, 4, 0));
+      const octUp = Math.round(clamp((t as { scaleOctUp?: number }).scaleOctUp ?? 0, 0, 7, 0));
+      const octDown = Math.round(clamp((t as { scaleOctDown?: number }).scaleOctDown ?? 0, 0, 7, 0));
       const rowsLen = scale.length * (1 + octUp + octDown);
       const patterns: Pattern[] = rawPatterns
         .filter((pt) => pt && typeof pt.id === 'string')

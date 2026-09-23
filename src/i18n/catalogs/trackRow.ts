@@ -400,12 +400,12 @@ export const trackRow = {
     "en": "Add a row to the bottom: the grid grows by one row, notes stay. Past the range's edge, the range grows by an octave."
   },
   "trackRow.cannotGrowTopOctaveLimit": {
-    "ru": "Выше — предел диапазона: четыре октавы сверху",
-    "en": "Top limit reached: four octaves above"
+    "ru": "Выше — предел диапазона: семь октав сверху",
+    "en": "Top limit reached: seven octaves above"
   },
   "trackRow.cannotGrowBottomOctaveLimit": {
-    "ru": "Ниже — предел диапазона: четыре октавы снизу",
-    "en": "Bottom limit reached: four octaves below"
+    "ru": "Ниже — предел диапазона: семь октав снизу",
+    "en": "Bottom limit reached: seven octaves below"
   },
   "trackRow.scrollTheStaffUpOneRow": {
     "ru": "Листать стан на одну строку вверх: ушедшая вниз строка прячется за окно, но играет. За краем диапазона дорастает октавой — звук нот не меняется",

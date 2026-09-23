@@ -36,7 +36,7 @@ export function makeBridgeHost(port = BRIDGE_PORT, options = {}) {
       const map = new Map();
       for (const t of state.patch.tracks) {
         const rows = (t.scale ?? []).slice(0, 256).filter(v => Number.isFinite(v) && v > 0);
-        const up = Math.min(4, Math.max(0, Math.floor(t.scaleOctUp ?? 0))), down = Math.min(4, Math.max(0, Math.floor(t.scaleOctDown ?? 0)));
+        const up = Math.min(7, Math.max(0, Math.floor(t.scaleOctUp ?? 0))), down = Math.min(7, Math.max(0, Math.floor(t.scaleOctDown ?? 0)));
         const seen = new Set();
         for (let o = -down; o <= up; o++) for (const r of rows) seen.add(+(r * 2 ** o).toFixed(9));
         map.set(t.id, { freq: t.freq ?? 220, rows: [...seen].sort((a, b) => a - b), name: t.name });

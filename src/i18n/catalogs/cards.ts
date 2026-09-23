@@ -340,8 +340,8 @@ export const cards = {
     "en": "grid rows"
   },
   "cards.theOctaveButtonsAddOrRemoveRows": {
-    "ru": "+ и − по краям стана добавляют и убирают по одной строке со своего края: верхний ряд — верхнюю строку, нижний — нижнюю. ▲/▼ между ними листают окно на строку; за краем диапазона листалка дорастает октавой (до четырёх с каждой стороны) — вниз можно уйти ниже ×1. Ноты не меняются: спрятанные за край строки играют, дорост переносит ноты на те же высоты.",
-    "en": "+ and − at the grid edges add and remove one row at a time from their side: the top row controls the top line, the bottom one the bottom. The ▲/▼ arrows scroll the window one row; past the range's edge the arrows grow the range by an octave (up to four per side) — below ×1 included. Notes never change: rows hidden beyond the edge keep playing, and the grown range keeps every note at its pitch."
+    "ru": "+ и − по краям стана добавляют и убирают по одной строке со своего края: верхний ряд — верхнюю строку, нижний — нижнюю. ▲/▼ между ними листают окно на строку; за краем диапазона листалка дорастает октавой (до семи с каждой стороны) — вниз можно уйти ниже ×1. Ноты не меняются: спрятанные за край строки играют, дорост переносит ноты на те же высоты.",
+    "en": "+ and − at the grid edges add and remove one row at a time from their side: the top row controls the top line, the bottom one the bottom. The ▲/▼ arrows scroll the window one row; past the range's edge the arrows grow the range by an octave (up to seven per side) — below ×1 included. Notes never change: rows hidden beyond the edge keep playing, and the grown range keeps every note at its pitch."
   },
   "cards.noteGridToolbar": {
     "ru": "панель нотной сетки",

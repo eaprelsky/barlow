@@ -85,7 +85,11 @@ function panLabel(pan: number): string {
 }
 
 function fmtRatio(r: number): string {
-  return Math.abs(r - Math.round(r)) < 1e-6 ? String(Math.round(r)) : r.toFixed(2);
+  if (Math.abs(r - Math.round(r)) < 1e-6) return String(Math.round(r));
+  // 3 значащих цифры, а не 2 знака после запятой: на глубоких октавах вниз
+  // соседние строки отличаются в третьем знаке и не должны склеиваться
+  // в одинаковые подписи (×0.11 рядом с ×0.11).
+  return String(Number(r.toPrecision(3)));
 }
 
 interface Props {
@@ -367,9 +371,9 @@ export const TrackRow = memo(function TrackRow({
    *  нового диапазона, даже если строки новой октавы вклиниваются между
    *  старыми (шкала шире октавы). Возвращает карту индексов: строка
    *  прежнего мира → её индекс в новом; null — расти некуда (лимит
-   *  четырёх октав или диапазон уже покрывает новую октаву). */
+   *  семи октав или диапазон уже покрывает новую октаву). */
   const growWorld = (dir: 'up' | 'down'): number[] | null => {
-    if (dir === 'up' ? up >= 4 : down >= 4) return null;
+    if (dir === 'up' ? up >= 7 : down >= 7) return null;
     const grown = scaleOf(
       dir === 'up' ? { ...track, scaleOctUp: up + 1 } : { ...track, scaleOctDown: down + 1 },
     );
@@ -436,7 +440,7 @@ export const TrackRow = memo(function TrackRow({
   /** Листалка окна стана (▲/▼ между «+» и «−») — скролл на одну строку:
    *  ушедшие за край строки прячутся, но играют. За краем мира листалка
    *  дорастает диапазон октавой (с компенсацией нот — частоты те же)
-   *  и листает дальше: вниз можно уйти за ×1. Предел — четыре октавы
+   *  и листает дальше: вниз можно уйти за ×1. Предел — семь октав
    *  с каждой стороны. */
   const flipRoll = (dir: 'up' | 'down') => {
     const win = rollView ?? { lo: 0, rows: scaleRows.length };
@@ -458,13 +462,13 @@ export const TrackRow = memo(function TrackRow({
   };
 
   /** Строку можно добавить, пока за краем окна есть скрытые строки
-   *  диапазона или запас счётчика октав (лимит 4, с каждой стороны). */
+   *  диапазона или запас счётчика октав (лимит 7, с каждой стороны). */
   const canGrow = (dir: 'up' | 'down'): boolean => {
     const cnt = dir === 'up' ? up : down;
     const hidden = dir === 'up'
       ? scaleRows.length - (rollWin.lo + rollWin.rows)
       : rollWin.lo;
-    return hidden > 0 || cnt < 4;
+    return hidden > 0 || cnt < 7;
   };
 
   const canShrink = (): boolean => rollWin.rows > 1;
@@ -473,8 +477,8 @@ export const TrackRow = memo(function TrackRow({
    *  или запас октав: на краю мира листалка дорастает диапазон. */
   const canFlip = (dir: 'up' | 'down'): boolean =>
     dir === 'up'
-      ? scaleRows.length - (rollWin.lo + rollWin.rows) > 0 || up < 4
-      : rollWin.lo > 0 || down < 4;
+      ? scaleRows.length - (rollWin.lo + rollWin.rows) > 0 || up < 7
+      : rollWin.lo > 0 || down < 7;
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
   // колонке — аккорд; когда нот не остаётся — пауза. Новая нота фиксирует
