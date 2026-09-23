@@ -3563,18 +3563,16 @@ svg.auto-lane {
   background: rgba(var(--orange-rgb), 0.08);
 }
 
-/* «+ трек» — кнопка строго над списком дорожек: нажал — новый трек
-   появился сразу под ней. Заметная: это одно из главных действий. */
+/* «+ дорожка» — кнопка строго над списком дорожек: нажал — новый трек
+   появился сразу под ней. Акцентная, но по габаритам — ровно как соседние
+   кнопки строки (драм-рэк/слияние/импорт): одна высота и центровка. */
 .add-track {
-  align-self: flex-start;
-  margin: 2px 0 12px;
-  padding: 9px 20px;
-  font-size: 13.5px;
+  padding: 5px 12px;
   font-weight: 600;
   color: var(--accent);
   background: rgba(var(--orange-rgb), 0.09);
   border: 1px solid rgba(var(--orange-rgb), 0.55);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .add-track:hover {
@@ -3751,7 +3749,6 @@ html.point-help-active .ph-card button { cursor: pointer !important; }
 .ob-hint[aria-pressed="true"], .modal-point-help[aria-pressed="true"] { background: var(--accent-2); color: var(--bg); }
 
 .track-navigation { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
-.track-navigation > .add-track { margin: 0; }
 .track-navigation > .track-filters { flex: 1; padding: 0; }
 
 .scene-chip-input { width: 150px; min-width: 80px; }
