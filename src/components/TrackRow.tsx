@@ -1401,7 +1401,7 @@ export const TrackRow = memo(function TrackRow({
             <>
           <div className="sketch-bar">
             <label title={msg("trackRow.stepsInThisClipSCycleDifferent")} data-ob="length">
-              {msg("trackRow.lengthLabel")}<NumField help="pattern.length" narrow value={pattern.length} min={1} max={512} onChange={(length) => setLength(length)} />
+              {msg("trackRow.lengthLabel")}<NumField help="pattern.length" narrow w={56} value={pattern.length} min={1} max={512} onChange={(length) => setLength(length)} />
             </label>
             <label title={msg("trackRow.stepLengthForThisClipDottedValues")} data-ob="rate">
               {msg("trackRow.step")}<select
