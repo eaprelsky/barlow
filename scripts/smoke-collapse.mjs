@@ -103,17 +103,17 @@ try {
   st = await state();
   const others = st.collapsed;
   check('C: подготовка — чужие дорожки свернулись', others >= 1 && st.editor === 1, JSON.stringify(st));
-  await page.getByTitle('Развернуть трек').first().click();
+  await page.getByTitle('Развернуть дорожку').first().click();
   await page.waitForTimeout(300);
   st = await state();
   check('C: клик пробивает режим — редактор закрыт, дорожка развёрнута', st.editor === 0 && st.collapsed === 0, JSON.stringify(st));
 
   // Обычное сворачивание/разворачивание не сломалось.
-  await page.getByTitle('Свернуть трек').first().click();
+  await page.getByTitle('Свернуть дорожку').first().click();
   await page.waitForTimeout(200);
   st = await state();
   check('D: обычное сворачивание работает', st.collapsed === 1, JSON.stringify(st));
-  await page.getByTitle('Развернуть трек').first().click();
+  await page.getByTitle('Развернуть дорожку').first().click();
   await page.waitForTimeout(200);
   st = await state();
   check('D: обычное разворачивание работает', st.expanded >= 1 && st.collapsed === 0, JSON.stringify(st));

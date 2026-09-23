@@ -124,11 +124,11 @@ export const guides = {
     "en": "add an instrument"
   },
   "guides.yourFirstSoundAddATrackAnd": {
-    "ru": "Первый звук в проекте: «+ трек» — и он играет",
+    "ru": "Первый звук в проекте: «+ дорожка» — и он играет",
     "en": "Your first sound: add a track and choose a preset"
   },
   "guides.clickTrackATrackAppearsAndThe": {
-    "ru": "Жми «+ трек» — дорожка появится сразу, а панель инструментов предложит тембр (можно закрыть и остаться с синусом).",
+    "ru": "Жми «+ дорожка» — дорожка появится сразу, а панель инструментов предложит тембр (можно закрыть и остаться с синусом).",
     "en": "Click + track. A track appears and the instrument browser offers sounds. Close it to keep the default sine wave."
   },
   "guides.typeTheTrackNameHere": {
@@ -140,7 +140,7 @@ export const guides = {
     "en": "Press S to hear only this track in the current scene."
   },
   "guides.clipEditsTheNotesTrackEditsShared": {
-    "ru": "Переключатель «эскиз / трек / инструмент»: эскиз — ноты партии, трек — общее, инструмент — тембр.",
+    "ru": "Переключатель «эскиз / дорожка / инструмент»: эскиз — ноты партии, дорожка — общее, инструмент — тембр.",
     "en": "Clip edits the notes; track edits shared mixing settings; instrument edits the sound."
   },
   "guides.pressTheCollapseArrowToReduceThe": {
@@ -356,7 +356,7 @@ export const guides = {
     "en": "Delay, reverb and distortion in a processing chain"
   },
   "guides.openTheTrackTabToFindIts": {
-    "ru": "Открой вкладку «трек» — там цепочка эффектов.",
+    "ru": "Открой вкладку «дорожка» — там цепочка эффектов.",
     "en": "Open the track tab to find its effects chain."
   },
   "guides.useEffectToAddProcessing": {

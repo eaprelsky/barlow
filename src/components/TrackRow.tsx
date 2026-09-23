@@ -23,7 +23,6 @@ import {
   EFFECT_LABELS,
   makeNote,
   makeStep,
-  octaveRows,
   scaleOf,
   uid,
 } from '../types';
@@ -90,6 +89,7 @@ function fmtRatio(r: number): string {
 }
 
 interface Props {
+  rackContent?: import('react').ReactNode;
   track: Track;
   /** Инструмент дорожки: тембр, огибающая ноты, фильтры (v34). */
   inst: Instrument;
@@ -161,6 +161,7 @@ interface Props {
 }
 
 export const TrackRow = memo(function TrackRow({
+  rackContent,
   track,
   inst,
   onChangeInst,
@@ -280,9 +281,10 @@ export const TrackRow = memo(function TrackRow({
   // Диапазон стана (мир): базовая шкала + добавленные октавы. Окно — какие
   // строки мира видны; по умолчанию (null) — весь диапазон. Кнопки +/− по
   // краям стана добавляют и убирают ровно одну строку окна со своего края,
-  // ▲/▼ листают окно на строку — это всё вид, а не патч: ноты не меняются,
-  // ушедшие за край строки играют, но не видны. Доращивать строку за краем
-  // мира нечем — тогда «+» тихо дорастает диапазон октавой (правка патча).
+  // ▲/▼ листают окно на строку. Это всё вид, а не патч: ноты не меняются,
+  // ушедшие за край строки играют, но не видны. За краем мира и «+», и
+  // листалка дорастают диапазон октавой (правка патча, снизу — с
+  // компенсацией нот, частоты те же): вниз можно уйти за ×1.
   const scaleRows = scaleOf(track);
   const up = track.scaleOctUp ?? 0;
   const down = track.scaleOctDown ?? 0;
@@ -328,7 +330,7 @@ export const TrackRow = memo(function TrackRow({
   };
 
   const setLength = (length: number) => {
-    const clamped = Math.max(1, Math.min(64, Math.round(length) || 1));
+    const clamped = Math.max(1, Math.min(512, Math.round(length) || 1));
     const steps = pattern.steps.slice(0, clamped);
     while (steps.length < clamped) steps.push(makeStep());
     setSelectedCol((c) => (c !== null && c >= clamped ? null : c));
@@ -360,10 +362,44 @@ export const TrackRow = memo(function TrackRow({
     });
   };
 
+  /** Дорост мира октавой (правка патча, один шаг undo): ноты остаются
+   *  на своих высотах — компенсация переносит каждую на ту же строку
+   *  нового диапазона, даже если строки новой октавы вклиниваются между
+   *  старыми (шкала шире октавы). Возвращает карту индексов: строка
+   *  прежнего мира → её индекс в новом; null — расти некуда (лимит
+   *  четырёх октав или диапазон уже покрывает новую октаву). */
+  const growWorld = (dir: 'up' | 'down'): number[] | null => {
+    if (dir === 'up' ? up >= 4 : down >= 4) return null;
+    const grown = scaleOf(
+      dir === 'up' ? { ...track, scaleOctUp: up + 1 } : { ...track, scaleOctDown: down + 1 },
+    );
+    if (grown.length === scaleRows.length) return null;
+    const pos = scaleRows.map((r) => grown.findIndex((g) => Math.abs(g - r) < 1e-9));
+    const moved = pos.some((p, i) => p !== i);
+    const patterns = moved
+      ? track.patterns.map((pt) => ({
+          ...pt,
+          steps: pt.steps.map((s) => ({
+            ...s,
+            notes: s.notes.map((nt) => ({
+              ...nt,
+              n: pos[Math.min(Math.max(nt.n, 0), pos.length - 1)],
+            })),
+          })),
+        }))
+      : undefined;
+    onTrackCommand(track.id, {
+      ...track,
+      ...(dir === 'up' ? { scaleOctUp: up + 1 } : { scaleOctDown: down + 1 }),
+      ...(patterns ? { patterns } : {}),
+    } as Track);
+    return pos;
+  };
+
   /** «+» у края стана: добавить одну строку окна со своего края. За краем
    *  диапазона скрытой строки нет — дорастаем октавой (правка патча,
-   *  один шаг undo; снизу — с компенсацией нот, частоты те же), в окно
-   *  входит ровно одна новая строка. */
+   *  один шаг undo; компенсация держит частоты нот), в окно входит ровно
+   *  одна новая строка. */
   const growRow = (dir: 'up' | 'down') => {
     const l = scaleRows.length;
     const win = rollView ?? { lo: 0, rows: l };
@@ -372,27 +408,15 @@ export const TrackRow = memo(function TrackRow({
         setRollView({ lo: win.lo, rows: win.rows + 1 });
         return;
       }
-      if (up >= 4) return;
-      onTrackCommand(track.id, { ...track, scaleOctUp: up + 1 } as Track);
-      setRollView({ lo: win.lo, rows: win.rows + 1 });
+      const pos = growWorld('up');
+      if (pos) setRollView({ lo: pos[win.lo], rows: win.rows + 1 });
     } else {
       if (win.lo > 0) {
         setRollView({ lo: win.lo - 1, rows: win.rows + 1 });
         return;
       }
-      if (down >= 4) return;
-      // Дорост снизу вставляет строки в начало: индексы нот едут на
-      // дельту вверх, окно едет за контентом и прирастает новой строкой.
-      const delta = octaveRows(track);
-      const patterns = track.patterns.map((pt) => ({
-        ...pt,
-        steps: pt.steps.map((s) => ({
-          ...s,
-          notes: s.notes.map((nt) => ({ ...nt, n: nt.n + delta })),
-        })),
-      }));
-      onTrackCommand(track.id, { ...track, scaleOctDown: down + 1, patterns } as Track);
-      setRollView({ lo: delta - 1, rows: win.rows + 1 });
+      const pos = growWorld('down');
+      if (pos) setRollView({ lo: pos[0] - 1, rows: win.rows + 1 });
     }
   };
 
@@ -410,16 +434,27 @@ export const TrackRow = memo(function TrackRow({
   };
 
   /** Листалка окна стана (▲/▼ между «+» и «−») — скролл на одну строку:
-   *  ноты и диапазон не меняются, ушедшие за край строки прячутся, но
-   *  играют. У края мира кнопка гаснет — расширить вид может «+». */
+   *  ушедшие за край строки прячутся, но играют. За краем мира листалка
+   *  дорастает диапазон октавой (с компенсацией нот — частоты те же)
+   *  и листает дальше: вниз можно уйти за ×1. Предел — четыре октавы
+   *  с каждой стороны. */
   const flipRoll = (dir: 'up' | 'down') => {
-    setRollView((v) => {
-      if (!v) return v;
-      const lo = dir === 'up'
-        ? Math.min(v.lo + 1, scaleRows.length - v.rows)
-        : Math.max(0, v.lo - 1);
-      return lo === v.lo ? v : { ...v, lo };
-    });
+    const win = rollView ?? { lo: 0, rows: scaleRows.length };
+    if (dir === 'up') {
+      if (scaleRows.length - (win.lo + win.rows) > 0) {
+        setRollView({ ...win, lo: win.lo + 1 });
+        return;
+      }
+      const pos = growWorld('up');
+      if (pos) setRollView({ lo: pos[win.lo + win.rows - 1] + 2 - win.rows, rows: win.rows });
+    } else {
+      if (win.lo > 0) {
+        setRollView({ ...win, lo: win.lo - 1 });
+        return;
+      }
+      const pos = growWorld('down');
+      if (pos) setRollView({ lo: pos[0] - 1, rows: win.rows });
+    }
   };
 
   /** Строку можно добавить, пока за краем окна есть скрытые строки
@@ -434,11 +469,12 @@ export const TrackRow = memo(function TrackRow({
 
   const canShrink = (): boolean => rollWin.rows > 1;
 
-  /** Листать можно, пока за краем окна есть скрытые строки диапазона. */
+  /** Листать можно, пока за краем окна есть скрытые строки диапазона —
+   *  или запас октав: на краю мира листалка дорастает диапазон. */
   const canFlip = (dir: 'up' | 'down'): boolean =>
     dir === 'up'
-      ? scaleRows.length - (rollWin.lo + rollWin.rows) > 0
-      : rollWin.lo > 0;
+      ? scaleRows.length - (rollWin.lo + rollWin.rows) > 0 || up < 4
+      : rollWin.lo > 0 || down < 4;
 
   // Клик по ячейке: добавить/убрать ноту на этой высоте. Несколько нот в
   // колонке — аккорд; когда нот не остаётся — пауза. Новая нота фиксирует
@@ -647,7 +683,7 @@ export const TrackRow = memo(function TrackRow({
   // Ctrl+C работает и на русской (e.key дал бы кириллическую «с»).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (clip.activeTrackId !== track.id) return;
+      if (rackContent || clip.activeTrackId !== track.id) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
       const meta = e.ctrlKey || e.metaKey;
@@ -702,7 +738,7 @@ export const TrackRow = memo(function TrackRow({
           ? {
               ...x,
               len: Math.min(
-                64,
+                512,
                 Math.max(
                   0.1,
                   +((x.len ?? stateRef.current.noteCellsBase * (x.gate ?? 1)) + d).toFixed(2),
@@ -993,7 +1029,7 @@ export const TrackRow = memo(function TrackRow({
   /** Длина ноты в клетках: своя (v37), иначе база (легаси-гейт множит). */
   const noteCellsOf = (nt: Note): number =>
     typeof nt.len === 'number' && nt.len > 0
-      ? Math.min(64, Math.max(0.05, nt.len))
+      ? Math.min(512, Math.max(0.05, nt.len))
       : noteCellsBase * Math.min(4, Math.max(0.1, nt.gate ?? 1));
   /** Начинается ли нота (col, row) поверх ещё звучащего хвоста предыдущей
    *  ноты той же высоты — только в этом случае рисуем тёмную головку. */
@@ -1040,13 +1076,13 @@ export const TrackRow = memo(function TrackRow({
     const g = grabRef.current;
     if (!g || e.pointerId !== g.pointerId) return;
     const cells = g.startCells + (e.clientX - g.startX) / PITCH_PX;
-    const newLen = Math.min(64, Math.max(0.1, Math.round(cells * 10) / 10));
+    const newLen = Math.min(512, Math.max(0.1, Math.round(cells * 10) / 10));
     const delta = newLen - (g.startLens.get(`${g.col}:${g.row}`) ?? noteCellsBase);
     // Раскладываем целевые длины и проверяем, есть ли реальное изменение.
     const targets = new Map<string, number>();
     let dirty = false;
     for (const [k, sl] of g.startLens) {
-      const target = Math.min(64, Math.max(0.1, Math.round((sl + delta) * 10) / 10));
+      const target = Math.min(512, Math.max(0.1, Math.round((sl + delta) * 10) / 10));
       targets.set(k, target);
       const [c, n] = k.split(':').map(Number);
       const cur = pattern.steps[c]?.notes.find((x) => x.n === n);
@@ -1112,14 +1148,14 @@ export const TrackRow = memo(function TrackRow({
             onClick={() => switchView('sketch')}
           >
             {msg("trackRow.clip")}</button>
-          <button
+          {!rackContent && <button
             className={editorOpen ? 'on' : ''}
             data-ob="mode-inst"
             aria-label={msg("trackRow.instrument")}
             title={msg("trackRow.instrumentEditTheSoundSourceWaveformSample")}
-            onClick={() => (editorOpen ? onCloseEditor() : onOpenEditor(track.id))}
+            onClick={() => rackContent ? switchView('sketch') : (editorOpen ? onCloseEditor() : onOpenEditor(track.id))}
           >
-            {msg("trackRow.instrument")}</button>
+            {msg("trackRow.instrument")}</button>}
           <button
             className={view === 'track' && !editorOpen ? 'on' : ''}
             data-ob="mode-track"
@@ -1138,7 +1174,7 @@ export const TrackRow = memo(function TrackRow({
           title={msg("trackRow.trackInstrumentClickToOpenTheLibrary", {p0: instrumentNameOf(st)})}
           onClick={() => onOpenBrowser(track.id)}
         >
-          {instrumentNameOf(st)}
+          {rackContent ? msg('rack.title') : instrumentNameOf(st)}
         </button>
       </div>
 
@@ -1202,7 +1238,7 @@ export const TrackRow = memo(function TrackRow({
                   и к «ноте» (время партии); здесь только микс-общее. */}
             </div>
           </div>
-          <div className="track-voicing" data-ob="track-voicing">
+          {!rackContent && <div className="track-voicing" data-ob="track-voicing">
             <label data-help="mono"><input type="checkbox" checked={!!track.mono} onChange={e => onTrackCommand(track.id, { ...track, mono: e.target.checked })} /> {msg("trackRow.newNoteChokesPrevious")}</label>
             {track.mono && <label data-ob="portamento" title={msg("trackRow.smoothPitchTransitionsBetweenSingleNotes0")}>{msg("trackRow.glideMs")}<NumField help="portamento" value={Math.round((track.portamentoSec ?? 0) * 1000)} min={0} max={4000} step={10} onChange={v => change({ portamentoSec: v / 1000 })} /></label>}
             <label data-help="choke-group">{msg("trackRow.chokeGroup")}<select aria-label={msg("trackRow.chokeGroup51")} value={track.chokeGroup ?? 0} onChange={e => onTrackCommand(track.id, { ...track, chokeGroup: Number(e.target.value) || undefined })}>
@@ -1210,7 +1246,7 @@ export const TrackRow = memo(function TrackRow({
             </select></label>
             {track.chokeGroup && <label data-help="choke-priority">{msg("trackRow.priority")}<NumField value={track.chokePriority ?? 0} min={0} max={16} step={1} onChange={v => change({ chokePriority: Math.round(v) })} /></label>}
             {track.mono && (track.portamentoSec ?? 0) > 0 && <span>{inst.waveform === 'sample' && inst.sampleMode === 'scratch' ? msg("trackRow.glideDoesNotAffectScratchingTheGesture") : msg("trackRow.singleNotesGlideFromThePreviousPitch")}</span>}
-          </div>
+          </div>}
           <div className="panel-row">
             <div className="sub-head">
               <span className="sub-cap" data-help="track-effects">{msg("trackRow.trackEffects")}</span>
@@ -1361,7 +1397,7 @@ export const TrackRow = memo(function TrackRow({
             <>
           <div className="sketch-bar">
             <label title={msg("trackRow.stepsInThisClipSCycleDifferent")} data-ob="length">
-              {msg("trackRow.lengthLabel")}<NumField help="pattern.length" narrow value={pattern.length} min={1} max={64} onChange={(length) => setLength(length)} />
+              {msg("trackRow.lengthLabel")}<NumField help="pattern.length" narrow value={pattern.length} min={1} max={512} onChange={(length) => setLength(length)} />
             </label>
             <label title={msg("trackRow.stepLengthForThisClipDottedValues")} data-ob="rate">
               {msg("trackRow.step")}<select
@@ -1432,7 +1468,7 @@ export const TrackRow = memo(function TrackRow({
                 {msg("trackRow.scratch")}</button>
             )}
           </div>
-          <RollTools
+          {rackContent ?? <><RollTools
             track={st}
             pattern={pattern}
             noteSteps={track.noteSteps ?? 0}
@@ -1455,11 +1491,11 @@ export const TrackRow = memo(function TrackRow({
               onClick={() => growRow('up')}
             >+</button>
             <button
-              className={'oct-btn oct-flip' + (viewHi < scaleRows.length ? ' more' : '')}
+              className={'oct-btn oct-flip' + (canFlip('up') ? ' more' : '')}
               title={
                 canFlip('up')
                   ? msg("trackRow.scrollTheStaffUpOneRow")
-                  : msg("trackRow.nowhereToScrollWholeRange")
+                  : msg("trackRow.cannotGrowTopOctaveLimit")
               }
               disabled={!canFlip('up')}
               onClick={() => flipRoll('up')}
@@ -1488,11 +1524,11 @@ export const TrackRow = memo(function TrackRow({
               onClick={() => growRow('down')}
             >+</button>
             <button
-              className={'oct-btn oct-flip' + (viewLo > 0 ? ' more' : '')}
+              className={'oct-btn oct-flip' + (canFlip('down') ? ' more' : '')}
               title={
                 canFlip('down')
                   ? msg("trackRow.scrollTheStaffDownOneRow")
-                  : msg("trackRow.nowhereToScrollWholeRange")
+                  : msg("trackRow.cannotGrowBottomOctaveLimit")
               }
               disabled={!canFlip('down')}
               onClick={() => flipRoll('down')}
@@ -1508,6 +1544,7 @@ export const TrackRow = memo(function TrackRow({
           </div>
         </div>
         <div className="roll-body">
+        <div className="playback-range-host"/>
         <div className="roll-cols" role="group" aria-label={msg("trackRow.notesOnTrack", {p0: track.name})}>
           {pattern.steps.map((s, col) => (
             <div key={col} className={'col-wrap' + (col === selectedCol ? ' sel' : '')}>
@@ -1675,7 +1712,8 @@ export const TrackRow = memo(function TrackRow({
         </div>
       </div>
 
-      {selectedStep && selectedCol !== null && !slotMuted && (
+      </>}
+      {!rackContent && selectedStep && selectedCol !== null && !slotMuted && (
         <div className="step-panel" data-ob="step-panel">
           <span className="sp-label">{msg("trackRow.step")}{selectedCol + 1}</span>
           {selectedStep.notes.length === 0 && (
@@ -1713,7 +1751,7 @@ export const TrackRow = memo(function TrackRow({
                 title={msg("trackRow.thisNoteSLengthInSteps0")}
               >
                 {msg("trackRow.lengthLabel")}<NumField
-                  value={nt.len ?? noteCellsBase} min={0.1} max={64} step={0.1} wheel
+                  value={nt.len ?? noteCellsBase} min={0.1} max={512} step={0.1} wheel
                   onChange={(v) => setNoteField(selectedCol, nt.n, 'len', Math.max(0.1, Math.round(v * 10) / 10))}
                 />
               </label>

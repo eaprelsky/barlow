@@ -9,7 +9,7 @@ import type { InstrumentPreset } from '../music/instrumentPresets';
 
 const MiB = 1024 * 1024;
 // Released schemas remain readable when PATCH_VERSION advances.
-const readableSchemas = new Set([53, 54, 55, 56, 57, 58]);
+const readableSchemas = new Set([53, 54, 55, 56, 57, 58, 59]);
 const pathPattern = /^samples\/([a-f0-9]{64})$/;
 const allowed = new Set<string>(SAVE_FIELDS);
 const hash = async (bytes: Uint8Array<ArrayBuffer>) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');

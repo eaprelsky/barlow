@@ -748,7 +748,7 @@ export const explanations = {
     "en": "Which tracks to show"
   },
   "explanations.filtersRemoveTracksFromViewWithoutChanging": {
-    "ru": "Фильтры убирают лишние дорожки с экрана, но не меняют музыку, мьют или порядок треков.",
+    "ru": "Фильтры убирают лишние дорожки с экрана, но не меняют музыку, мьют или порядок дорожек.",
     "en": "Filters remove tracks from view without changing music, mute settings or track order."
   },
   "explanations.combineNameSearchWithHidingMutedTracks": {
@@ -1840,7 +1840,7 @@ export const explanations = {
     "en": "Build music from tracks, each with an instrument, note pattern and playback settings. Scenes combine patterns; the sequence sets their order."
   },
   "explanations.startWithTrackChooseASoundAnd": {
-    "ru": "Начни с «+ трек», выбери звук и расставь ноты. В режиме справки можно выбирать подписи, ручки, рисунки и целые панели.",
+    "ru": "Начни с «+ дорожка», выбери звук и расставь ноты. В режиме справки можно выбирать подписи, ручки, рисунки и целые панели.",
     "en": "Start with + track, choose a sound and add notes. Help mode explains labels, knobs, graphs and whole panels."
   },
   "explanations.forIDMTryDifferentCycleLengthsA": {
@@ -2248,7 +2248,7 @@ export const explanations = {
     "en": "Smooth transition from the previous note’s pitch to the next. Useful for sliding bass or flowing melodies."
   },
   "explanations.openTheTrackTabEnableNewNotes": {
-    "ru": "Открой режим «трек» у нужной дорожки, включи «новая нота глушит предыдущую» и задай «скольжение, мс». Ноль выключает скольжение. Работает на одиночных нотах, не на аккордах и скрэтче; атака каждой ноты начинается заново.",
+    "ru": "Открой режим «дорожка» у нужной дорожки, включи «новая нота глушит предыдущую» и задай «скольжение, мс». Ноль выключает скольжение. Работает на одиночных нотах, не на аккордах и скрэтче; атака каждой ноты начинается заново.",
     "en": "Open the track tab, enable new notes cutting off previous voices, then set glide in milliseconds. Zero disables it. Single notes glide; chords and scratch do not. Each note retriggers its attack."
   },
   "explanations.try80150MsOnBassAlternating": {

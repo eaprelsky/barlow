@@ -14,6 +14,7 @@ export function soundForAudition(target: Track, preset: InstrumentPreset): Sound
   const sound = preset.track, hz = recommendedHz(sound);
   const inst = instrumentOfFields({ ...sound, recommendedHz: hz }, preset.id ?? 'audition', preset.name);
   return { ...target, ...inst, id: target.id, freq: hz, scale: [1], scaleOctUp: 0, scaleOctDown: 0,
+    rackParentId: undefined, rackPadId: undefined, rackBus: undefined,
     patterns: [], rate: sound.rate ?? 1, phase: 0, noteSteps: sound.noteSteps,
     volume: sound.volume ?? .8, pan: sound.pan ?? .5, enabled: true, arp: undefined,
     sidechain: undefined, mono: sound.mono, portamentoSec: sound.portamentoSec,

@@ -215,3 +215,9 @@ golden-рендеры: `npm run golden` (fixtures/golden.json), оффлайн-�
 
 С v53 альтернативы внутри WaveDef и voice-local окраска — synthesis-v53.md.
 Переходы сцен и независимость фейдера от входа/выхода — scene-transitions.md.
+
+С v59 Track.device разделяет обычную дорожку и драм-рэк. Пэды ссылаются на
+Instrument и владеют локальным миксом/FX; общая дорожка — шина. Note.padId
+независим от высоты. Live и WAV используют expandDrumRacks. PlaybackRange
+принадлежит рабочему пространству, не музыкальному Patch. Полный контракт:
+[loop-and-drum-rack.md](loop-and-drum-rack.md).

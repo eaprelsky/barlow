@@ -28,7 +28,7 @@ export const samplePicker = {
     "en": "No samples yet. Import an audio file."
   },
   "samplePicker.assignThisSampleToTheTrack": {
-    "ru": "Клик — положить этот сэмпл в слот трека",
+    "ru": "Клик — положить этот сэмпл в слот дорожки",
     "en": "Assign this sample to the track"
   },
   "samplePicker.stop": {

@@ -190,6 +190,8 @@ export type NoteLocks = Partial<Pick<Instrument,
 export type NoteLockParameter = keyof NoteLocks;
 
 export interface Note {
+  /** Stable rack destination, independent of the pitch row n. */
+  padId?: string;
   locks?: NoteLocks;
   /** Retriggers within the first step of this note; 1 = ordinary note. */
   ratchet?: number;
@@ -318,7 +320,31 @@ export function modRateHz(mod: Mod, bpm: number): number {
     : mod.rate;
 }
 
+export interface DrumPad {
+  id: string;
+  name: string;
+  instrumentId: string;
+  freq: number;
+  volume: number;
+  pan: number;
+  muted?: boolean;
+  solo?: boolean;
+  mono?: boolean;
+  chokeGroup?: number;
+  chokePriority?: number;
+  effects?: Effect[];
+  mods?: Mod[];
+}
+export type TrackDevice = { kind: 'instrument' } | { kind: 'rack'; pads: DrumPad[] };
+
 export interface Track {
+  /** Missing in pre-v59 projects means a single instrument. For a rack,
+   * instrumentId retains the bus filter settings, never a sounding source. */
+  device?: TrackDevice;
+  /** Runtime-only routing, removed by normalization and never serialized. */
+  rackParentId?: string;
+  rackPadId?: string;
+  rackBus?: boolean;
   spaceSend?: number;
   id: string;
   name: string;
@@ -596,6 +622,16 @@ export interface WavRenderOptions {
   onProgress?: (fraction: number) => void;
 }
 
+/** Audition workspace state; deliberately outside the musical Patch. */
+export interface PlaybackRange {
+  sceneId: string;
+  startBeat: number;
+  endBeat: number;
+  enabled: boolean;
+  variation: 'evolving' | 'fixed';
+  seed: number;
+}
+
 export interface Patch {
   /** Explicit deterministic performance; undefined preserves legacy randomness. */
   performanceSeed?: number;
@@ -626,7 +662,7 @@ export interface Patch {
   instruments: Instrument[];
 }
 
-export const PATCH_VERSION = 58;
+export const PATCH_VERSION = 59;
 
 let idSeq = 0;
 export const uid = (prefix: string) =>
@@ -801,15 +837,6 @@ export function scaleOf(track: Track): number[] {
   return rows.sort((a, b) => a - b);
 }
 
-/** Строк в одной октаве стана этой шкалы: сколько строк добавляет
- *  очередная верхняя октава (пересечения со шкалой схлопываются). */
-export function octaveRows(track: Track): number {
-  return (
-    scaleOf({ ...track, scaleOctUp: (track.scaleOctUp ?? 0) + 1 }).length -
-    scaleOf(track).length
-  );
-}
-
 /** Частоты всех нот шага (аккорда), Гц. Пусто — пауза. */
 export function stepFreqs(track: Track, step: Step): number[] {
   const rows = scaleOf(track);
@@ -950,9 +977,10 @@ function normalizeSteps(
           microTimingMs: clamp(nt.microTimingMs ?? 0, -50, 50, 0),
           locks: normalizeNoteLocks(nt.locks),
           sliceId: typeof nt.sliceId === 'string' && nt.sliceId.length <= 128 ? nt.sliceId || undefined : undefined,
+          padId: typeof nt.padId === 'string' && nt.padId.length <= 128 ? nt.padId || undefined : undefined,
           len:
             typeof nt.len === 'number' && nt.len > 0
-              ? clamp(nt.len, 0.1, 64, 1)
+              ? clamp(nt.len, 0.1, 512, 1)
               : undefined,
           gate: clamp(nt.gate ?? 1, 0.1, 4, 1),
         }));
@@ -1196,7 +1224,7 @@ export function normalizePatch(p: Patch): Patch {
       const patterns: Pattern[] = rawPatterns
         .filter((pt) => pt && typeof pt.id === 'string')
         .map((pt) => {
-          const length = Math.round(clamp(pt.length ?? 16, 1, 64, 16));
+          const length = Math.round(clamp(pt.length ?? 16, 1, 512, 16));
           const mods = normalizeMods((pt as { mods?: unknown }).mods);
           if (pt.muted) mutedPids.add(pt.id!);
           return {
@@ -1275,10 +1303,19 @@ export function normalizePatch(p: Patch): Patch {
       // живут только в инструменте. Иначе «мёртвые» значения из старого
       // JSON забивают правки инструмента при слиянии в SoundingTrack.
       const tr0 = { ...t, instrumentId, patterns } as Record<string, unknown>;
+      delete tr0.rackParentId; delete tr0.rackPadId; delete tr0.rackBus;
       for (const f of INSTRUMENT_FIELDS) delete tr0[f];
 
       return {
         ...(tr0 as unknown as Track),
+        device: t.device?.kind === 'rack' ? { kind: 'rack', pads: (Array.isArray(t.device.pads) ? t.device.pads : [])
+          .filter((pad,index,all) => pad && typeof pad.id === 'string' && pad.id.length > 0 && pad.id.length <= 128 && all.findIndex(x=>x?.id===pad.id)===index)
+          .slice(0,32).map(pad=>({id:pad.id,name:typeof pad.name==='string'?pad.name.slice(0,80):pad.id,
+            instrumentId:typeof pad.instrumentId==='string'?pad.instrumentId:'',
+            freq:clamp(pad.freq,20,9000,220),volume:clamp(pad.volume,0,1,.8),pan:clamp(pad.pan,0,1,.5),
+            muted:!!pad.muted,solo:!!pad.solo,mono:!!pad.mono,
+            chokeGroup:pad.chokeGroup?Math.round(clamp(pad.chokeGroup,1,16,1)):undefined,
+            chokePriority:Math.round(clamp(pad.chokePriority??0,0,16,0)),effects:normalizeEffects(pad.effects),mods:normalizeMods(pad.mods)})) } : {kind:'instrument'},
         scale,
         phase: Math.round(clamp(t.phase ?? 0, -64, 64, 0)),
         freq: clamp(t.freq, 20, 9000, 220),
@@ -1386,7 +1423,7 @@ export function normalizePatch(p: Patch): Patch {
       for (const s of pt.steps) {
         for (const nt of s.notes) {
           const cur = typeof nt.len === 'number' && nt.len > 0 ? nt.len : base * (nt.gate ?? 1);
-          nt.len = Math.round(clamp(cur, 0.1, 64, 1) * 100) / 100;
+          nt.len = Math.round(clamp(cur, 0.1, 512, 1) * 100) / 100;
           delete nt.gate;
         }
       }

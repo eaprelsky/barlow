@@ -48,7 +48,7 @@ export const app = {
     "en": "Unknown transport command or invalid parameter"
   },
   "app.deleteTrack": {
-    "ru": "удалить трек «{p0}»?",
+    "ru": "удалить дорожку «{p0}»?",
     "en": "Delete track “{p0}”?"
   },
   "app.delete": {
@@ -412,7 +412,7 @@ export const app = {
     "en": "pan"
   },
   "app.panTheEntireStereoMixTrackPanning": {
-    "ru": "Панорама всего микса: сдвигает стерео поле целиком. Панорамы треков и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число",
+    "ru": "Панорама всего микса: сдвигает стерео поле целиком. Панорамы дорожек и их модуляции остаются как есть — едут внутри поля. Двойной клик — точное число",
     "en": "Pan the entire stereo mix. Track panning and modulation keep their positions within this field. Double-click for numeric entry."
   },
   "app.backgroundNoiseAddsTapeHissOrAir": {
@@ -464,7 +464,7 @@ export const app = {
     "en": "disable"
   },
   "app.noTracksYetAddOne": {
-    "ru": "Треков нет — добавь первый.",
+    "ru": "Дорожек нет — добавь первую.",
     "en": "No tracks yet — add one."
   },
   "app.audioAndConnections137": {
@@ -628,11 +628,11 @@ export const app = {
     "en": "Tour: scene sequence"
   },
   "app.newTrackSineWaveUsingThePrevious": {
-    "ru": "Новый трек: синус; лад и тоника — как у верхнего трека (если треков ещё нет — 12 равных полутонов). Панель инструментов сразу предложит тембр на слух",
+    "ru": "Новая дорожка: синус; строй и основная частота — как у дорожки, чей строй ты менял последним (если дорожек ещё нет — 12 равных полутонов). Панель инструментов сразу предложит тембр на слух",
     "en": "New track: sine wave, using the previous tuning and root frequency (12-tone equal temperament if there are no tracks). The library opens so you can audition an instrument."
   },
   "app.track": {
-    "ru": "+ трек",
+    "ru": "+ дорожка",
     "en": "+ track"
   },
   "app.trackFilters": {
@@ -640,11 +640,11 @@ export const app = {
     "en": "Track filters"
   },
   "app.findTrack": {
-    "ru": "Найти трек",
+    "ru": "Найти дорожку",
     "en": "Find track"
   },
   "app.filterByTrackName": {
-    "ru": "Фильтр по названию трека",
+    "ru": "Фильтр по названию дорожки",
     "en": "Filter by track name"
   },
   "app.name": {
@@ -664,7 +664,7 @@ export const app = {
     "en": "Reset"
   },
   "app.noTracksMatchTheseFiltersChangeThe": {
-    "ru": "Нет треков по этим фильтрам. Измени название или сбрось фильтры.",
+    "ru": "Нет дорожек по этим фильтрам. Измени название или сбрось фильтры.",
     "en": "No tracks match these filters. Change the name or reset the filters."
   },
   "app.scratchPlaybackUnavailable": {
@@ -712,7 +712,7 @@ export const app = {
     "en": "Right-click a clip to make an independent copy"
   },
   "app.ctrlCVCopiesAndPastesNotes": {
-    "ru": "Ctrl+C / V — копипаст нот (и между треками) · Ctrl+D — дубль выделения",
+    "ru": "Ctrl+C / V — копипаст нот (и между дорожками) · Ctrl+D — дубль выделения",
     "en": "Ctrl+C / V copies and pastes notes, including between tracks · Ctrl+D duplicates the selection"
   },
   "app.deleteRemovesSelectedNotesEscClearsThe": {
@@ -736,7 +736,7 @@ export const app = {
     "en": "part"
   },
   "app.theClipAssignedToATrackIn": {
-    "ru": "— какой эскиз трека играет в этой сцене",
+    "ru": "— какой эскиз дорожки играет в этой сцене",
     "en": " — the clip assigned to a track in this scene"
   },
   "app.clip": {
@@ -748,7 +748,7 @@ export const app = {
     "en": " — a reusable note pattern; changes affect every scene that uses it"
   },
   "app.anEnsembleSnapshotWithOneClipAssignment": {
-    "ru": "— снимок ансамбля: по партии на каждый трек",
+    "ru": "— снимок ансамбля: по партии на каждую дорожку",
     "en": " — an ensemble snapshot with one clip assignment per track"
   },
   "app.scenesInPlaybackOrderWithTheirLengths": {
@@ -836,7 +836,7 @@ export const app = {
     "en": "volume"
   },
   "app.trackVolumeHint": {
-    "ru": "Громкость дорожки — та же ручка, что в карточке трека. Двойной клик по подписи — точное число",
+    "ru": "Громкость дорожки — та же ручка, что в карточке дорожки. Двойной клик по подписи — точное число",
     "en": "Track volume, linked to the control on the track. Double-click the label for numeric entry."
   },
   "app.scene1": {
@@ -844,7 +844,7 @@ export const app = {
     "en": "scene 1"
   },
   "app.newTrackName": {
-    "ru": "трек",
+    "ru": "дорожка",
     "en": "track"
   },
   "app.sceneLabel": {

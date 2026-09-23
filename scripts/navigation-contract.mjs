@@ -28,7 +28,7 @@ try{
  assert.equal(await rows.count(),3);
  await page.evaluate(async()=>{(await import('/src/storage.ts')).flushAutosave();});
  const saved=await page.evaluate(()=>localStorage.getItem('barlow.patch.v12'));
- const search=page.getByRole('searchbox',{name:'Фильтр по названию трека'});
+ const search=page.getByRole('searchbox',{name:'Фильтр по названию дорожки'});
  await search.fill('ТЕМНЫЙ');assert.equal(await rows.count(),1);
  await page.getByRole('checkbox',{name:'Скрыть мьют в этой сцене'}).check();assert.equal(await rows.count(),0);
  await search.fill('бас');assert.equal(await rows.count(),1);

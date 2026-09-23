@@ -1,4 +1,5 @@
 import { t as msg } from '../i18n/runtime.ts';
+import { expandDrumRacks } from '../music/drumRack';
 import { instrumentVoices } from '../music/layers';
 import { selectChokeEvents } from './chokeEvents';
 import type { Patch, Pattern, SoundingTrack, Track, WavRenderOptions } from '../types';
@@ -27,6 +28,7 @@ export interface RenderEvent extends PlannedNoteEvent {
 /** Validate all allocation limits before creating an OfflineAudioContext or
  * loading assets. Repeated scene occurrences deliberately have distinct keys. */
 export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: number, options?: WavRenderOptions) {
+  patch = expandDrumRacks(patch);
   const items = patch.followChain && patch.chain.length ? patch.chain : [{ sceneId: fallbackSceneId, bars: fallbackBars }];
   const parts: RenderPart[] = [];
   let events: RenderEvent[] = [];
@@ -75,6 +77,7 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
   nodes = events.reduce((total, ev) => total + estimateVoiceNodes(ev.part.st, ev.notes), 0);
   if (nodes > RENDER_LIMITS.estimatedNodes) throw new Error(msg("renderPlan.wavSynthesisBudgetExceeded100000Estimated"));
   const sounding = new Set(events.map(ev => ev.part.key));
+  for(const event of events)if(event.part.track.rackParentId)sounding.add(`${event.part.itemIndex}:${event.part.track.rackParentId}`);
   const activeParts = parts.filter(part => sounding.has(part.key));
   let chainResources = activeParts.reduce((total, part) => addResources(total,
     estimateChainResources({ effects: part.st.effects, mods: part.pattern.mods ?? part.st.mods })), emptyResources());
@@ -89,7 +92,12 @@ export function planRender(patch: Patch, fallbackSceneId: string, fallbackBars: 
     for (const ev of events) {
       if (ev.part.itemIndex !== items.length - 1) continue;
       let tail = tails.get(ev.part.key);
-      if (tail === undefined) { tail = effectTailBound(ev.part.st, ev.part.pattern); tails.set(ev.part.key, tail); }
+      if (tail === undefined) {
+        tail = effectTailBound(ev.part.st, ev.part.pattern);
+        const parent=parts.find(p=>p.itemIndex===ev.part.itemIndex&&p.track.id===ev.part.track.rackParentId);
+        if(parent)tail+=effectTailBound(parent.st,parent.pattern);
+        tails.set(ev.part.key, tail);
+      }
       duration = Math.max(duration, ev.at + voiceLifetimeBound(ev.part.st, ev.notes, ev.stepDur, ev.durSec) + tail);
     }
     // Master/filter settling at the final boundary, also for a silent last scene.

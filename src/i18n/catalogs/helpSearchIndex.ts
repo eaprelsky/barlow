@@ -1,14 +1,14 @@
 export const helpSearchIndex = {
   "helpSearchIndex.trackTrackTabNewNoteCutsOff": {
-    "ru": "Дорожка → трек → «новая нота глушит предыдущую» → «скольжение, мс». Поле появляется при включённом глушении.",
+    "ru": "Карточка дорожки → вкладка «дорожка» → «новая нота глушит предыдущую» → «скольжение, мс». Поле появляется при включённом глушении.",
     "en": "Track → track tab → new note cuts off previous → glide, ms. Enable voice choking to reveal glide."
   },
   "helpSearchIndex.trackTrackTabNewNoteCutsOff1": {
-    "ru": "Дорожка → трек → «новая нота глушит предыдущую».",
+    "ru": "Карточка дорожки → вкладка «дорожка» → «новая нота глушит предыдущую».",
     "en": "Track → track tab → new note cuts off previous."
   },
   "helpSearchIndex.trackTrackTabChokeGroup": {
-    "ru": "Дорожка → трек → группа глушения.",
+    "ru": "Карточка дорожки → вкладка «дорожка» → группа глушения.",
     "en": "Track → track tab → choke group."
   },
   "helpSearchIndex.instrumentSourceVAPulsePWMChooseThe": {
@@ -24,7 +24,7 @@ export const helpSearchIndex = {
     "en": "Instrument → source → wavetable → Import WAV. Choose the synthesis method yourself."
   },
   "helpSearchIndex.trackTrackTabEffectsAddEQ": {
-    "ru": "Дорожка → трек → эффекты → добавь EQ.",
+    "ru": "Карточка дорожки → вкладка «дорожка» → эффекты → добавь EQ.",
     "en": "Track → track tab → effects → add EQ."
   },
   "helpSearchIndex.instrumentLayersProcessingAndRangeForThe": {
@@ -60,11 +60,11 @@ export const helpSearchIndex = {
     "en": "Instrument → {p0}. Some settings are available only for the corresponding source."
   },
   "helpSearchIndex.trackTrackTabEffectsParametersAppearAfter": {
-    "ru": "Дорожка → трек → эффекты. Параметр появляется после добавления соответствующего эффекта.",
+    "ru": "Карточка дорожки → вкладка «дорожка» → эффекты. Параметр появляется после добавления соответствующего эффекта.",
     "en": "Track → track tab → effects. Parameters appear after you add the corresponding effect."
   },
   "helpSearchIndex.trackTrackTabVolumeAndPan": {
-    "ru": "Дорожка → трек → громкость и панорама.",
+    "ru": "Карточка дорожки → вкладка «дорожка» → громкость и панорама.",
     "en": "Track → track tab → volume and pan."
   },
   "helpSearchIndex.guide": {

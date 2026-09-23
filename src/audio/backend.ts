@@ -3,7 +3,7 @@
 // же интерфейсом — через Tauri-команды и события. Пока контракт не
 // выписан, «замена слоя» — надежда, а не план (см. docs/DESIGN.md).
 
-import type { Note, Patch, SoundingTrack, Track, WavRenderOptions } from '../types';
+import type { Note, Patch, PlaybackRange, SoundingTrack, Track, WavRenderOptions } from '../types';
 import type { TrackClock } from './timing';
 import type { SamplePCM } from './pcm';
 import type { AudioCapabilities } from './capabilities';
@@ -28,6 +28,10 @@ export interface AudioBackend {
   readonly currentSceneId: string;
   /** Позиция в цепочке (для подсветки арранжмента). */
   readonly currentBpm: number;
+  readonly currentBeat: number;
+  readonly playbackRange: PlaybackRange | null;
+  setPlaybackRange(range: PlaybackRange | null): void;
+  seekBeat(beat: number): void;
 
   readonly currentChainPos: number;
   /** Актуальное время аудио-часов — для расчёта playhead в UI. */

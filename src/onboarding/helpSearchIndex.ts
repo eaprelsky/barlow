@@ -25,6 +25,9 @@ const makeLocations = (): Record<string, HelpLocation> => ({
   'chain-panel': location('chain','chain-panel','[data-ob="chain-panel"]',msg("helpSearchIndex.sequenceButtonBesideTheScenes")),
 });
 const aliases: Record<string,string> = {
+  'drum-rack':'drum rack kit pad драм рэк пэд установка ударные перкуссия объединить',
+  'playback-range':'loop region A B луп петля участок метки от сих до сих',
+  'playback-variations':'random probability fixed variations случайность вероятность одинаковые варианты',
   portamento:'portamento glide глайд скольжение скользящий скользить слайд плавный переход высоты',
   mono:'моно монофония monophonic', 'formant-group':'форманты formant гласные',
   wavetable:'wave table волновая таблица вейвтейбл кадры', mseg:'огибающая envelope sustain loop атака плато спад',

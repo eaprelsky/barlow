@@ -36,6 +36,14 @@ import {
 } from './types';
 import type { Instrument, Patch, Pattern, SceneSlot, Track, SoundingTrack, WavRenderOptions } from './types';
 import { TrackRow } from './components/TrackRow';
+import { PlaybackRangeEditor } from './components/PlaybackRangeEditor';
+import { DrumRackEditor } from './components/DrumRackEditor';
+import { addRack, libraryTracks, findPad, applyPadPreset, updatePadInstrument, rackPads, padTrackId } from './music/drumRack';
+import { mergeSceneIntoRack } from './music/mergeDrumRack';
+import { MergeDrumRack } from './components/MergeDrumRack';
+import { INSTRUMENT_PRESETS } from './music/instrumentPresets';
+import { readDrumRack } from './audio/drumRackFile';
+import { localizeFactoryPreset } from './music/presetPresentation';
 import type { InstEditorTab } from './components/InstrumentEditor';
 import { LevelBar } from './components/LevelBar';
 import { NumField } from './components/NumField';
@@ -182,6 +190,10 @@ export default function App() {
   const [showLearning,setShowLearning]=useState(false);
   const [showWorkshop,setShowWorkshop]=useState(false);
   const [history] = useState(() => createHistory(loadPatch()));
+  const rackFileInput = useRef<HTMLInputElement>(null);
+  const [mergeRack,setMergeRack]=useState(false);
+  const [rangeEpoch,setRangeEpoch]=useState(0);
+  const [rangeTrackId,setRangeTrackId]=useState<string|null>(null);
   const historyState = useSyncExternalStore(history.subscribe, history.snapshot);
   const patch = historyState.present;
   const saveStatus = useSyncExternalStore(subscribeAutosave, autosaveStatus);
@@ -304,7 +316,7 @@ export default function App() {
     const active=document.querySelector('[data-ob="mode-inst"].on')?.closest('[data-track-id]');
     const first=Array.from(document.querySelectorAll('[data-track-id]')).find(el=>el.getBoundingClientRect().height>0);
     const id=(active??first)?.getAttribute('data-track-id');
-    setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope ?? (id?`[data-track-id="${CSS.escape(id)}"]`:undefined) });
+    setObRun({ guideId: guideId, step: opts?.step ?? 0, scope: opts?.scope ?? (['playback-range','drum-rack'].includes(guideId)?undefined:id?`[data-track-id="${CSS.escape(id)}"]`:undefined) });
   }, []);
   useEffect(() => registerGuideStarter(startGuide), [startGuide]);
 
@@ -410,6 +422,11 @@ export default function App() {
   // той, чей чип нажали; из шапки — последний работавший стан. Точка входа
   // может назвать и вкладку (пикер сэмплов открывает «сэмплы»).
   const [libTarget, setLibTarget] = useState<string | null>(null);
+  const [rackSelection,setRackSelection]=useState<Record<string,string>>({});
+  const selectRackPad=(trackId:string,padId:string)=>{
+    setRackSelection(s=>({...s,[trackId]:padId}));setLibTarget(padTrackId(trackId,padId));
+  };
+  const rackTarget=(track:Track)=>rackPads(track).find(p=>p.id===rackSelection[track.id])??rackPads(track)[0];
   // Зеркало libTarget для стабильного openLibraryAt (цель вкладки).
   const libTargetRef = useRef<string | null>(null);
   libTargetRef.current = libTarget;
@@ -423,7 +440,7 @@ export default function App() {
         // Чип дорожки переводит и открытый редактор инструмента:
         // работа с тембром следует за дорожкой, которую выбрали чипом
         // (и в свёрнутой карточке).
-        setEditorTrack((cur) => (cur && cur !== trackId ? trackId : cur));
+        if(!findPad(liveRef.current.patch,trackId))setEditorTrack((cur) => (cur && cur !== trackId ? trackId : cur));
       }
       if (tab) {
         setLibTab(tab);
@@ -432,6 +449,8 @@ export default function App() {
       // Вкладка без явного указания — по источнику дорожки-цели:
       // сэмпловой дорожке сразу сэмплы, остальным — пресеты тембров.
       const p = liveRef.current.patch;
+      const padTarget=trackId&&findPad(p,trackId);
+      if(padTarget){setLibTab(p.instruments.find(i=>i.id===padTarget.pad.instrumentId)?.waveform==='sample'?'smp':'inst');return;}
       const want = trackId ?? libTargetRef.current;
       const tid =
         want && p.tracks.some((t) => t.id === want)
@@ -512,6 +531,7 @@ export default function App() {
     (!hideSceneMuted || !currentScene?.slots[t.id]?.muted) &&
     t.name.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е').includes(
       trackQuery.trim().normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е')));
+  const rangeTrack=visibleTracks.find(t=>t.id===rangeTrackId)??visibleTracks[0];
 
 
   // Сколько сцен играют каждый эскиз: чип показывает связь «правка эскиза
@@ -519,7 +539,7 @@ export default function App() {
   // перерисовываются лишний раз.
   // Стабильный список дорожек для сайдчейн-селектов.
   const trackList = useMemo(
-    () => patch.tracks.map((t) => ({ id: t.id, name: t.name, instrumentId: t.instrumentId })),
+    () => [...patch.tracks,...libraryTracks(patch).filter(t=>t.rackParentId)].map((t) => ({ id: t.id, name: t.name, instrumentId: t.instrumentId })),
     [patch.tracks],
   );
 
@@ -530,7 +550,7 @@ export default function App() {
     (command ? setPatchStep : setPatch)((p) => {
       const t = p.tracks.find((x) => x.id === trackId);
       if (!t) return p;
-      const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === t.instrumentId);
+      const shared = p.tracks.some((x) => (x.id !== trackId && x.instrumentId === t.instrumentId) || rackPads(x).some(p=>p.instrumentId===t.instrumentId));
       const instId = shared ? uid('i') : t.instrumentId;
       return {
         ...p,
@@ -841,6 +861,7 @@ export default function App() {
   const applyPreset = useCallback(
     (trackId: string, preset: InstrumentPreset) => {
       setPatchStep((p) => {
+        if(findPad(p,trackId))return applyPadPreset(p,trackId,preset);
         const track = p.tracks.find((t) => t.id === trackId);
         const inst = track && p.instruments.find((i) => i.id === track.instrumentId);
         if (!track || !inst) return p;
@@ -855,7 +876,7 @@ export default function App() {
           portamentoSec: t.portamentoSec,
         };
         // Инструмент общий с чужой дорожкой — у этой своя копия (copy-on-write).
-        const shared = p.tracks.some((x) => x.id !== trackId && x.instrumentId === track.instrumentId);
+        const shared = p.tracks.some((x) => (x.id !== trackId && x.instrumentId === track.instrumentId) || rackPads(x).some(p=>p.instrumentId===track.instrumentId));
         const instId = shared ? uid('i') : track.instrumentId;
         updTrack.instrumentId = instId;
         return {
@@ -873,7 +894,7 @@ export default function App() {
   /** Library audition uses the preset's own register, independent of the target. */
   const auditionPreset = useCallback(
     (trackId: string, preset: InstrumentPreset) => {
-      const track = patch.tracks.find((t) => t.id === trackId);
+      const track = libraryTracks(patch).find((t) => t.id === trackId);
       if (track) engine.previewSounding(soundForAudition(track, preset));
     },
     [patch.tracks, engine],
@@ -882,12 +903,14 @@ export default function App() {
   /** Сэмпл из библиотеки — в инструмент дорожки (волна «сэмпл»). */
   const assignSample = useCallback(
     (trackId: string, meta: SampleMeta) => {
+      const target=findPad(patch,trackId);
+      if(target){setPatchStep(p=>updatePadInstrument(p,target.track.id,target.pad.id,{waveform:'sample',sampleId:meta.id,sampleName:meta.name,sampleStart:undefined,sampleEnd:undefined}));return;}
       const track = patch.tracks.find((t) => t.id === trackId);
       const inst = track && instOf(patch, track);
       if (!track || !inst) return;
       changeInst(trackId, { ...inst, waveform: 'sample', sampleId: meta.id, sampleName: meta.name });
     },
-    [patch, instOf, changeInst],
+    [patch, instOf, changeInst, setPatchStep],
   );
 
   const clearAll = useCallback(() => {
@@ -992,7 +1015,7 @@ export default function App() {
         const victim = p.tracks.find((t) => t.id === id);
         const tracks = p.tracks.filter((x) => x.id !== id);
         const instShared = p.tracks.some(
-          (x) => x.id !== id && x.instrumentId === victim?.instrumentId,
+          (x) => x.id !== id && (x.instrumentId === victim?.instrumentId || rackPads(x).some(p=>p.instrumentId===victim?.instrumentId)),
         );
         const instruments = instShared
           ? p.instruments
@@ -1346,7 +1369,7 @@ export default function App() {
       setPatchStep(p => {
         const track = p.tracks.find(t => t.id === trackId);
         if (!track || p.instruments.find(i => i.id === track.instrumentId) !== approved) return p;
-        const shared = p.tracks.some(t => t.id !== trackId && t.instrumentId === track.instrumentId);
+        const shared = p.tracks.some(t => (t.id !== trackId && t.instrumentId === track.instrumentId) || rackPads(t).some(p=>p.instrumentId===track.instrumentId));
         const id = shared ? uid('i') : approved.id;
         const instrument: Instrument = { ...approved, id, waveform: 'sample', sampleId: meta.id, sampleName: meta.name,
           sampleStart: undefined, sampleEnd: undefined, sampleZones: undefined, keyTracking: false };
@@ -1429,6 +1452,7 @@ export default function App() {
             return;
           }
           const norm = normalizePatch(imported);
+          stopTransport();setRangeEpoch(n=>n+1);
           setPatchStep(norm);
           setSceneId(norm.scenes[0].id);
           return;
@@ -1437,6 +1461,7 @@ export default function App() {
         const parsed: unknown = JSON.parse(await file.text());
         if (isPatch(parsed)) {
           const norm = normalizePatch(parsed);
+          stopTransport();setRangeEpoch(n=>n+1);
           setPatchStep(norm);
           setSceneId(norm.scenes[0].id);
         } else void alertDialog(msg("app.thisFileIsNotABarlowProject"), msg("app.import"));
@@ -1491,15 +1516,15 @@ export default function App() {
   // работавший последним стан, иначе первая. Единый расчёт для панели
   // и подсветки дорожки-цели.
   const libTargetId =
-    libTarget && patch.tracks.some((t) => t.id === libTarget)
+    libTarget && libraryTracks(patch).some((t) => t.id === libTarget)
       ? libTarget
-      : clip.activeTrackId && patch.tracks.some((t) => t.id === clip.activeTrackId)
+      : clip.activeTrackId && libraryTracks(patch).some((t) => t.id === clip.activeTrackId)
         ? clip.activeTrackId
-        : (patch.tracks[0]?.id ?? null);
+        : (libraryTracks(patch)[0]?.id ?? null);
   // Имя пресета, совпадающего с инструментом дорожки-цели: панель
   // подсвечивает его карточку и скроллит к ней.
   const libPresetName = useMemo(() => {
-    const t = patch.tracks.find((x) => x.id === libTargetId);
+    const t = libraryTracks(patch).find((x) => x.id === libTargetId);
     return t ? instrumentNameOf({ ...t, ...instOf(patch, t) }) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patch, libTargetId, instOf, presetRevision]);
@@ -1625,9 +1650,9 @@ export default function App() {
         <SoundBrowser
           incomingFile={incomingInstrument}
           onIncomingHandled={()=>setIncomingInstrument(null)}
-          tracks={patch.tracks}
+          tracks={libraryTracks(patch)}
           targetId={libTargetId}
-          onTarget={setLibTarget}
+          onTarget={id=>{setLibTarget(id);const target=id&&findPad(patch,id);if(target)setRackSelection(s=>({...s,[target.track.id]:target.pad.id}));}}
           targetPresetName={libPresetName}
           tab={libTab}
           onTab={setLibTab}
@@ -1659,6 +1684,7 @@ export default function App() {
           if (await confirmDialog({ title: msg("app.restoreTheBackup"), text: msg("app.theCurrentProjectWillRemainInUndo"), okLabel: msg("app.restore") })) {
             const normalized = normalizePatch(recovered);
             resumeAutosave();
+            stopTransport();setRangeEpoch(n=>n+1);
             setPatchStep(normalized);
             setSceneId(normalized.scenes[0].id);
           }
@@ -1998,7 +2024,12 @@ export default function App() {
         </div>
       )}
 
-      <main ref={mainRef} className="main-area">
+      <PlaybackRangeEditor key={`${sceneId}:${rangeEpoch}`} engine={engine} sceneId={sceneId} playing={playing}
+        track={rangeTrack} pattern={rangeTrack?patternInScene(rangeTrack,currentScene):undefined}
+        maxBeats={patch.followChain ? (patch.chain[playing ? engine.currentChainPos : patch.chain.findIndex(item=>item.sceneId===sceneId)]?.bars ?? 8)*4 : undefined}
+        onPlay={()=>startTransport(patch,sceneId)} />
+      <main ref={mainRef} className="main-area" onClickCapture={e=>{const id=(e.target as HTMLElement).closest<HTMLElement>('[data-track-id]')?.dataset.trackId;if(id)setRangeTrackId(id);}}
+        onFocusCapture={e=>{if(!(e.target as HTMLElement).matches(':focus-visible'))return;const id=(e.target as HTMLElement).closest<HTMLElement>('[data-track-id]')?.dataset.trackId;if(id)setRangeTrackId(id);}}>
         <svg className="sc-links" width="100%" height="100%" aria-hidden="true">
           {scLinks.map((l) => (
             <path key={l.key} d={l.d} className="sc-link" />
@@ -2013,6 +2044,22 @@ export default function App() {
           title={msg("app.newTrackSineWaveUsingThePrevious")}
         >
           {msg("app.track")}</button>
+        <button data-help="drum-rack" data-ob="add-rack" onClick={()=>setPatchStep(p=>{
+          const next=addRack(p,msg('rack.title'),['бочка','бумажный снейр','песочный хэт','открытый песок'].map(name=>INSTRUMENT_PRESETS.find(p=>p.name===name)).filter((p):p is InstrumentPreset=>!!p).map(localizeFactoryPreset));
+          const rack=next.tracks[0];return {...next,tracks:next.tracks.map(t=>t===rack?{...t,device:{kind:'rack',pads:rackPads(t).map((pad,i)=>i>=2?{...pad,chokeGroup:1,chokePriority:i===2?1:0}:pad)}}:t)};
+        })}>{msg('rack.add')}</button>
+        <button data-help="rack-merge" onClick={()=>setMergeRack(true)}>{msg('rack.merge')}</button>
+        <button data-help="rack-import" onClick={()=>{void pickInstrumentFile(()=>rackFileInput.current?.click()).then(async file=>{
+          if(!file)return;const snapshot=history.snapshot().present;
+          const kit=await readDrumRack(file);if(history.snapshot().present!==snapshot)return;
+          setPatchStep(p=>({...p,tracks:[kit.track,...p.tracks],instruments:[...p.instruments,...kit.instruments],scenes:p.scenes.map(s=>({...s,slots:{...s.slots,[kit.track.id]:{patternId:kit.track.patterns[0].id}}}))}));
+        }).catch(e=>alertDialog(String(e)));}}>{msg('rack.import')}</button>
+        <input ref={rackFileInput} hidden type="file" accept=".zip,.barlow-rack" onChange={e=>{
+          const file=e.target.files?.[0];e.target.value='';if(!file)return;const snapshot=history.snapshot().present;
+          void readDrumRack(file).then(kit=>{if(history.snapshot().present!==snapshot)return;
+            setPatchStep(p=>({...p,tracks:[kit.track,...p.tracks],instruments:[...p.instruments,...kit.instruments],scenes:p.scenes.map(s=>({...s,slots:{...s.slots,[kit.track.id]:{patternId:kit.track.patterns[0].id}}}))}));
+          }).catch(e=>alertDialog(String(e)));
+        }}/>
         <div className="track-filters" data-help="track-filters" role="group" aria-label={msg("app.trackFilters")}>
           <label className="track-name-filter" data-help="track-filter-name">
             <span>{msg("app.findTrack")}</span>
@@ -2030,6 +2077,9 @@ export default function App() {
         {visibleTracks.map((t) => (
           <TrackRow
             key={t.id}
+            rackContent={t.device?.kind==='rack'?<DrumRackEditor patch={patch} track={t} pattern={patternInScene(t,currentScene)}
+              selected={rackTarget(t)?.id??''} select={id=>selectRackPad(t.id,id)}
+              engine={engine} activeStep={activeOf(t)} change={setPatch} command={setPatchStep} onLibrary={id=>openLibraryAt(id)}/>:undefined}
             track={t}
             inst={instOf(patch, t)}
             onChangeInst={changeInst}
@@ -2084,7 +2134,7 @@ export default function App() {
             onGetSamplePCM={getSamplePCM}
             onPreviewSampleRegion={previewSampleRegion}
             onPreviewNote={previewNote}
-            onOpenBrowser={openLibraryAt}
+            onOpenBrowser={id=>openLibraryAt(t.device?.kind==='rack'&&rackTarget(t)?padTrackId(t.id,rackTarget(t)!.id):id)}
           />
         ))}
         {patch.tracks.length === 0 && <p className="empty">{msg("app.noTracksYetAddOne")}</p>}
@@ -2143,6 +2193,7 @@ export default function App() {
       {showLearning && <LearningStudio patch={patch} onProject={p=>{stopTransport();setPatchStep(p);setSceneId(p.scenes[0]?.id ?? '');}} onClose={()=>setShowLearning(false)} />}
       {showPacks && <PackManager onClose={()=>setShowPacks(false)} />}
       <DialogHost />
+      {mergeRack&&<MergeDrumRack patch={patch} sceneId={sceneId} onClose={()=>setMergeRack(false)} onMerge={ids=>{setPatchStep(p=>mergeSceneIntoRack(p,sceneId,ids,msg('rack.title')));setMergeRack(false);}}/>}
       {showHelpSearch && <HelpSearch onClose={()=>setShowHelpSearch(false)} onNavigate={navigateHelp} tracks={patch.tracks.map(t=>({id:t.id,name:t.name}))} initialTrack={editorActive??patch.tracks[0]?.id??''} />}
       {helpArrival&&<aside className="help-arrival" data-help="help-search-arrival" role="status"><span>{helpArrival}</span><button aria-label={msg("app.closeNavigationHint")} onClick={()=>{setHelpArrival('');setHelpDestination(null);}}>×</button></aside>}
       {pointHelp && <PointHelp onExit={() => setPointHelp(false)} />}

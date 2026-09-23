@@ -132,7 +132,7 @@ export const cards = {
     "en": "tempo"
   },
   "cards.beatsPerMinuteYouCanChangeTempo": {
-    "ru": "Удары в минуту. Меняется на ходу: часы треков пере-якорятся, позиции не сбиваются.",
+    "ru": "Удары в минуту. Меняется на ходу: часы дорожек пере-якорятся, позиции не сбиваются.",
     "en": "Beats per minute. You can change tempo during playback: track clocks are re-anchored without losing their positions."
   },
   "cards.projectName": {
@@ -188,7 +188,7 @@ export const cards = {
     "en": "scenes"
   },
   "cards.sectionsOfAPieceEachSelectingOne": {
-    "ru": "Части пьесы: снимки ансамбля — по партии на каждый трек. Клик играет сцену.",
+    "ru": "Части пьесы: снимки ансамбля — по партии на каждую дорожку. Клик играет сцену.",
     "en": "Sections of a piece, each selecting one clip per track. Click to select a scene for playback."
   },
   "cards.scene": {
@@ -224,7 +224,7 @@ export const cards = {
     "en": "Tiles read left to right, then row by row: scene name above, bars and BPM below. Shared tempo follows the project; custom tempo belongs to this sequence entry. Reorder with the dotted handle on the left or the arrow buttons."
   },
   "cards.track": {
-    "ru": "+ трек",
+    "ru": "+ дорожка",
     "en": "+ track"
   },
   "cards.addATrackWithASineWave": {
@@ -236,7 +236,7 @@ export const cards = {
     "en": "▾ collapse"
   },
   "cards.collapseTheTrackCardToASingle": {
-    "ru": "Карточка дорожки сворачивается в строку — удобно, когда треков много.",
+    "ru": "Карточка дорожки сворачивается в строку — удобно, когда дорожек много.",
     "en": "Collapse the track card to a single row, useful when many tracks are open."
   },
   "cards.trackName": {
@@ -256,7 +256,7 @@ export const cards = {
     "en": "Hear only this track in the current scene. The solo setting belongs to that scene and does not carry over to others."
   },
   "cards.clipTrackInstrument": {
-    "ru": "эскиз / трек / инструмент",
+    "ru": "эскиз / дорожка / инструмент",
     "en": "clip / track / instrument"
   },
   "cards.chooseWhichPartOfTheTrackCard": {
@@ -300,8 +300,8 @@ export const cards = {
     "en": "cycle length"
   },
   "cards.numberOfStepsInTheClipS": {
-    "ru": "Число шагов в цикле эскиза. Разные длины создают независимые повторяющиеся рисунки; их соотношение зависит также от длительности шага.",
-    "en": "Number of steps in the clip’s cycle. Different lengths create independent repeating patterns; their relationship also depends on step duration."
+    "ru": "Число шагов в цикле эскиза, от 1 до 512. Разные длины создают независимые повторяющиеся рисунки; их соотношение зависит также от длительности шага.",
+    "en": "Number of steps in the clip’s cycle, 1 to 512. Different lengths create independent repeating patterns; their relationship also depends on step duration."
   },
   "cards.stepDuration": {
     "ru": "шаг",
@@ -340,8 +340,8 @@ export const cards = {
     "en": "grid rows"
   },
   "cards.theOctaveButtonsAddOrRemoveRows": {
-    "ru": "+ и − по краям стана добавляют и убирают по одной строке со своего края: верхний ряд — верхнюю строку, нижний — нижнюю. ▲/▼ между ними листают окно на строку. Ноты не меняются никогда: убранные строки прячутся за край, но играют. За краем диапазона «+» дорастает октавой (до четырёх с каждой стороны).",
-    "en": "+ and − at the grid edges add and remove one row at a time from their side: the top row controls the top line, the bottom one the bottom. The ▲/▼ arrows scroll the window one row. Notes never change: removed rows hide beyond the edge but keep playing. Past the range's edge, + grows the range by an octave (up to four per side)."
+    "ru": "+ и − по краям стана добавляют и убирают по одной строке со своего края: верхний ряд — верхнюю строку, нижний — нижнюю. ▲/▼ между ними листают окно на строку; за краем диапазона листалка дорастает октавой (до четырёх с каждой стороны) — вниз можно уйти ниже ×1. Ноты не меняются: спрятанные за край строки играют, дорост переносит ноты на те же высоты.",
+    "en": "+ and − at the grid edges add and remove one row at a time from their side: the top row controls the top line, the bottom one the bottom. The ▲/▼ arrows scroll the window one row; past the range's edge the arrows grow the range by an octave (up to four per side) — below ×1 included. Notes never change: rows hidden beyond the edge keep playing, and the grown range keeps every note at its pitch."
   },
   "cards.noteGridToolbar": {
     "ru": "панель нотной сетки",
@@ -372,7 +372,7 @@ export const cards = {
     "en": "phase"
   },
   "cards.offsetTheCycleInStepsKeepThe": {
-    "ru": "Сдвиг цикла в шагах: тот же рисунок, но стартует позже — треки расползаются по такту.",
+    "ru": "Сдвиг цикла в шагах: тот же рисунок, но стартует позже — дорожки расползаются по такту.",
     "en": "Offset the cycle in steps: keep the same pattern but change where it starts relative to other tracks."
   },
   "cards.automation": {
@@ -564,7 +564,7 @@ export const cards = {
     "en": "Describe a sound to generate a sample and assign it to the slot."
   },
   "cards.trackPanel": {
-    "ru": "панель трека",
+    "ru": "панель дорожки",
     "en": "track panel"
   },
   "cards.trackMixingLevelPanVoiceChokingEffects": {
@@ -576,7 +576,7 @@ export const cards = {
     "en": "general"
   },
   "cards.trackLevelAndPanApplyToAll": {
-    "ru": "Громкость/пан трека — общие для всех эскизов; моно-режим.",
+    "ru": "Громкость/пан дорожки — общие для всех эскизов; моно-режим.",
     "en": "Track level and pan apply to all its clips, along with the monophonic voice setting."
   },
   "cards.effect": {

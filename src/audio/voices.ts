@@ -522,7 +522,7 @@ function triggerNoteVoice(
       : track.ampMseg?.seconds ?? attack + track.decay);
   const gates = notes.map((nt) => {
     if (typeof nt.len === 'number' && nt.len > 0) {
-      const lenSec = clampNum(nt.len, 0.05, 64) * stepSec;
+      const lenSec = clampNum(nt.len, 0.05, 512) * stepSec;
       return clampNum(lenSec / Math.max(baseLen, 1e-6), 0.05, 64);
     }
     return clampNum(nt.gate ?? 1, 0.1, 4);

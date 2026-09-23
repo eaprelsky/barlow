@@ -212,6 +212,7 @@ try {
     boundaryEngine.sceneAdvanceTime=boundary;
     const boundaryClock=boundaryEngine.clockOf(seedTrack.id);
     boundaryClock.nextStepTime=tailAt;boundaryClock.resetTime=tailAt-.1;
+    boundaryEngine.segmentStart=boundaryClock.resetTime; // keep the synthetic scene boundary consistent with its clock
     const boundaryNotes=[];boundaryEngine.noteSink=(id,at)=>boundaryNotes.push(at);
     boundaryEngine.scheduler();boundaryEngine.stop();
     check('scene transition preserves outgoing last lookahead window',boundaryNotes.some(at=>Math.abs(at-tailAt)<1e-6) && boundaryNotes.some(at=>Math.abs(at-boundary)<1e-6),boundaryNotes);

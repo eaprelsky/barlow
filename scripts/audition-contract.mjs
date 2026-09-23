@@ -32,6 +32,7 @@ try{
   check('a written track register does not rename the selected preset',instrumentNameOf({...preset.track,freq:789})===preset.name);
   check('low instrument remains at its authored 45 Hz',st.freq===45&&st.scale.length===1&&st.scale[0]===1&&st.scaleOctDown===0&&st.scaleOctUp===0);
   check('audition does not inherit target silence, pan, gate, pattern or rate',st.volume===.8&&st.pan===.5&&st.enabled&&st.noteSteps===undefined&&st.patterns.length===0&&st.rate===1);
+  check('library audition bypasses a target rack bus',soundForAudition({...target,rackParentId:'rack',rackPadId:'pad'},preset).rackParentId===undefined);
   check('preview preparation leaves the entire patch untouched',JSON.stringify(patch)===before);
   check('recommended frequency overrides a legacy base frequency',recommendedHz({recommendedHz:73,freq:440})===73);
   check('old presets retain their register and sample metadata fallback',recommendedHz({freq:55})===55&&recommendedHz({waveform:'sample',rootHz:330})===330);

@@ -46,7 +46,7 @@ export async function preparePack(file:Blob,job:PackJob={}):Promise<PreparedPack
    job.signal?.addEventListener('abort',abort,{once:true});if(job.signal?.aborted)abort();
  });tick(job,35);check(files['pack.json'],msg("instrumentPack.thisIsNotABarlowPack"));
  const m=JSON.parse(strFromU8(files['pack.json'])) as InstrumentPackFile;
- check(m?.format==='barlow-pack'&&m.version===1&&[57,58].includes(m.patchVersion),msg("instrumentPack.unsupportedPackVersion"));
+ check(m?.format==='barlow-pack'&&m.version===1&&[57,58,59].includes(m.patchVersion),msg("instrumentPack.unsupportedPackVersion"));
  check(validName(m.name)&&typeof m.description==='string'&&m.description.length<=2000,msg("instrumentPack.invalidNameOrDescription"));
  check(Array.isArray(m.instruments)&&m.instruments.length>0&&m.instruments.length<=64,msg("instrumentPack.aPackMustContain1To64"));
  const presets=m.instruments.map(checkedPreset);check(new Set(presets.map(p=>p.id)).size===presets.length,msg("instrumentPack.duplicateInstrumentID"));

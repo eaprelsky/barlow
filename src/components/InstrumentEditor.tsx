@@ -68,6 +68,7 @@ const tabs = (): [InstEditorTab, string][] => [
 const LAST_WAVE = new Map<string, WaveDef>();
 
 export interface InstrumentEditorProps {
+  padSource?: boolean;
   /** Voice context reuses source controls without track-wide actions. */
   layerSource?: boolean;
   onEditLayer?: (id: string) => void;
@@ -121,7 +122,7 @@ function clampSec(v: number, lo: number, hi: number): number {
 }
 
 export function InstrumentEditor({
-  layerSource = false, onEditLayer, onPreviewSolo,
+  layerSource = false, padSource = false, onEditLayer, onPreviewSolo,
   track,
   inst,
   pattern,
@@ -918,7 +919,7 @@ export function InstrumentEditor({
                   />
                 </label>
               </div>
-              {!layerSource && <div className="we-row ai-transform">
+              {!layerSource && !padSource && <div className="we-row ai-transform">
                 <input
                   className="gen-prompt"
                   placeholder={msg("instrumentEditor.describeAChangeDarkerWithReverbSlower")}
@@ -970,7 +971,7 @@ export function InstrumentEditor({
             </label>
           )}
           {isSample && <SampleZoneEditor key={inst.sampleId ?? 'empty'} zones={inst.sampleZones} onChange={(sampleZones) => onChangeInst({sampleZones})} />}
-          {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={!layerSource && track.patterns.length < 128} hidePatternAction={layerSource} />}
+          {isSample && <SampleSliceEditor inst={inst} duration={buffer?.duration ?? 0} selection={buffer ? selSec : null} onChange={(sampleSlices, command) => onChangeInst({ sampleSlices }, command)} onPreview={onPreviewRegion} onCreatePattern={onSlicePattern} canCreatePattern={!layerSource && !padSource && track.patterns.length < 128} hidePatternAction={layerSource || padSource} />}
           {isSample && (st.sampleMode ?? 'plain') === 'plain' && (
             <div className="inline sampler-tuning">
               <label><input data-help="sample-reverse" type="checkbox" checked={inst.sampleReverse ?? false}
@@ -1017,7 +1018,7 @@ export function InstrumentEditor({
             </>
           )}
 
-          {isSample && !layerSource && (
+          {isSample && !layerSource && !padSource && (
             <div className="gen-bar" data-ob="gen-bar">
               <label
                 className="gen-label"
@@ -1484,7 +1485,7 @@ export function InstrumentEditor({
               onChange={(filterEnvTime) => onChangeInst({ filterEnvTime })}
             /></>}
           </div>
-          {!layerSource && <div className="group sub" data-ob="arp-group">
+          {!layerSource && !padSource && <div className="group sub" data-ob="arp-group">
             <div className="sub-head">
               <span className="sub-cap">{msg("instrumentEditor.arpeggiator")}</span>
               <span className="scope-cap" title={msg("instrumentEditor.theArpeggiatorBelongsToTheTrackAnd")}>{msg("instrumentEditor.track")}</span>

@@ -12,6 +12,7 @@
     "desktop": "bash scripts/desktop.sh",
     "deploy-web": "bash scripts/deploy-web.sh",
     "golden": "node scripts/golden.mjs",
+    "test:rack-range": "node scripts/rack-range-contract.mjs && node scripts/rack-range-ui.mjs",
     "test:audio": "node scripts/audio-contract.mjs",
     "test:history": "node scripts/history.test.mjs",
     "test:ui": "node scripts/ui-contract.mjs",

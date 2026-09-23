@@ -1,3 +1,4 @@
+import {performanceTools} from './catalogs/performanceTools.ts';
 import {app} from './catalogs/app.ts';
 import {audioStatus} from './catalogs/audioStatus.ts';
 import {autoLane} from './catalogs/autoLane.ts';
@@ -151,6 +152,7 @@ export const messages = {
   ...wavetableEditor,
   ...wavetableImport,
   ...wavExport,
+ ...performanceTools,
  'language.saveError': {ru:'Не удалось сохранить язык интерфейса',en:'Could not save the interface language'},
 } as const;
 export type MessageKey = keyof typeof messages;

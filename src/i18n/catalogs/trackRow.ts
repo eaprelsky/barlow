@@ -44,7 +44,7 @@ export const trackRow = {
     "en": "center"
   },
   "trackRow.dragUpOrDownToReorderTracks": {
-    "ru": "Перетащи вверх или вниз — треки поменяются местами",
+    "ru": "Перетащи вверх или вниз — дорожки поменяются местами",
     "en": "Drag up or down to reorder tracks"
   },
   "trackRow.couldNotSaveTheSampleToStorage": {
@@ -76,15 +76,15 @@ export const trackRow = {
     "en": "Drag to reorder this row"
   },
   "trackRow.duplicateThisTrackIncludingItsClipsNotes": {
-    "ru": "Дублировать трек: тот же рисунок, эскизы и звук — база для подложки или вариации",
+    "ru": "Дублировать дорожку: тот же рисунок, эскизы и звук — база для подложки или вариации",
     "en": "Duplicate this track, including its clips, notes, and sound, as a starting point for a layer or variation"
   },
   "trackRow.deleteTrack": {
-    "ru": "Удалить трек",
+    "ru": "Удалить дорожку",
     "en": "Delete track"
   },
   "trackRow.expandTrack": {
-    "ru": "Развернуть трек",
+    "ru": "Развернуть дорожку",
     "en": "Expand track"
   },
   "trackRow.trackInstrumentClickToOpenTheInstrument": {
@@ -108,7 +108,7 @@ export const trackRow = {
     "en": " steps"
   },
   "trackRow.collapseTrack": {
-    "ru": "Свернуть трек",
+    "ru": "Свернуть дорожку",
     "en": "Collapse track"
   },
   "trackRow.soloThisTrackInTheCurrentScene": {
@@ -132,15 +132,15 @@ export const trackRow = {
     "en": "Instrument: edit the sound source (waveform/sample), note envelope, filters, vibrato, and unison"
   },
   "trackRow.trackSettings": {
-    "ru": "настройка трека",
+    "ru": "настройка дорожки",
     "en": "track settings"
   },
   "trackRow.trackMixLevelPanEffectsAndSidechain": {
-    "ru": "Трек — сведение и комната: громкость/пан, эффекты, сайдчейн (строй и время партии — в тулбаре стана)",
+    "ru": "Дорожка — сведение и комната: громкость/пан, эффекты, сайдчейн (строй и время партии — в тулбаре стана)",
     "en": "Track: mix level, pan, effects, and sidechain ducking. Tuning and clip timing are in the note-grid toolbar."
   },
   "trackRow.track": {
-    "ru": "трек",
+    "ru": "дорожка",
     "en": "track"
   },
   "trackRow.trackInstrumentClickToOpenTheLibrary": {
@@ -156,7 +156,7 @@ export const trackRow = {
     "en": "volume"
   },
   "trackRow.trackVolumeIsSharedByAllClips": {
-    "ru": "Громкость трека — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число",
+    "ru": "Громкость дорожки — общая для всех эскизов; у конкретной партии может быть своя (в блоке эскиза). Двойной клик по подписи — точное число",
     "en": "Track volume is shared by all clips. Each clip can also have its own relative level. Double-click the label for numeric entry."
   },
   "trackRow.pan": {
@@ -408,16 +408,12 @@ export const trackRow = {
     "en": "Bottom limit reached: four octaves below"
   },
   "trackRow.scrollTheStaffUpOneRow": {
-    "ru": "Листать стан на одну строку вверх: ноты и диапазон не меняются — ушедшая вниз строка прячется за окно, но играет",
-    "en": "Scroll the grid up one row: notes and the range stay put — the row leaving the bottom keeps playing."
+    "ru": "Листать стан на одну строку вверх: ушедшая вниз строка прячется за окно, но играет. За краем диапазона дорастает октавой — звук нот не меняется",
+    "en": "Scroll the grid up one row: the row leaving the bottom keeps playing. Past the range's edge, the range grows by an octave — notes sound the same."
   },
   "trackRow.scrollTheStaffDownOneRow": {
-    "ru": "Листать стан на одну строку вниз: ноты и диапазон не меняются — ушедшая вверх строка прячется за окно, но играет",
-    "en": "Scroll the grid down one row: notes and the range stay put — the row leaving the top keeps playing."
-  },
-  "trackRow.nowhereToScrollWholeRange": {
-    "ru": "Листать некуда: виден весь диапазон. Добавь строку «+» — станет что листать",
-    "en": "Nothing to scroll: the whole range is visible. Add a row with + to scroll further."
+    "ru": "Листать стан на одну строку вниз: ушедшая вверх строка прячется за окно, но играет. За нижним краем (вплоть до ×1) дорастает октавой — можно уйти ниже единицы, звук нот не меняется",
+    "en": "Scroll the grid down one row: the row leaving the top keeps playing. Past the bottom edge (all the way to ×1), the range grows by an octave — you can go below the unit; notes sound the same."
   },
   "trackRow.removeTheTopRow": {
     "ru": "Убрать верхнюю строку стана: ноты не меняются — строка прячется за край, но играет",

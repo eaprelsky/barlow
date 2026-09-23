@@ -19,7 +19,9 @@ import { selectChokeEvents } from './chokeEvents';
 // Публичная поверхность движка — контракт AudioBackend (backend.ts):
 // UI не знает про Web Audio, завтра за этим же интерфейсом живёт Rust.
 
-import type { Mod, Note, Patch, Scene, SoundingTrack, Track, WavRenderOptions } from '../types';
+import type { Mod, Note, Patch, PlaybackRange, Scene, SoundingTrack, Track, WavRenderOptions } from '../types';
+import { clockAtBeat, normalizePlaybackRange } from './playbackRange';
+import { expandDrumRacks } from '../music/drumRack';
 import { resolveMacros } from '../music/macros';
 import { SampleRoundRobin } from '../music/sampleRoundRobin';
 import { DecodedAssets } from './decodedAssets';
@@ -89,6 +91,7 @@ function audibleSet(patch: Patch, scene: Scene | undefined): Set<string> {
     if (slotMuted(scene, t.id)) continue;
     const p = patternInScene(t, scene);
     if (!p) continue;
+    if (t.rackParentId && !p.steps.some(s=>s.notes.length)) continue;
     if (!soloTrackId || t.id === soloTrackId) out.add(p.id);
   }
   return out;
@@ -191,7 +194,7 @@ export class AudioEngine implements AudioBackend {
     });
   }
   private patchAssetIds(patch: Patch): string[] {
-    return patch.tracks.flatMap(t => {
+    return patch.tracks.filter(t=>!t.rackBus && (!t.rackParentId || t.enabled!==false && t.patterns.some(p=>p.steps.some(s=>s.notes.length)))).flatMap(t => {
       const st = stOf(patch, t);
       return soundingSampleAssets(st).map(a => a.sampleId);
     });
@@ -213,6 +216,80 @@ export class AudioEngine implements AudioBackend {
   private chainPos = 0;
   private manualMode = true;
   private sceneAdvanceTime: number | null = null;
+  private range: PlaybackRange | null = null;
+  private rangeEnd: number | null = null;
+  private segmentStart = 0;
+  private sceneAnchor = 0;
+  private pendingSeek: { at: number; beat: number } | null = null;
+  private transportViews: { at: number; origin: number; clocks: Map<string, TrackClock> }[] = [];
+  get playbackRange(): PlaybackRange | null { return this.range; }
+  get currentBeat(): number {
+    const view = this.transportViews.filter(v => v.at <= this.now).at(-1);
+    return Math.max(0, (this.now - (view?.origin ?? this.sceneAnchor)) * this.currentBpm / 60);
+  }
+  private rememberTransport(at: number): void {
+    this.transportViews.push({ at, origin: this.sceneAnchor,
+      clocks: new Map([...this.clocks].map(([id, clock]) => [id, { ...clock }])) });
+    while (this.transportViews.length > 1 && this.transportViews[1].at <= this.now) this.transportViews.shift();
+  }
+  private boundary(): number { return Math.min(this.rangeEnd ?? Infinity, this.sceneAdvanceTime ?? Infinity, this.pendingSeek?.at ?? Infinity); }
+  private playbackSeed(): number | undefined {
+    return this.range?.enabled && this.range.variation === 'fixed' ? this.range.seed : this.patch?.performanceSeed;
+  }
+  setPlaybackRange(value: PlaybackRange | null): void {
+    const wasLooping=!!this.range?.enabled || this.rangeEnd!==null;
+    const max = this.patch?.followChain && this.patch.chain[this.chainPos]?.sceneId === value?.sceneId
+      ? this.patch.chain[this.chainPos].bars * 4 : undefined;
+    this.range = value ? normalizePlaybackRange(value, max) : null;
+    if (!this.playing || this.range && this.range.sceneId !== this.sceneId) return;
+    if (this.range?.enabled) {
+      this.pendingSceneId = '';
+      this.sceneAdvanceTime = null;
+      this.seekBeat(this.range.startBeat);
+    } else if(wasLooping) {
+      this.rangeEnd = null;
+      this.pendingSeek = null;
+      this.scheduleSceneAdvance(this.sceneAnchor);
+      if (this.sceneAdvanceTime !== null && this.sceneAdvanceTime <= this.now + SCHEDULE_AHEAD)
+        this.sceneAdvanceTime = this.now + SCHEDULE_AHEAD + .01;
+      this.armSceneExit(this.sceneAdvanceTime);
+    }
+  }
+  seekBeat(beat: number): void {
+    if (!this.playing || !Number.isFinite(beat)) return;
+    const at = this.now + SCHEDULE_AHEAD + .01;
+    const target = this.range?.enabled
+      ? Math.max(this.range.startBeat, Math.min(this.range.endBeat - .25, beat)) : Math.max(0, Math.min(4096, beat));
+    this.pendingSeek = { at, beat: target };
+    this.armSceneExit(at);
+  }
+  private seekAt(at: number, beat: number): void {
+    const patch = this.patch!, ctx = this.ctx!;
+    this.pendingNotes.clear(); this.voiceBudget.endScene(at);
+    for (const chain of this.chains.values()) {
+      chain.sceneGain.gain.cancelScheduledValues(at);
+      chain.sceneGain.gain.setValueAtTime(0, at);
+      this.retireChain(chain, at, .015);
+    }
+    this.chains.clear(); this.meters.clear();
+    // Old shared reverb is gated at the audio boundary, then disconnected.
+    const space = this.sceneSpace;
+    if (space) { space.closeAt(at); window.setTimeout(() => space.dispose(), Math.max(0, at - this.now + .3) * 1000); }
+    this.sceneSpace = patch.sceneSpace && this.master
+      ? makeSceneSpace(ctx, this.master.input, patch.sceneSpace.sizeSec, patch.sceneSpace.level, this.playbackSeed()) : null;
+    this.roundRobin.clear(); this.lastVoices.clear(); this.chokeVoices.clear(); this.pitchMemory.clear();
+    if (this.range?.variation !== 'fixed') this.sceneOccurrence++;
+    this.segmentStart = at; this.sceneAnchor = at - beat * 60 / this.liveBpm;
+    for (const track of patch.tracks) {
+      const pattern = patternInScene(track, this.scene());
+      if (pattern) this.clocks.set(track.id, clockAtBeat(track, pattern, this.liveBpm, at, beat));
+    }
+    this.pendingSeek = null;
+    this.rangeEnd = this.range?.enabled ? this.sceneAnchor + this.range.endBeat * 60 / this.liveBpm : null;
+    if (this.rangeEnd !== null) this.sceneAdvanceTime = null;
+    else this.scheduleSceneAdvance(this.sceneAnchor);
+    this.rememberTransport(at);
+  }
 
   get playing(): boolean {
     return this.timer !== null;
@@ -244,6 +321,7 @@ export class AudioEngine implements AudioBackend {
 
   /** Часы трека (resetTime нужен playhead'у). */
   clockOf(trackId: string): TrackClock | undefined {
+    if (this.segmentStart > this.now) return this.transportViews.filter(v => v.at <= this.now).at(-1)?.clocks.get(trackId) ?? this.clocks.get(trackId);
     return this.clocks.get(trackId);
   }
 
@@ -306,14 +384,19 @@ export class AudioEngine implements AudioBackend {
 
   /** Декодировать сэмплы, на которые ссылается патч (идемпотентно). */
   async ensureSamples(patch: Patch): Promise<void> {
+    patch = expandDrumRacks(patch);
     const release = this.sampleCache.pin(this.patchAssetIds(patch));
-    try { for (const track of patch.tracks) await this.loadSoundSample(stOf(patch, track)); }
+    try { for (const track of patch.tracks) {
+      if(track.rackBus || track.rackParentId && (track.enabled===false || !track.patterns.some(p=>p.steps.some(s=>s.notes.length))))continue;
+      await this.loadSoundSample(stOf(patch, track));
+    } }
     finally { release(); }
   }
 
   /** Обновить данные патча без остановки: движок читает их на каждом шаге.
    *  Параметры цепочек применяет scheduler — ему известен активный эскиз. */
   setPatch(patch: Patch): void {
+    patch = expandDrumRacks(patch);
     const release = this.sampleCache.pin(this.patchAssetIds(patch));
     this.releasePatchAssets?.(); this.releasePatchAssets = release;
     if (this.ctx && this.patch?.performanceSeed !== patch.performanceSeed) {
@@ -347,20 +430,20 @@ export class AudioEngine implements AudioBackend {
 
   /** Мягко увести цепочку: гейн в ноль за ~20 мс, узлы живут ещё 0.3 c —
    *  хвосты нот затухают, а не обрываются (клик на стыке). */
-  private retireChain(chain: TrackChain, at: number): void {
+  private retireChain(chain: TrackChain, at: number, release = .3): void {
     chain.duck.gain.cancelScheduledValues(at);
     chain.duck.gain.setTargetAtTime(0, at, 0.02);
     chain.gain.gain.cancelScheduledValues(at);
     chain.gain.gain.setTargetAtTime(0, at, 0.02);
     for (const m of chain.mods) {
       try {
-        m.src.stop(at + 0.3);
+        m.src.stop(at + release);
       } catch {
         /* уже остановлен */
       }
     }
-    for (const f of chain.fx) f.lfo?.stop(at + 0.3);
-    this.retiring.push({ chain, dieAt: at + 0.3 });
+    for (const f of chain.fx) f.lfo?.stop(at + release);
+    this.retiring.push({ chain, dieAt: at + release });
   }
 
   /** Живой уровень дорожки 0..1 для индикации: пик с мгновенной атакой
@@ -398,7 +481,12 @@ export class AudioEngine implements AudioBackend {
     const t0 = ctx.currentTime;
     const sig = `${modsSigOf(eff.mods)}|${fxSigOf(track.effects ?? [])}`;
     if (chain.modSig !== sig) {
-      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
+      const destination = track.rackParentId ? this.chains.get(track.rackParentId)?.hp : this.master.input;
+      if (!destination) return chain;
+      const fresh = makeChain(ctx, { ...track, volume: eff.volume, pan: eff.pan, mods: eff.mods }, destination, this.currentBpm, this.patch?.performanceSeed, ctx.currentTime);
+      if (track.rackBus) for (const child of this.patch?.tracks.filter(t=>t.rackParentId===trackId) ?? []) {
+        const output=this.chains.get(child.id);if(output){output.sceneGain.disconnect(chain.hp);output.sceneGain.connect(fresh.hp);}
+      }
       this.retireChain(chain, t0);
       if(this.sceneSpace)sendToSpace(fresh,this.sceneSpace.input,track.spaceSend??0);
       this.chains.set(trackId, fresh);
@@ -491,7 +579,9 @@ export class AudioEngine implements AudioBackend {
       const chain = this.chains.get(track.id), clock = this.clocks.get(track.id);
       if (!chain || !clock) continue;
       const pattern = patternInScene(track, this.scene());
-      const plan = { start: clock.resetTime, end: boundary, fadeIn: pattern?.fadeIn ?? .005, fadeOut: pattern?.fadeOut ?? .05 };
+      const audition = this.range?.enabled || this.pendingSeek !== null;
+      const plan = { start: audition ? this.segmentStart : clock.resetTime, end: boundary,
+        fadeIn: audition ? .001 : pattern?.fadeIn ?? .005, fadeOut: audition ? .005 : pattern?.fadeOut ?? .05 };
       const sig = JSON.stringify(plan);
       if (chain.sceneEnvelopeSig === sig) continue;
       scheduleSceneEnvelope(chain.sceneGain.gain, plan, ctx.currentTime);
@@ -500,6 +590,7 @@ export class AudioEngine implements AudioBackend {
   }
 
   private applyNextScene(t: number): void {
+    this.sceneAnchor = t; this.segmentStart = t;
     this.pendingNotes.clear();
     this.voiceBudget.endScene(t);
     // Every occurrence owns its graph/LFO phase. Old FX cannot reopen in the new scene.
@@ -534,9 +625,11 @@ export class AudioEngine implements AudioBackend {
       clock.eventOrdinal = 0;
     }
     this.scheduleSceneAdvance(t);
+    this.rememberTransport(t);
   }
 
   play(patch: Patch, sceneId: string): void {
+    patch = expandDrumRacks(patch);
     const preparationStart = performance.now();
     this.stop();
     this.droppedEvents = 0; this.lateEvents = 0;
@@ -561,7 +654,9 @@ export class AudioEngine implements AudioBackend {
       if (!pattern || !audible.has(pattern.id) || this.chains.has(track.id)) continue;
       const eff = effectiveParams(track, pattern);
       try {
-        const chain = makeChain(ctx, { ...stOf(patch, track), ...eff }, this.master!.input, this.liveBpm, patch.performanceSeed, null);
+        const destination=track.rackParentId?this.chains.get(track.rackParentId)?.hp:this.master!.input;
+        if(!destination)continue;
+        const chain = makeChain(ctx, { ...stOf(patch, track), ...eff }, destination, this.liveBpm, patch.performanceSeed, null);
         if(this.sceneSpace)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);
         this.chains.set(track.id, chain);
       } catch (e) {
@@ -574,6 +669,8 @@ export class AudioEngine implements AudioBackend {
     }
     this.preparationMs = performance.now() - preparationStart;
     this.startAt = sampleTime(ctx.currentTime + .1, ctx.sampleRate);
+    this.segmentStart = this.startAt; this.sceneAnchor = this.startAt;
+    this.transportViews = [];
     for (const chain of this.chains.values()) startChain(chain, this.startAt);
     for (const track of patch.tracks) {
       const pattern = patternInScene(track, scene);
@@ -601,10 +698,15 @@ export class AudioEngine implements AudioBackend {
       for(const track of patch.tracks){const chain=this.chains.get(track.id);if(chain)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);}
     } else if(this.sceneSpace){this.sceneSpace.update(2,0);}
 
+    if (this.range?.enabled && this.range.sceneId === this.sceneId) {
+      this.range = normalizePlaybackRange(this.range, patch.followChain ? (patch.chain[this.chainPos]?.bars ?? 8) * 4 : undefined);
+      this.seekAt(this.startAt, this.range.startBeat);
+    } else { this.rangeEnd = null; this.rememberTransport(this.startAt); }
     this.scheduler();
   }
 
   stop(): void {
+    this.rangeEnd = null; this.pendingSeek = null; this.transportViews = [];
     this.sceneSpace?.dispose();this.sceneSpace=null;
     this.blockedTracks.clear();
     this.scratchEnd();
@@ -960,10 +1062,14 @@ export class AudioEngine implements AudioBackend {
           return;
         }
         let failedChain: TrackChain | undefined;
+        let failedBus: TrackChain | undefined;
         try {
           // Audition has its own complete chain: it must not inherit the old
           // track's filters/FX or alter its running notes.
-          const pseudo = makeChain(ctx, st, this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
+          const parent=st.rackParentId ? patch.tracks.find(t=>t.id===st.rackParentId) : undefined;
+          const bus=parent ? makeChain(ctx,stOf(patch,parent),this.master.input,patch.bpm,patch.performanceSeed,ctx.currentTime+.02) : undefined;
+          failedBus=bus;
+          const pseudo = makeChain(ctx, st, bus?.hp??this.master.input, patch.bpm, patch.performanceSeed, ctx.currentTime + 0.02);
           failedChain = pseudo;
           const pattern = patternInScene(st, this.scene());
           const stepSec = stepDuration(st, patch.bpm, pattern);
@@ -996,14 +1102,16 @@ export class AudioEngine implements AudioBackend {
               for (const source of voice.sources) { try { (source as AudioScheduledSourceNode).stop?.(); } catch { /* ended */ } source.disconnect(); }
               voice.amp.disconnect();
               disposeChain(pseudo);
+              if(bus)disposeChain(bus);
               releaseAssets();
             }, 30);
           };
-          const tail = Math.max(0.1, ...(st.effects ?? []).map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
+          const tail = Math.max(0.1, ...[...(st.effects ?? []),...(parent?.effects??[])].map((fx) => fx.type === 'reverb' ? fx.sizeSec : fx.type === 'delay' ? Math.min(12, fx.timeSec * 12) : 0));
           const timeout = window.setTimeout(cleanup, Math.max(0, voice.stopAt - ctx.currentTime + tail) * 1000);
           this.previewCleanup = () => { window.clearTimeout(timeout); cleanup(); };
           assetsOwnedByPreview = true;
           failedChain = undefined; // cleanup now owns this graph and reservation
+          failedBus = undefined;
           // Голос живёт своей огибающей; хвост подчищаем по stopAt.
           const src = voice.sources[0];
           try {
@@ -1013,6 +1121,7 @@ export class AudioEngine implements AudioBackend {
           }
         } catch (e) {
           if (failedChain) disposeChain(failedChain);
+          if (failedBus) disposeChain(failedBus);
           this.warnSink?.(
             msg("engine.theNoteDidNotPlay", {p0: e instanceof Error ? e.message : String(e)}),
           );
@@ -1039,6 +1148,8 @@ export class AudioEngine implements AudioBackend {
   setScene(id: string): void {
     if (!this.playing || !this.ctx || !this.patch) return;
     if (!this.patch.scenes.some((s) => s.id === id)) return;
+    if (this.range) this.range = { ...this.range, enabled: false };
+    this.rangeEnd = null; this.pendingSeek = null;
     if (id === this.sceneId && !this.pendingSceneId) {
       // Повторный клик по звучащей сцене ничего не меняет.
       if (this.sceneAdvanceTime === null) return;
@@ -1059,7 +1170,7 @@ export class AudioEngine implements AudioBackend {
   setBpm(bpm: number): void {
     const patch = this.patch;
     if (!patch || !this.ctx) return;
-    const old = patch.bpm;
+    const old = this.liveBpm;
     if (bpm === old || !Number.isFinite(bpm) || bpm <= 0) return;
     const now = this.ctx.currentTime;
     const ratio = tickDuration(bpm) / tickDuration(old);
@@ -1069,6 +1180,12 @@ export class AudioEngine implements AudioBackend {
       durSec: ev.durSec === undefined ? undefined : ev.durSec * ratio }));
     // Якорь тактов (nextBarTime) и граница сцены едут той же пропорцией.
     this.startAt = stretch(this.startAt);
+    this.sceneAnchor = stretch(this.sceneAnchor);
+    this.segmentStart = stretch(this.segmentStart);
+    if (this.rangeEnd !== null) this.rangeEnd = stretch(this.rangeEnd);
+    if (this.pendingSeek) this.pendingSeek.at = stretch(this.pendingSeek.at);
+    this.transportViews = this.transportViews.map(v => ({ at: stretch(v.at), origin: stretch(v.origin),
+      clocks: new Map([...v.clocks].map(([id,c]) => [id, { ...c, resetTime: stretch(c.resetTime) }])) }));
     if (this.sceneAdvanceTime !== null) this.sceneAdvanceTime = stretch(this.sceneAdvanceTime);
     for (const [id, clock] of this.clocks) {
       const track = patch.tracks.find((t) => t.id === id);
@@ -1090,6 +1207,7 @@ export class AudioEngine implements AudioBackend {
   setFollowChain(on: boolean): void {
     if (!this.playing || !this.patch || !this.ctx) return;
     this.manualMode = !on;
+    if (this.range?.enabled) return;
     if (on) {
       this.pendingSceneId = '';
       const pos = this.patch.chain.findIndex((it) => it.sceneId === this.sceneId);
@@ -1140,11 +1258,14 @@ export class AudioEngine implements AudioBackend {
 
     // Смены сцен внутри горизонта планирования.
     let guard = 0;
-    while (this.sceneAdvanceTime !== null && this.sceneAdvanceTime < horizon && guard++ < 64) {
+    while (this.boundary() < horizon && guard++ < 64) {
       // Finish the outgoing scene before resetting its clocks. Otherwise
       // the last lookahead window was silently skipped at every boundary.
-      this.scheduleWindow(this.sceneAdvanceTime);
-      this.applyNextScene(this.sceneAdvanceTime);
+      const boundary = this.boundary();
+      this.scheduleWindow(boundary);
+      if (this.pendingSeek?.at === boundary) this.seekAt(boundary, this.pendingSeek.beat);
+      else if (this.rangeEnd === boundary && this.range?.enabled) this.seekAt(boundary, this.range.startBeat);
+      else this.applyNextScene(boundary);
     }
     this.scheduleWindow(horizon);
   }
@@ -1177,13 +1298,15 @@ export class AudioEngine implements AudioBackend {
       } else {
         try {
           if (!chain && this.master) {
-            chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, this.master.input, this.currentBpm, patch.performanceSeed, Math.max(ctx.currentTime,clock.resetTime));
+            const destination=track.rackParentId?this.chains.get(track.rackParentId)?.hp:this.master.input;
+            if(!destination)continue;
+            chain = makeChain(ctx, { ...st, volume: eff.volume, pan: eff.pan, mods: eff.mods }, destination, this.currentBpm, this.playbackSeed(), Math.max(ctx.currentTime,clock.resetTime,this.segmentStart));
             if(this.sceneSpace)sendToSpace(chain,this.sceneSpace.input,track.spaceSend??0);
         this.chains.set(track.id, chain);
-            this.armSceneExit(this.sceneAdvanceTime);
+            this.armSceneExit(Number.isFinite(this.boundary()) ? this.boundary() : null);
           }
           if (chain) chain = this.applyTrackParams(track.id, chain, st, eff, pattern);
-          this.armSceneExit(this.sceneAdvanceTime);
+          this.armSceneExit(Number.isFinite(this.boundary()) ? this.boundary() : null);
           this.blockedTracks.delete(track.id);
         } catch (e) {
           if (!(e instanceof ChainBudgetError)) throw e;
@@ -1197,16 +1320,16 @@ export class AudioEngine implements AudioBackend {
       let g = 0;
       // Read up to 50 ms earlier for negative microtiming, but never read
       // a grid step belonging to the next scene.
-      const planningEnd = Math.min(horizon + 0.05, this.sceneAdvanceTime ?? Infinity);
+      const planningEnd = Math.min(horizon + 0.05, this.boundary() + (this.range?.enabled ? .05 : 0));
       while (clock.nextStepTime < planningEnd && g++ < 1024) {
         const step = pattern.steps[clock.nextStepIndex % pattern.steps.length];
         if (trackAudible) {
           const ordinal = clock.eventOrdinal ?? 0;
-          const events = planStepEvents(step, st, stepDur, randomFor(patch.performanceSeed, 'events', track.id, this.sceneOccurrence, ordinal));
+          const events = planStepEvents(step, st, stepDur, randomFor(this.playbackSeed(), 'events', track.id, this.range?.enabled && this.range.variation === 'fixed' ? 0 : this.sceneOccurrence, ordinal));
           for (const [eventIndex, ev] of events.entries()) {
             if (!chain) { this.droppedEvents++; continue; }
             const at = Math.max(clock.resetTime, clock.nextStepTime + ev.dt * stepDur + (ev.offsetSec ?? 0));
-            if (at >= (this.sceneAdvanceTime ?? Infinity)) continue;
+            if (at < this.segmentStart - 1e-8 || at >= this.boundary() - 1e-8) continue;
             if (!this.pendingNotes.push({ at, trackId: track.id, patternId: pattern.id,
               notes: ev.notes, stepDur, durSec: ev.durSec, gain: ev.gain ?? 1, ordinal, eventIndex })) {
               this.droppedEvents++;
@@ -1214,12 +1337,14 @@ export class AudioEngine implements AudioBackend {
           }
         }
         // Кривые партии: значение параметра на границе шага (v35).
-        if (chain && pattern.automation?.length) {
-          const pos = clock.nextStepIndex / pattern.length;
+        if (chain && pattern.automation?.length && clock.nextStepTime < this.boundary()) {
+          const pos = clock.nextStepTime < this.segmentStart
+            ? ((startStepIndex(track,pattern)+(this.segmentStart-clock.resetTime)/stepDur)%pattern.length)/pattern.length
+            : clock.nextStepIndex / pattern.length;
           for (const c of pattern.automation) {
             const v = autoValue(c.points, pos);
             if (v === undefined) continue;
-            const at = clock.nextStepTime;
+            const at = Math.max(this.segmentStart, clock.nextStepTime);
             if (c.target === 'filterFreq') {
               chain.filter.frequency.setTargetAtTime(autoToParam('filterFreq', v), at, 0.03);
             } else if (c.target === 'pan') {
@@ -1260,22 +1385,23 @@ export class AudioEngine implements AudioBackend {
       const at = Math.max(ctx.currentTime + 0.001, ev.at);
       const voice = triggerVoice(ctx, chain, this.noiseBuffer, this.sampleCache.get(st.sampleId ?? '') ?? null,
         st, ev.notes, at, ev.stepDur, ev.durSec, id => this.sampleCache.get(id) ?? null,
-        randomFor(patch.performanceSeed, 'voice', track.id, this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin, track.id, { pitchMemory: this.pitchMemory, allowGlide: soloAttacks.has(ev) });
+        randomFor(this.playbackSeed(), 'voice', track.id, this.range?.enabled && this.range.variation === 'fixed' ? 0 : this.sceneOccurrence, ev.ordinal, ev.eventIndex), this.roundRobin, track.id, { pitchMemory: this.pitchMemory, allowGlide: soloAttacks.has(ev) });
       voice.amp.gain.value *= ev.gain;
       this.voiceBudget.add(voice, st, ev.notes);
       if (track.mono) this.lastVoices.register(track.id, voice, at);
       if (track.chokeGroup) this.chokeVoices.register(String(track.chokeGroup), voice, at);
-      this.noteSink?.(track.id, at, ev.notes);
+      this.noteSink?.(track.rackParentId ?? track.id, at, ev.notes);
       for (const rt of patch.tracks) {
         const sc = rt.sidechain;
         const rc = this.chains.get(rt.id);
-        if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, at, sc);
+        if (sc && (sc.sourceId === track.id || sc.sourceId === track.rackParentId) && rc) duckSidechain(rc.duck, at, sc);
       }
     }
   }
 
   /** Оффлайн-рендер в WAV: по цепочке (арранжмент) или N тактов одной сцены. */
   async renderToWav(patch: Patch, fallbackSceneId: string, fallbackBars = 8, options?: WavRenderOptions): Promise<Blob> {
+    patch = expandDrumRacks(patch);
     const plan = planRender(patch, fallbackSceneId, fallbackBars, options);
     const memory = renderMemoryBudget.reserve(plan.memoryBytes);
     const assets = new Set(plan.parts.flatMap(p => soundingSampleAssets(p.st).map(a => a.sampleId)));
@@ -1320,7 +1446,8 @@ export class AudioEngine implements AudioBackend {
         const { track, st, pattern, bpm, start, end } = part;
         const eff = effectiveParams(track, pattern);
         const naturalFinal = options?.tail === 'natural' && part.itemIndex === plan.finalItemIndex;
-        const chain = makeChain(ctx, { ...st, ...eff }, master.input, bpm, patch.performanceSeed, start);
+        const destination=track.rackParentId?chainsByKey.get(`${part.itemIndex}:${track.rackParentId}`)!.hp:master.input;
+        const chain = makeChain(ctx, { ...st, ...eff }, destination, bpm, patch.performanceSeed, start);
         if(space)sendToSpace(chain,space.input,track.spaceSend??0);
         chainsByKey.set(part.key, chain);
         if (options) {
@@ -1374,7 +1501,7 @@ export class AudioEngine implements AudioBackend {
         for (const rt of patch.tracks) {
           const sc = rt.sidechain;
           const rc = chainsByKey.get(`${itemIndex}:${rt.id}`);
-          if (sc?.sourceId === track.id && rc) duckSidechain(rc.duck, ev.at, sc);
+          if (sc && (sc.sourceId === track.id || sc.sourceId === track.rackParentId) && rc) duckSidechain(rc.duck, ev.at, sc);
         }
       }
       // Прогресс рендера: оффлайн-контекст останавливаем на равных отрезках

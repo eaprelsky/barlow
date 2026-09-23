@@ -244,7 +244,7 @@ export const soundBrowser = {
     "en": "target track"
   },
   "soundBrowser.applyThisPresetOrSampleToThe": {
-    "ru": "Клик по пресету или сэмплу применит его к этой дорожке: сменится тембр (пустому треку — ещё и регистр), а шкала, ноты и ритм останутся твоими",
+    "ru": "Клик по пресету или сэмплу применит его к этой дорожке: сменится тембр (пустой дорожке — ещё и регистр), а шкала, ноты и ритм останутся твоими",
     "en": "Apply this preset or sample to the selected track. It changes the sound (and the register of an empty track); your scale, notes, and rhythm stay unchanged."
   },
   "soundBrowser.aPresetNeedsATrack": {
@@ -252,7 +252,7 @@ export const soundBrowser = {
     "en": "A preset needs a track"
   },
   "soundBrowser.track": {
-    "ru": "+ трек",
+    "ru": "+ дорожка",
     "en": "+ track"
   },
   "soundBrowser.noMatchesHereButTheSamplesTab": {
@@ -320,7 +320,7 @@ export const soundBrowser = {
     "en": "Download sample {p0}"
   },
   "soundBrowser.usedByATrackUnassignItFirst": {
-    "ru": "Используется треком — сначала отвяжи его",
+    "ru": "Сэмпл используется дорожкой — сначала отвяжи его",
     "en": "Used by a track — unassign it first"
   },
   "soundBrowser.deleteSampleFromStorage": {

@@ -39,6 +39,17 @@ export interface Guide {
 // собери сцену → навесь эффекты («комната») → под конец сведение
 // (шум, компрессия). Отдельные умения (шкалы, сэмплы, ИИ…) — в конце меню.
 export const GUIDES: Guide[] = [
+  { id:'playback-range',get title(){return msg('range.title');},get goal(){return msg('range.help');},section:'more',steps:[
+    {target:'[data-ob="playback-range"]',get say(){return msg('range.how');}},
+    {target:'[data-help="playback-start"]',get say(){return msg('range.playHelp');}},
+    {target:'[data-help="playback-variations"]',get say(){return msg('range.fixedHelp');}},
+  ]},
+  { id:'drum-rack',get title(){return msg('rack.title');},get goal(){return msg('rack.help');},section:'more',steps:[
+    {target:'[data-ob="add-rack"]',get say(){return msg('rack.add');},expect:'click'},
+    {target:'[data-ob="drum-rack"]',get say(){return msg('rack.help');}},
+    {target:'.rack-step',get say(){return msg('rack.hitHelp');}},
+    {target:'[data-ob="rack-pad-controls"]',get say(){return msg('rack.how');}},
+  ]},
   {
     id: 'sound-design', get title() { return msg("guides.buildAnEvolvingSound"); }, get goal() { return msg("guides.layersMSEGAndSynthesisMethods"); }, section: 'more',
     steps: [

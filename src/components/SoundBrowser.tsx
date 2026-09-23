@@ -299,7 +299,7 @@ export function SoundBrowser({
     const current = p.name === targetPresetName;
     const card = (
       <>
-        <button className="sb-apply" data-help="preset-apply" data-help-detail={p.hint} disabled={!applyTo} onClick={() => {
+        <button className="sb-apply" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-barlow-preset',JSON.stringify(p));e.dataTransfer.effectAllowed='copy';}} data-help="preset-apply" data-help-detail={p.hint} disabled={!applyTo} onClick={() => {
           if (!applyTo) return;
           onApply(applyTo, p);
           if (needsSample) onTab('smp');

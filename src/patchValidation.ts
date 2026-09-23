@@ -47,6 +47,19 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
   const instrumentIds = new Set(instruments.map(i => i.id));
   const patterns = new Map<string, Set<string>>();
   for (const t of value.tracks) {
+    if(t.device!==undefined){
+      if(!record(t.device)||!['instrument','rack'].includes(String(t.device.kind)))return false;
+      if(t.device.kind==='rack'){
+        if(!Array.isArray(t.device.pads)||!unique(t.device.pads,32))return false;
+        for(const pad of t.device.pads){
+          if(!id(pad.instrumentId)||!instrumentIds.has(pad.instrumentId)||typeof pad.name!=='string'||pad.name.length>80)return false;
+          if(typeof pad.freq!=='number'||pad.freq<20||pad.freq>9000||typeof pad.volume!=='number'||pad.volume<0||pad.volume>1||typeof pad.pan!=='number'||pad.pan<0||pad.pan>1)return false;
+          if(pad.effects!==undefined&&(!Array.isArray(pad.effects)||pad.effects.length>16||pad.effects.some(fx=>!record(fx)||fx.type==='eq'&&!validEqBands(fx.bands))))return false;
+          if(pad.mods!==undefined&&(!Array.isArray(pad.mods)||pad.mods.length>16))return false;
+          if(pad.chokeGroup!==undefined&&(!Number.isInteger(pad.chokeGroup)||Number(pad.chokeGroup)<1||Number(pad.chokeGroup)>16))return false;
+        }
+      }
+    }
     if(t.spaceSend!==undefined && (typeof t.spaceSend!=='number'||t.spaceSend<0||t.spaceSend>1))return false;
     if (t.portamentoSec !== undefined && (typeof t.portamentoSec !== 'number' || !Number.isFinite(t.portamentoSec) || t.portamentoSec < 0 || t.portamentoSec > 4)) return false;
     if (t.chokeGroup !== undefined && (!Number.isInteger(t.chokeGroup) || (t.chokeGroup as number) < 1 || (t.chokeGroup as number) > 16)) return false;
@@ -71,7 +84,7 @@ export function validPatchInput(value: unknown, latestVersion: number): boolean 
       if ((value.version as number) < 37) continue; // old step shapes are migrated
       for (const step of p.steps) {
         if (!record(step) || !Array.isArray(step.notes) || step.notes.length > 128) return false;
-        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number' || !validNoteLocks(n.locks) || n.sliceId !== undefined && !id(n.sliceId))) return false;
+        if (step.notes.some(n => !record(n) || typeof n.n !== 'number' || typeof n.vel !== 'number' || typeof n.prob !== 'number' || !validNoteLocks(n.locks) || n.sliceId !== undefined && !id(n.sliceId) || n.padId !== undefined && !id(n.padId))) return false;
       }
     }
   }
